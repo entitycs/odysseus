@@ -72,5 +72,19 @@ Odysseus is a self-hosted workspace with powerful local tools. Keep auth enabled
 </a>
 
 ## License
-
 AGPL-3.0-or-later -- see [LICENSE](LICENSE) and [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+
+```
+                                  |
+                                 |||
+                                |||||
+                  |    |    |   |||||||
+                 )_)  )_)  )_)   ~|~
+                )___))___))___)\  |
+               )____)____)_____)\\|
+             _____|____|____|_____\\\__
+             \                       /
+       ~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~
+               ~^~  all aboard!  ~^~
+       ~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~
+```
