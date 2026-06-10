@@ -505,10 +505,17 @@ function _prepareEmailWindowForDocument(modal) {
   // the user opted out of auto-tab-down, so we proceed with the dock
   // even if it's cramped.
   if (!_hasDesktopRoomForEmailAndDocument(modal)) {
+    // Before giving up and minimizing email, see if collapsing the wide
+    // sidebar to the rail would recover enough space. The route-collapse
+    // marker that collapseSidebarToRail() sets makes the existing
+    // auto-restore logic put the sidebar back when the doc closes.
     const sidebar = document.getElementById('sidebar');
     const sidebarWasOpen = sidebar && !sidebar.classList.contains('hidden');
     if (sidebarWasOpen && _hasDesktopRoomForEmailAndDocument(modal, { assumeSidebarCollapsed: true })) {
       try { collapseSidebarToRail(); } catch (_) {}
+    } else {
+      _clearEmailDocumentSplit();
+      return true;
     }
   }
   if (modal.classList.contains('modal-left-docked')) {

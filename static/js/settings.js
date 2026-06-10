@@ -276,6 +276,21 @@ function _syncEndpointLogo(selectEl) {
   }
 }
 
+// Mirror the selected model's provider logo into a sibling <span id="<selectId>-logo">.
+// Wires the change listener exactly once so we can call this every time the
+// select is repopulated without piling on duplicate handlers.
+function _syncModelLogo(selectEl) {
+  if (!selectEl) return;
+  const logoEl = document.getElementById(selectEl.id + '-logo');
+  if (!logoEl) return;
+  const apply = () => { logoEl.innerHTML = providerLogo(selectEl.value) || ''; };
+  apply();
+  if (!selectEl.dataset.logoSync) {
+    selectEl.dataset.logoSync = '1';
+    selectEl.addEventListener('change', apply);
+  }
+}
+
 function _fillModelSelect(selectEl, models, selected, keepBlank) {
   if (!selectEl) return;
   const previous = selected !== undefined ? selected : selectEl.value;

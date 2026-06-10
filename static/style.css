@@ -1246,46 +1246,21 @@ body.bg-pattern-sparkles {
        user actually hovers the section). */
     #sessions-section .chats-manage-btn {
       opacity: 0 !important;
+      opacity: 0 !important;
       transition: opacity 0.12s, background 0.08s;
     }
     #sessions-section .section-header-flex:hover .chats-manage-btn,
     #sessions-section .chats-manage-btn:hover,
     #sessions-section .chats-manage-btn:focus-visible {
-      opacity: 0.85 !important;
+      opacity: 0.45 !important;
     }
     #sessions-section .chats-manage-btn:hover,
     #sessions-section .chats-manage-btn:focus-visible {
       opacity: 1 !important;
     }
-    /* No hover background on the Chats manage button — the inherited
-       section-header-btn rule was painting a tinted box behind the
-       'manage' label as it slid in. */
-    #sessions-section .chats-manage-btn,
-    #sessions-section .chats-manage-btn:hover,
-    #sessions-section .chats-manage-btn:focus-visible {
-      background: transparent !important;
-    }
     @media (hover: none) {
       #sessions-section .chats-manage-btn { opacity: 0.35 !important; }
       #sessions-section .chats-manage-btn:active { opacity: 1 !important; }
-    }
-    /* Pull the 'manage' label out of email's absolute-positioning trick
-       so it sits in the flex flow and expands the button's clickable
-       area as it slides in. Otherwise hovering the visible 'manage'
-       text would actually be outside the button's bounding box. */
-    #sessions-section .chats-manage-btn .list-item-plus-label {
-      position: static;
-      transform: none;
-      max-width: 0;
-      overflow: hidden;
-      padding-right: 0;
-      transition: max-width 0.2s ease, opacity 0.18s ease, padding-right 0.18s ease;
-    }
-    #sessions-section .chats-manage-btn:hover .list-item-plus-label,
-    #sessions-section .chats-manage-btn:focus-visible .list-item-plus-label,
-    #sessions-section .section-header-flex:hover .chats-manage-btn .list-item-plus-label {
-      max-width: 80px;
-      padding-right: 4px;
     }
 
     /* Collapse chevron */
@@ -14676,17 +14651,6 @@ span[id$="-logo"] svg:not([width]) {
    opacity:0.6 stays so the tint reads soft. */
 /* Selected integration card — class beats inline borderColor reset */
 .intg-card.intg-card-active { border-color: var(--accent, var(--red)) !important; }
-
-/* Edge-dock resize handle: invisible at rest, accent stripe animates in
-   on hover. Inline background:transparent + transition come from
-   modalSnap.js; this rule paints the accent gradient on hover, beating
-   the inline style with !important. */
-.edge-dock-resize-handle-left:hover {
-  background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--accent, var(--red)) 35%, transparent) 3px 7px, transparent 7px 10px) !important;
-}
-.edge-dock-resize-handle-right:hover {
-  background: linear-gradient(to left, transparent 0 3px, color-mix(in srgb, var(--accent, var(--red)) 35%, transparent) 3px 7px, transparent 7px 10px) !important;
-}
 
 [data-settings-panel="ai"] .admin-card > h2 > svg,
 [data-settings-panel="services"] .admin-card > h2 > svg,
