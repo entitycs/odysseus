@@ -152,6 +152,7 @@ DEFAULT_SETTINGS = {
     "reminder_channel": "browser",   # "browser" | "email" | "ntfy" | "webhook"
     "reminder_llm_synthesis": False,
     "reminder_llm_persona": "",
+    "reminder_llm_persona": "",
     "reminder_ntfy_topic": "Reminders",
     "reminder_email_to": "",
     # Generic outbound webhook channel: pick any saved Integration as the

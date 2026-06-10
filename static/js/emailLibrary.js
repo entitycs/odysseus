@@ -476,6 +476,14 @@ function _emailSplitLeftEdgeIfSidebarCollapsed() {
 }
 
 function _hasDesktopRoomForEmailAndDocument(modal, opts = {}) {
+// Compute the left-edge x assuming the wide sidebar has collapsed to the
+// rail. Used by the "try collapsing the sidebar first" path so we can decide
+// whether collapsing recovers enough room before minimizing email.
+function _emailSplitLeftEdgeIfSidebarCollapsed() {
+  return _readCssPx('--icon-rail-w');
+}
+
+function _hasDesktopRoomForEmailAndDocument(modal, opts = {}) {
   if (window.innerWidth <= 768) return false;
   if (window.innerWidth >= 1100) return true;
   const content = modal?.querySelector?.('.modal-content');
@@ -485,6 +493,12 @@ function _hasDesktopRoomForEmailAndDocument(modal, opts = {}) {
   const emailWidth = isFullscreen
     ? Math.min(440, Math.max(360, Math.round(window.innerWidth * 0.30)))
     : Math.max(360, Math.round(rect?.width || 440));
+  // Relaxed thresholds — the old 560 + 72 forced an unnecessary tab-down
+  // on ~1200–1300px viewports where there was visually plenty of room.
+  const docMinWidth = 460;
+  const breathingRoom = 40;
+  const leftEdgeNow = isFullscreen ? _emailSplitLeftEdge() : Math.max(0, Math.round(rect?.left || _emailSplitLeftEdge()));
+  const leftEdge = opts.assumeSidebarCollapsed ? _emailSplitLeftEdgeIfSidebarCollapsed() : leftEdgeNow;
   // Relaxed thresholds — the old 560 + 72 forced an unnecessary tab-down
   // on ~1200–1300px viewports where there was visually plenty of room.
   const docMinWidth = 460;

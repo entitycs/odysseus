@@ -14385,6 +14385,7 @@ span[id$="-logo"] svg:not([width]) {
   border-radius: 50%;
 }
 .adm-provider-caret { flex-shrink: 0; transition: transform 0.15s; }
+.adm-provider-caret { flex-shrink: 0; transition: transform 0.15s; }
 .adm-provider-picker:has(.adm-provider-menu:not(.hidden)) .adm-provider-caret {
   transform: rotate(180deg);
 }
@@ -22005,6 +22006,7 @@ body.gallery-selecting .gallery-dl-btn,
   border: none;
   background: none;
   color: color-mix(in srgb, var(--fg) 60%, transparent);
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -22106,6 +22108,11 @@ body.gallery-selecting .gallery-dl-btn,
   background: transparent; color: var(--fg); cursor: pointer; font-size: 13px;
   display: flex; align-items: center; justify-content: center; transition: all 0.15s;
 }
+.shortcut-action-btn:not(.is-reset):hover { border-color: var(--accent, #cc6a3a); background: color-mix(in srgb, var(--accent, #cc6a3a) 10%, var(--bg)); }
+.shortcut-action-btn.is-reset { opacity: 0.55; border-color: transparent; background: transparent; }
+.shortcut-action-btn.is-reset:hover,
+.shortcut-action-btn.is-reset:focus,
+.shortcut-action-btn.is-reset:active { opacity: 0.55; background: transparent; border-color: transparent; }
 .shortcut-action-btn:not(.is-reset):hover { border-color: var(--accent, #cc6a3a); background: color-mix(in srgb, var(--accent, #cc6a3a) 10%, var(--bg)); }
 .shortcut-action-btn.is-reset { opacity: 0.55; border-color: transparent; background: transparent; }
 .shortcut-action-btn.is-reset:hover,
@@ -23218,6 +23225,11 @@ details.hwfit-serve-advanced > .hwfit-serve-checks:last-of-type {
 .settings-fallback-remove {
   flex-shrink: 0;
   margin-right: 4px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 32px;
   height: 32px;
   display: inline-flex;
