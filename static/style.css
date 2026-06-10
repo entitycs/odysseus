@@ -1244,6 +1244,11 @@ body.bg-pattern-sparkles {
        opacity:1!important (the email-style plus button forces always-on,
        which we don't want here — the manage button should fade until the
        user actually hovers the section). */
+    /* Chats library — grid icon, hover-reveal so the header only toggles
+       collapse. Uses !important to win over .list-item-plus-btn's
+       opacity:1!important (the email-style plus button forces always-on,
+       which we don't want here — the manage button should fade until the
+       user actually hovers the section). */
     #sessions-section .chats-manage-btn {
       opacity: 0 !important;
       opacity: 0 !important;
