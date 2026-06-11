@@ -22,14 +22,16 @@ function getThemeColor(varName, alpha = 1) {
 function positionTrack(track) {
   const chat = document.querySelector("#chat-history");
   if (!chat) return;
-
+  // give ~20px y margin for individual browser rendering of scroll arrow + padding
+  const yMargin = 20;
+  const xMargin = 6;
   const rect = chat.getBoundingClientRect();
 
   track.style.position = "fixed";
-  track.style.top = rect.top + 20 + "px";
-  track.style.left = (rect.right - 6) + "px";
+  track.style.top = rect.top + yMargin + "px";
+  track.style.left = (rect.right - xMargin) + "px";
   track.style.width = "20px";
-  track.style.height = rect.height - 40 + "px";
+  track.style.height = rect.height - 2 * yMargin + "px";
 }
 
 document.addEventListener("DOMContentLoaded", () => {
