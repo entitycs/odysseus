@@ -372,6 +372,7 @@ function _buildPanelHTML() {
           <span>Multi-step web research with an LLM-in-the-loop agent</span>
           <span id="research-no-past-hint" style="display:none;font-size:11px;opacity:0.7;position:relative;top:-4px;">— past runs in <button type="button" class="research-library-link" style="background:none;border:none;padding:0;font:inherit;color:var(--accent, var(--red));cursor:pointer;text-decoration:underline;">Library, Research</button></span>
         </p>
+        <div id="research-no-past-hint" class="memory-desc doclib-desc" style="display:none;margin-top:-2px;font-size:11px;opacity:0.7;">All past research found in <button type="button" class="research-library-link">Library, Research</button></div>
         <textarea id="research-query" class="research-query" placeholder="${_pickResearchHint()}" rows="4"></textarea>
         <div class="research-category-row" id="research-category-row">
           <button class="research-cat active" data-cat="" title="LLM auto-detects the best format">Auto</button>
