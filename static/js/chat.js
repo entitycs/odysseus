@@ -2,12 +2,9 @@
 
 /**
  * Main chat functionality - message handling and streaming
- */
+*/
 // ES6 module — IIFE removed
 
-import Storage from './storage.js';
-import uiModule from './ui.js';
-import sessionModule from './sessions.js';
 import chatRenderer from './chatRenderer.js';
 import chatStream from './chatStream.js';
 import { addAITTSButton } from './tts-ai.js';
@@ -18,15 +15,39 @@ import fileHandlerModule from './fileHandler.js';
 import searchModule from './search.js';
 import documentModule from './document.js';
 import * as emailInbox from './emailInbox.js';
-import codeRunnerModule from './codeRunner.js';
-import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handleSetupInput, handleSetupWizard, typewriterInto } from './slashCommands.js';
+import fileHandlerModule from './fileHandler.js';
+import markdownModule, { svgifyEmoji } from './markdown.js';
+import { isSubscriptionEndpoint } from './model/endpoint.js';
+import {
+  modelRouteLabel,
+  replyModelPair,
+  sameModelName,
+  shortModel
+} from './model/models.js';
+import { getImageCost, getModelCost } from './model/pricing.js';
+import presetsModule from './presets.js';
 import createResearchSynapse from './researchSynapse.js';
+import searchModule from './search.js';
+import sessionModule from './sessions.js';
+import slashCommands, {
+  handleSetupInput,
+  handleSetupWizard,
+  handleSlashCommand,
+  initSlashCommands,
+  isCommand,
+  typewriterInto,
+} from './slashCommands.js';
+import spinnerModule from './spinner.js';
+import Storage from './storage.js';
 import { createStreamRenderer } from './streamingRenderer.js';
-import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composerArrowUpRecall.js';
+import { addAITTSButton } from './tts-ai.js';
+import uiModule from './ui.js';
+import { safeDisplayImageSrc, safeToolScreenshotSrc } from './util/safeString.js';
 
-  const RESEARCH_TIMEOUT_MS = 360000;
-  const DEFAULT_TIMEOUT_MS = 120000;
-  const RESEARCH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
+const RESEARCH_TIMEOUT_MS = 360000;
+const DEFAULT_TIMEOUT_MS = 120000;
+const RESEARCH_SVG =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
 
   let API_BASE = '';
   let currentAbort = null;
@@ -58,48 +79,60 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
   let _autoContinuePending = false; // marks the next submit as an auto-continue (don't reset the counter)
   const _AUTO_NUDGE_CAP = 3;
 
-  // shortModel and modelColor are now in chatRenderer.js
-  var _shortModel = chatRenderer.shortModel;
-  var _modelRouteLabel = chatRenderer.modelRouteLabel;
-  var _sameModelName = chatRenderer.sameModelName;
-  var _applyModelColor = chatRenderer.applyModelColor;
-  function _setRoleModelLabel(roleEl, requestedModel, actualModel, opts) {
-    if (!roleEl) return;
-    opts = opts || {};
-    const tsSpan = roleEl.querySelector('.role-timestamp');
-    const req = requestedModel || actualModel || '';
-    const actual = actualModel || requestedModel || '';
-    let label = _modelRouteLabel(req, actual);
-    if (opts.suffix) label += ' (' + opts.suffix + ')';
-    if (opts.characterName) label = opts.characterName;
-    roleEl.textContent = label + ' ';
-    _applyModelColor(roleEl, actual || req);
-    if (req && actual && !_sameModelName(req, actual)) {
-      roleEl.title = req + ' -> ' + actual + (opts.reason ? ': ' + opts.reason : '');
-    } else if (!opts.reason) {
-      roleEl.removeAttribute('title');
-    }
-    if (tsSpan) roleEl.appendChild(tsSpan);
+// shortModel, modelColor, and other exports not specific to rendering are now in chat/model.js
+var _applyModelColor = chatRenderer.applyModelColor;
+function _setRoleModelLabel(roleEl, requestedModel, actualModel, opts) {
+  if (!roleEl) return;
+  opts = opts || {};
+  const tsSpan = roleEl.querySelector('.role-timestamp');
+  const req = requestedModel || actualModel || '';
+  const actual = actualModel || requestedModel || '';
+  let label = modelRouteLabel(req, actual);
+  if (opts.suffix) label += ' (' + opts.suffix + ')';
+  if (opts.characterName) label = opts.characterName;
+  roleEl.textContent = label + ' ';
+  _applyModelColor(roleEl, actual || req);
+  if (req && actual && !sameModelName(req, actual)) {
+    roleEl.title =
+      req + ' -> ' + actual + (opts.reason ? ': ' + opts.reason : '');
+  } else if (!opts.reason) {
+    roleEl.removeAttribute('title');
   }
-  // Per-session research tracking (supports concurrent research across sessions)
-  const _researchingStreamIds = new Set();
-  let _researchTimerEl = null, _researchTimerInterval = null;
-  let _researchStartTime = 0, _researchAvgDuration = null;
-  let _researchSynapse = null;
-  function _clearResearchTimer() {
-    if (_researchTimerInterval) { clearInterval(_researchTimerInterval); _researchTimerInterval = null; }
-    if (_researchTimerEl) { _researchTimerEl.remove(); _researchTimerEl = null; }
-    if (_researchSynapse) {
-      // Mark complete first so the user briefly sees the "done" state,
-      // then tear it down on next tick.
-      try { _researchSynapse.complete(); } catch {}
-      const s = _researchSynapse;
-      _researchSynapse = null;
-      setTimeout(() => { try { s.destroy(); } catch {} }, 800);
-    }
-    _researchStartTime = 0;
-    _researchAvgDuration = null;
+  if (tsSpan) roleEl.appendChild(tsSpan);
+}
+// Per-session research tracking (supports concurrent research across sessions)
+const _researchingStreamIds = new Set();
+let _researchTimerEl = null,
+  _researchTimerInterval = null;
+let _researchStartTime = 0,
+  _researchAvgDuration = null;
+let _researchSynapse = null;
+function _clearResearchTimer() {
+  if (_researchTimerInterval) {
+    clearInterval(_researchTimerInterval);
+    _researchTimerInterval = null;
   }
+  if (_researchTimerEl) {
+    _researchTimerEl.remove();
+    _researchTimerEl = null;
+  }
+  if (_researchSynapse) {
+    // Mark complete first so the user briefly sees the "done" state,
+    // then tear it down on next tick.
+    try {
+      _researchSynapse.complete();
+    } catch {/*Silent Fail*/}
+    const s = _researchSynapse;
+    _researchSynapse = null;
+    setTimeout(() => {
+      try {
+        s.destroy();
+      } catch {/* Silent Fail*/}
+    }, 800);
+  }
+  _researchStartTime = 0;
+  _researchAvgDuration = null;
+}
 
   /** Append a "Generate Visual Report" button — delegates to chatRenderer. */
   function _appendViewReportLink(msgEl, sessionId) {
@@ -198,119 +231,138 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
   let currentHolder = null; // Track current message holder
   let currentSpinner = null; // Track current spinner for stop cleanup
 
-  // Background streaming support
-  const _backgroundStreams = new Map(); // sessionId -> { status, accumulated, sourcesHtml, abortCtrl, query, metrics }
-  const _resumingStreams = new Set();   // sessionId -> a resumeStream() reader is live (re-attach lock)
-  let _streamSessionId = null; // Session ID for the currently active reader loop
-  let _lastReaderActivity = 0; // Timestamp of last reader.read() success — used to detect frozen streams
-  let _webLockRelease = null;  // Function to release the Web Lock held during streaming
+// Background streaming support
+const _backgroundStreams = new Map(); // sessionId -> { status, accumulated, sourcesHtml, abortCtrl, query, metrics }
+const _resumingStreams = new Set(); // sessionId -> a resumeStream() reader is live (re-attach lock)
+let _streamSessionId = null; // Session ID for the currently active reader loop
+let _lastReaderActivity = 0; // Timestamp of last reader.read() success — used to detect frozen streams
+let _webLockRelease = null; // Function to release the Web Lock held during streaming
 
-  /** Check if an SSE reader is still actively connected for a session. */
-  function hasActiveStream(sessionId) {
-    return _streamSessionId === sessionId || _backgroundStreams.has(sessionId) ||
-           _resumingStreams.has(sessionId);
-  }
+/** Check if an SSE reader is still actively connected for a session. */
+function hasActiveStream(sessionId) {
+  return (
+    _streamSessionId === sessionId ||
+    _backgroundStreams.has(sessionId) ||
+    _resumingStreams.has(sessionId)
+  );
+}
 
-  // Sources box builder and toggleSources are now in chatRenderer.js
-  var _buildSourcesBox = chatRenderer.buildSourcesBox;
+// Sources box builder and toggleSources are now in chatRenderer.js
+var _buildSourcesBox = chatRenderer.buildSourcesBox;
 
-  // Browser notifications now in chatStream.js
-  var _notifyResearchComplete = chatStream.notifyResearchComplete;
+// Browser notifications now in chatStream.js
+var _notifyResearchComplete = chatStream.notifyResearchComplete;
 
-  // Model/image pricing, _buildImageBubble now in chatRenderer.js
-  var _buildImageBubble = chatRenderer.buildImageBubble;
-  var getModelCost = chatRenderer.getModelCost;
-  var getImageCost = chatRenderer.getImageCost;
+// Model/image pricing, _buildImageBubble now in chatRenderer.js
+var _buildImageBubble = chatRenderer.buildImageBubble;
 
-  // stripToolBlocks and roleTimestamp now in chatRenderer.js
-  var stripToolBlocks = chatRenderer.stripToolBlocks;
+// stripToolBlocks and roleTimestamp now in chatRenderer.js
+var stripToolBlocks = chatRenderer.stripToolBlocks;
 
-  function _normalizeEndpointForCompare(url) {
-    if (!url) return '';
-    try {
-      const u = new URL(String(url), window.location.origin);
-      let path = u.pathname.replace(/\/+$/, '');
-      const suffixes = [
-        '/v1/chat/completions', '/chat/completions',
-        '/v1/completions', '/completions',
-        '/v1/messages', '/messages',
-        '/v1/models', '/models',
-      ];
-      for (const suffix of suffixes) {
-        if (path.toLowerCase().endsWith(suffix)) {
-          path = path.slice(0, -suffix.length).replace(/\/+$/, '');
-          break;
-        }
+function _normalizeEndpointForCompare(url) {
+  if (!url) return '';
+  try {
+    const u = new URL(String(url), window.location.origin);
+    let path = u.pathname.replace(/\/+$/, '');
+    const suffixes = [
+      '/v1/chat/completions',
+      '/chat/completions',
+      '/v1/completions',
+      '/completions',
+      '/v1/messages',
+      '/messages',
+      '/v1/models',
+      '/models',
+    ];
+    for (const suffix of suffixes) {
+      if (path.toLowerCase().endsWith(suffix)) {
+        path = path.slice(0, -suffix.length).replace(/\/+$/, '');
+        break;
       }
-      return (u.origin + path).toLowerCase();
-    } catch (_) {
-      return String(url).trim().replace(/\/+$/, '').toLowerCase();
     }
+    return (u.origin + path).toLowerCase();
+  } catch (_) {
+    return String(url).trim().replace(/\/+$/, '').toLowerCase();
   }
+}
 
-  async function _probeCurrentEndpointStatus(endpointUrl, signal) {
-    const target = _normalizeEndpointForCompare(endpointUrl);
-    if (!target) return null;
-    const modelsRes = await fetch(`${API_BASE}/api/models`, { credentials: 'same-origin', signal });
-    if (!modelsRes.ok) return null;
-    const modelsData = await modelsRes.json().catch(() => ({}));
-    const item = (modelsData.items || []).find(ep =>
-      _normalizeEndpointForCompare(ep.url || ep.endpoint_url || ep.base_url) === target
-    );
-    if (!item || !item.endpoint_id) return null;
+async function _probeCurrentEndpointStatus(endpointUrl, signal) {
+  const target = _normalizeEndpointForCompare(endpointUrl);
+  if (!target) return null;
+  const modelsRes = await fetch(`${API_BASE}/api/models`, {
+    credentials: 'same-origin',
+    signal,
+  });
+  if (!modelsRes.ok) return null;
+  const modelsData = await modelsRes.json().catch(() => ({}));
+  const item = (modelsData.items || []).find(
+    (ep) =>
+      _normalizeEndpointForCompare(ep.url || ep.endpoint_url || ep.base_url) ===
+      target,
+  );
+  if (!item || !item.endpoint_id) return null;
 
-    const probesRes = await fetch(`${API_BASE}/api/model-endpoints/probe-local`, {
-      credentials: 'same-origin',
-      signal,
-    });
-    if (!probesRes.ok) return null;
-    const probes = await probesRes.json().catch(() => ({}));
-    return probes[item.endpoint_id] || null;
-  }
+  const probesRes = await fetch(`${API_BASE}/api/model-endpoints/probe-local`, {
+    credentials: 'same-origin',
+    signal,
+  });
+  if (!probesRes.ok) return null;
+  const probes = await probesRes.json().catch(() => ({}));
+  return probes[item.endpoint_id] || null;
+}
 
-  /**
-   * Initialize with dependencies
-   */
-  export function init(apiBase) {
-    API_BASE = apiBase;
-    initSlashCommands({ apiBase, isStreaming: () => isStreaming });
-    // Initialize email inbox
-    emailInbox.init(documentModule);
-    // Wire the slash-command autocomplete popup on the chat composer. The
-    // dispatcher already handles the typed command — this just surfaces the
-    // registry as a discoverable menu when the user starts a message with /.
-    import('./slashAutocomplete.js').then(mod => {
+/**
+ * Initialize with dependencies
+ */
+export function init(apiBase) {
+  API_BASE = apiBase;
+  initSlashCommands({ apiBase, isStreaming: () => isStreaming });
+  // Initialize email inbox
+  emailInbox.init(documentModule);
+  // Wire the slash-command autocomplete popup on the chat composer. The
+  // dispatcher already handles the typed command — this just surfaces the
+  // registry as a discoverable menu when the user starts a message with /.
+  import('./slashAutocomplete.js')
+    .then((mod) => {
       const ta = document.getElementById('message');
       if (ta && mod.initSlashAutocomplete) mod.initSlashAutocomplete(ta);
-    }).catch(() => {});
+    })
+    .catch(() => {});
 
-    // ArrowUp on empty composer recalls last user message (like many chat apps).
-    const _wireArrowUpRecall = (composer) =>
-      wireArrowUpRecall(composer, () => getLastUserMessageFromChatHistory(), {
-        autoResize: uiModule?.autoResize,
-      });
+  // ArrowUp on empty composer recalls last user message (like many chat apps).
+  const _wireArrowUpRecall = (composer) =>
+    wireArrowUpRecall(composer, () => getLastUserMessageFromChatHistory(), {
+      autoResize: uiModule?.autoResize,
+    });
 
-    const composer = document.getElementById('message');
-    if (!_wireArrowUpRecall(composer)) {
-      // Init can run before #message exists (templated UI); short retries only.
-      try { requestAnimationFrame(() => _wireArrowUpRecall(document.getElementById('message'))); } catch (_) {}
-      setTimeout(() => _wireArrowUpRecall(document.getElementById('message')), 250);
-    }
+  const composer = document.getElementById('message');
+  if (!_wireArrowUpRecall(composer)) {
+    // Init can run before #message exists (templated UI); short retries only.
+    try {
+      requestAnimationFrame(() =>
+        _wireArrowUpRecall(document.getElementById('message')),
+      );
+    } catch (_) {}
+    setTimeout(
+      () => _wireArrowUpRecall(document.getElementById('message')),
+      250,
+    );
   }
+}
 
-  // addMessage, createMsgFooter, displayMetrics, hideWelcomeScreen, showWelcomeScreen
-  // are now in chatRenderer.js — referenced via the public API delegation above.
-  var addMessage = chatRenderer.addMessage;
-  var createMsgFooter = chatRenderer.createMsgFooter;
-  var displayMetrics = chatRenderer.displayMetrics;
-  var hideWelcomeScreen = chatRenderer.hideWelcomeScreen;
-  var showWelcomeScreen = chatRenderer.showWelcomeScreen;
+// addMessage, createMsgFooter, displayMetrics, hideWelcomeScreen, showWelcomeScreen
+// are now in chatRenderer.js — referenced via the public API delegation above.
+var addMessage = chatRenderer.addMessage;
+var createMsgFooter = chatRenderer.createMsgFooter;
+var displayMetrics = chatRenderer.displayMetrics;
+var hideWelcomeScreen = chatRenderer.hideWelcomeScreen;
+var showWelcomeScreen = chatRenderer.showWelcomeScreen;
 
-  /**
-   * Update submit button state
-   */
-  function updateSubmitButton(state, submitBtn) {
-    if (!submitBtn) return;
+/**
+ * Update submit button state
+ */
+function updateSubmitButton(state, submitBtn) {
+  if (!submitBtn) return;
 
     if (state === 'streaming') {
       // Clear any pending transitions from + → arrow swap
@@ -357,9 +409,9 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     }
   }
 
-  // -----------------------------------------------------------------------
-  // Slash commands — now in slashCommands.js
-  // -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
+// Slash commands — now in slashCommands.js
+// -----------------------------------------------------------------------
 
   // API key pattern for the guard in handleChatSubmit
   const API_KEY_RE = /^(sk-[a-zA-Z0-9_\-]{20,}|gsk_[a-zA-Z0-9]{20,}|AIza[a-zA-Z0-9_\-]{30,}|xai-[a-zA-Z0-9]{20,})$/;
@@ -485,27 +537,27 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
   }
 
 
-  /**
-   * Handle chat form submission
-   */
-  export async function handleChatSubmit(e) {
-    e.preventDefault();
-    // Cancel research clarification timeout if active
-    if (window._researchTimeoutTimer) {
-      clearTimeout(window._researchTimeoutTimer);
-      window._researchTimeoutTimer = null;
-    }
-    // Get current session
-    const sessionId = sessionModule.getCurrentSessionId();
-    const session = sessionModule.getSessions().find(s => s.id === sessionId);
-    
-    const submitBtn = document.querySelector('.send-btn');
-    
-    // If compare is active, stop all compare streams
-    if (window.compareModule && window.compareModule.isActive()) {
-      window.compareModule.handleCompareSubmit();
-      return;
-    }
+/**
+ * Handle chat form submission
+ */
+export async function handleChatSubmit(e) {
+  e.preventDefault();
+  // Cancel research clarification timeout if active
+  if (window._researchTimeoutTimer) {
+    clearTimeout(window._researchTimeoutTimer);
+    window._researchTimeoutTimer = null;
+  }
+  // Get current session
+  const sessionId = sessionModule.getCurrentSessionId();
+  const session = sessionModule.getSessions().find((s) => s.id === sessionId);
+
+  const submitBtn = document.querySelector('.send-btn');
+
+  // If compare is active, stop all compare streams
+  if (window.compareModule && window.compareModule.isActive()) {
+    window.compareModule.handleCompareSubmit();
+    return;
+  }
 
     // If currently streaming, a non-empty composer means "queue this next".
     // Empty composer keeps the existing Stop behavior.
@@ -536,27 +588,35 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       }
       abortCurrentRequest(true);  // explicit user Stop → also cancel the detached server run
 
-      // Clean up any running agent thread nodes (stop wave animation, remove "running" state)
-      document.querySelectorAll('.agent-thread-node.running').forEach(node => {
-        if (node._waveInterval) { clearInterval(node._waveInterval); node._waveInterval = null; }
-        if (node._elapsedTicker) { clearInterval(node._elapsedTicker); node._elapsedTicker = null; }
-        node.classList.remove('running');
-        const wave = node.querySelector('.agent-thread-wave');
-        if (wave) wave.textContent = '';
-        const icon = node.querySelector('.agent-thread-icon');
-        if (icon) icon.textContent = '\u25A0'; // stop square
-        const statusEl = node.querySelector('.agent-thread-status');
-        if (!statusEl) {
-          const header = node.querySelector('.agent-thread-header');
-          if (header) {
-            const s = document.createElement('span');
-            s.className = 'agent-thread-status';
-            s.textContent = 'stopped';
-            header.appendChild(s);
-          }
+    // Clean up any running agent thread nodes (stop wave animation, remove "running" state)
+    document.querySelectorAll('.agent-thread-node.running').forEach((node) => {
+      if (node._waveInterval) {
+        clearInterval(node._waveInterval);
+        node._waveInterval = null;
+      }
+      if (node._elapsedTicker) {
+        clearInterval(node._elapsedTicker);
+        node._elapsedTicker = null;
+      }
+      node.classList.remove('running');
+      const wave = node.querySelector('.agent-thread-wave');
+      if (wave) wave.textContent = '';
+      const icon = node.querySelector('.agent-thread-icon');
+      if (icon) icon.textContent = '\u25A0'; // stop square
+      const statusEl = node.querySelector('.agent-thread-status');
+      if (!statusEl) {
+        const header = node.querySelector('.agent-thread-header');
+        if (header) {
+          const s = document.createElement('span');
+          s.className = 'agent-thread-status';
+          s.textContent = 'stopped';
+          header.appendChild(s);
         }
-      });
-      document.querySelectorAll('.agent-thread.streaming').forEach(t => t.classList.remove('streaming'));
+      }
+    });
+    document
+      .querySelectorAll('.agent-thread.streaming')
+      .forEach((t) => t.classList.remove('streaming'));
 
       // Clean up any thinking spinners
       document.querySelectorAll('.agent-thinking-dots').forEach(el => {
@@ -589,66 +649,72 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         currentHolder.querySelector('.body').innerHTML = markdownModule.processWithThinking(
           markdownModule.squashOutsideCode(stoppedContent)
         );
-        
-        // Highlight code blocks
-        if (window.hljs) {
-          currentHolder.querySelectorAll('pre code').forEach((block) => {
-            window.hljs.highlightElement(block);
-          });
-        }
-        
-        // Add the stopped indicator with continue button
-        const stoppedIndicator = document.createElement('div');
-        stoppedIndicator.className = 'stopped-indicator';
-        const stoppedLabel = document.createElement('span');
-        stoppedLabel.textContent = '[Message interrupted]';
-        stoppedIndicator.appendChild(stoppedLabel);
-        const continueBtn = document.createElement('button');
-        continueBtn.className = 'continue-btn';
-        continueBtn.title = 'Continue';
-        continueBtn.textContent = '\u25B8';
-        const _stoppedHolder = currentHolder; // capture before it gets cleared
-        continueBtn.addEventListener('click', () => {
-          stoppedIndicator.remove();
-          _hideUserBubble = true;
-          _pendingContinue = _stoppedHolder;
-          const cutoff = stoppedContent;
-          const msgInput = uiModule.el('message');
-          if (msgInput) {
-            msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
-            const sb = document.querySelector('.send-btn');
-            if (sb) sb.click();
-          }
+
+      // Highlight code blocks
+      if (window.hljs) {
+        currentHolder.querySelectorAll('pre code').forEach((block) => {
+          window.hljs.highlightElement(block);
         });
-        stoppedIndicator.appendChild(continueBtn);
-        currentHolder.querySelector('.body').appendChild(stoppedIndicator);
-
-        // Tell server to mark this message as stopped
-        const _sid = sessionModule.getCurrentSessionId();
-        if (_sid) fetch(`${API_BASE}/api/session/${_sid}/mark-stopped`, { method: 'POST' }).catch(e => console.warn('mark-stopped failed:', e));
-
-        // Add footer with copy/regen if not already present
-        if (!currentHolder.querySelector('.msg-footer')) {
-          currentHolder.dataset.raw = stoppedContent;
-          currentHolder.appendChild(createMsgFooter(currentHolder));
-        }
-
-        uiModule.scrollHistory();
       }
-      
-      // Reset button state
-      updateSubmitButton('idle', submitBtn);
-      
-      // Re-enable message input
-      const messageInput = uiModule.el('message');
-      if (messageInput) messageInput.disabled = false;
-      
-      // Clear tracking variables
-      currentAccumulated = '';
-      currentHolder = null;
 
-      return;
+      // Add the stopped indicator with continue button
+      const stoppedIndicator = document.createElement('div');
+      stoppedIndicator.className = 'stopped-indicator';
+      const stoppedLabel = document.createElement('span');
+      stoppedLabel.textContent = '[Message interrupted]';
+      stoppedIndicator.appendChild(stoppedLabel);
+      const continueBtn = document.createElement('button');
+      continueBtn.className = 'continue-btn';
+      continueBtn.title = 'Continue';
+      continueBtn.textContent = '\u25B8';
+      const _stoppedHolder = currentHolder; // capture before it gets cleared
+      continueBtn.addEventListener('click', () => {
+        stoppedIndicator.remove();
+        _hideUserBubble = true;
+        _pendingContinue = _stoppedHolder;
+        const cutoff = stoppedContent;
+        const msgInput = uiModule.el('message');
+        if (msgInput) {
+          msgInput.value =
+            'Your previous response was interrupted. It ended with:\n\n' +
+            cutoff.slice(-500) +
+            '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
+          const sb = document.querySelector('.send-btn');
+          if (sb) sb.click();
+        }
+      });
+      stoppedIndicator.appendChild(continueBtn);
+      currentHolder.querySelector('.body').appendChild(stoppedIndicator);
+
+      // Tell server to mark this message as stopped
+      const _sid = sessionModule.getCurrentSessionId();
+      if (_sid)
+        fetch(`${API_BASE}/api/session/${_sid}/mark-stopped`, {
+          method: 'POST',
+        }).catch((e) => console.warn('mark-stopped failed:', e));
+
+      // Add footer with copy/regen if not already present
+      if (!currentHolder.querySelector('.msg-footer')) {
+        currentHolder.dataset.raw = stoppedContent;
+        currentHolder.appendChild(createMsgFooter(currentHolder));
+      }
+
+      uiModule.scrollHistory();
     }
+
+    // Reset button state
+    updateSubmitButton('idle', submitBtn);
+
+    // Re-enable message input
+    const messageInput = uiModule.el('message');
+    if (messageInput) messageInput.disabled = false;
+
+    // Clear tracking variables
+    currentAccumulated = '';
+    currentHolder = null;
+
+    return;
+  }
 
     // --- Send-path entry: block re-clicks between submit and stream start ---
     if (_sendInFlight) return;
@@ -666,129 +732,168 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       if (submitBtn) submitBtn.classList.remove('send-pending');
     };
 
-    // --- Setup mode: intercept next message (but let slash commands through) ---
-    {
-      const el = uiModule.el;
-      const rawMsg = (el('message').value || '').trim();
-      const currentSetupMode = slashCommands.getSetupMode();
-      if (currentSetupMode && rawMsg && !isCommand(rawMsg)) {
-        const mode = currentSetupMode;
-        slashCommands.clearSetupMode(mode === 'endpoint-provider' || mode === 'endpoint-key-for-provider');
-        el('message').value = '';
-        if (window._syncModelPickerAutohide) window._syncModelPickerAutohide();
-        if (uiModule.autoResize) uiModule.autoResize(el('message'));
-        if (mode === true || mode === 'endpoint') {
-          handleSetupInput(rawMsg);
-        } else {
-          handleSetupWizard(mode, rawMsg);
-        }
-        _releaseSendFlag();
-        return;
-      }
-      if (currentSetupMode && rawMsg && isCommand(rawMsg)) {
-        slashCommands.clearSetupMode();  // Clear setup mode, fall through to slash handler
-      }
-    }
-
+  // --- Setup mode: intercept next message (but let slash commands through) ---
+  {
     const el = uiModule.el;
-    const msg = el('message').value;
-    // Allow empty text when a regen carries over the original message's
-    // attachment ids — a photo-only message still has something to send.
-    if (!msg.trim() && !fileHandlerModule.getPendingCount() && !(_pendingRegenAttachments && _pendingRegenAttachments.length)) { _releaseSendFlag(); return; }
-
-    // --- Slash commands: execute directly without AI (no session needed) ---
-    if (isCommand(msg.trim())) {
-      const handled = await handleSlashCommand(msg.trim());
-      if (handled) {
-        el('message').value = '';
-        if (window._syncModelPickerAutohide) window._syncModelPickerAutohide();
-        if (uiModule.autoResize) uiModule.autoResize(el('message'));
-        _releaseSendFlag();
-        return;
+    const rawMsg = (el('message').value || '').trim();
+    const currentSetupMode = slashCommands.getSetupMode();
+    if (currentSetupMode && rawMsg && !isCommand(rawMsg)) {
+      const mode = currentSetupMode;
+      slashCommands.clearSetupMode(
+        mode === 'endpoint-provider' || mode === 'endpoint-key-for-provider',
+      );
+      el('message').value = '';
+      if (window._syncModelPickerAutohide) window._syncModelPickerAutohide();
+      if (uiModule.autoResize) uiModule.autoResize(el('message'));
+      if (mode === true || mode === 'endpoint') {
+        handleSetupInput(rawMsg);
+      } else {
+        handleSetupWizard(mode, rawMsg);
       }
+      _releaseSendFlag();
+      return;
     }
-
-    // Materialize pending session (deferred from model click) on first message
-    if (sessionModule.hasPendingChat && sessionModule.hasPendingChat()) {
-      const ok = await sessionModule.materializePendingSession();
-      if (!ok || !sessionModule.getCurrentSessionId()) { _releaseSendFlag(); return; }
+    if (currentSetupMode && rawMsg && isCommand(rawMsg)) {
+      slashCommands.clearSetupMode(); // Clear setup mode, fall through to slash handler
     }
+  }
 
-    if (!sessionModule.getCurrentSessionId()) {
-      // Auto-create a session using default chat config. Always fetch fresh
-      // so that a recent Settings change takes effect without a page reload.
+  const el = uiModule.el;
+  const msg = el('message').value;
+  // Allow empty text when a regen carries over the original message's
+  // attachment ids — a photo-only message still has something to send.
+  if (
+    !msg.trim() &&
+    !fileHandlerModule.getPendingCount() &&
+    !(_pendingRegenAttachments && _pendingRegenAttachments.length)
+  ) {
+    _releaseSendFlag();
+    return;
+  }
+
+  // --- Slash commands: execute directly without AI (no session needed) ---
+  if (isCommand(msg.trim())) {
+    const handled = await handleSlashCommand(msg.trim());
+    if (handled) {
+      el('message').value = '';
+      if (window._syncModelPickerAutohide) window._syncModelPickerAutohide();
+      if (uiModule.autoResize) uiModule.autoResize(el('message'));
+      _releaseSendFlag();
+      return;
+    }
+  }
+
+  // Materialize pending session (deferred from model click) on first message
+  if (sessionModule.hasPendingChat && sessionModule.hasPendingChat()) {
+    const ok = await sessionModule.materializePendingSession();
+    if (!ok || !sessionModule.getCurrentSessionId()) {
+      _releaseSendFlag();
+      return;
+    }
+  }
+
+  if (!sessionModule.getCurrentSessionId()) {
+    // Auto-create a session using default chat config. Always fetch fresh
+    // so that a recent Settings change takes effect without a page reload.
+    try {
+      let dc = null;
       try {
-        let dc = null;
-        try {
-          const dcRes = await fetch('/api/default-chat');
-          dc = await dcRes.json();
-          if (dc && dc.endpoint_url && dc.model) {
-            try { window.__odysseusDefaultChat = dc; } catch (_) {}
-          }
-        } catch (_) {
-          dc = (typeof window !== 'undefined' && window.__odysseusDefaultChat) || null;
+        const dcRes = await fetch('/api/default-chat');
+        dc = await dcRes.json();
+        if (dc && dc.endpoint_url && dc.model) {
+          try {
+            window.__odysseusDefaultChat = dc;
+          } catch (_) {}
         }
-        if (dc.endpoint_url && dc.model) {
-          await sessionModule.createDirectChat(dc.endpoint_url, dc.model, dc.endpoint_id);
-          const ok = await sessionModule.materializePendingSession();
-          if (!ok || !sessionModule.getCurrentSessionId()) { _releaseSendFlag(); return; }
-        } else {
-          el('message').value = '';
-          if (uiModule.autoResize) uiModule.autoResize(el('message'));
-          addMessage('assistant',
-            'No chat session active. You can:\n\n' +
-            '- Open the model picker in the chat box and pick a model\n' +
-            '- Use the `+` button in the model picker to add a model endpoint\n' +
-            '- Use `/help` to see all available commands');
+      } catch (_) {
+        dc =
+          (typeof window !== 'undefined' && window.__odysseusDefaultChat) ||
+          null;
+      }
+      if (dc.endpoint_url && dc.model) {
+        await sessionModule.createDirectChat(
+          dc.endpoint_url,
+          dc.model,
+          dc.endpoint_id,
+        );
+        const ok = await sessionModule.materializePendingSession();
+        if (!ok || !sessionModule.getCurrentSessionId()) {
           _releaseSendFlag();
           return;
         }
-      } catch (e) {
+      } else {
         el('message').value = '';
         if (uiModule.autoResize) uiModule.autoResize(el('message'));
-        addMessage('assistant',
+        addMessage(
+          'assistant',
           'No chat session active. You can:\n\n' +
+            '- Open the model picker in the chat box and pick a model\n' +
+            '- Use the `+` button in the model picker to add a model endpoint\n' +
+            '- Use `/help` to see all available commands',
+        );
+        _releaseSendFlag();
+        return;
+      }
+    } catch (e) {
+      el('message').value = '';
+      if (uiModule.autoResize) uiModule.autoResize(el('message'));
+      addMessage(
+        'assistant',
+        'No chat session active. You can:\n\n' +
           '- Open the model picker in the chat box and pick a model\n' +
           '- Use the `+` button in the model picker to add a model endpoint\n' +
-          '- Use `/help` to see all available commands');
-        _releaseSendFlag();
-        return;
-      }
+          '- Use `/help` to see all available commands',
+      );
+      _releaseSendFlag();
+      return;
     }
+  }
 
-    // --- API key guard: warn if message looks like an API key ---
-    if (API_KEY_RE.test(msg.trim())) {
-      if (!await window.styledConfirm('This looks like an API key. Sending it to the AI could expose it.\n\nDid you mean to use /setup instead?', { confirmText: 'Send anyway', danger: true })) {
-        _releaseSendFlag();
-        return;
-      }
+  // --- API key guard: warn if message looks like an API key ---
+  if (API_KEY_RE.test(msg.trim())) {
+    if (
+      !(await window.styledConfirm(
+        'This looks like an API key. Sending it to the AI could expose it.\n\nDid you mean to use /setup instead?',
+        { confirmText: 'Send anyway', danger: true },
+      ))
+    ) {
+      _releaseSendFlag();
+      return;
     }
+  }
 
+  const messageInput = el('message');
+  const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
 
-    const messageInput = el('message');
-    const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
+  // Re-enable the textarea now that we've handed off to the stream: the
+  // user wants to compose the next message while the AI is still talking.
+  // The `isStreaming` flag is the re-click guard for the send button.
+  if (messageInput) messageInput.disabled = false;
+  updateSubmitButton('streaming', submitBtn);
+  if (submitBtn) submitBtn.classList.remove('send-pending');
+  _sendInFlight = false;
 
-    // Re-enable the textarea now that we've handed off to the stream: the
-    // user wants to compose the next message while the AI is still talking.
-    // The `isStreaming` flag is the re-click guard for the send button.
-    if (messageInput) messageInput.disabled = false;
-    updateSubmitButton('streaming', submitBtn);
-    if (submitBtn) submitBtn.classList.remove('send-pending');
-    _sendInFlight = false;
+  // Capture session ID for background stream detection
+  const streamSessionId = sessionModule.getCurrentSessionId();
+  _streamSessionId = streamSessionId;
+  const streamQuery = msg;
+  _lastReaderActivity = Date.now();
 
-    // Capture session ID for background stream detection
-    const streamSessionId = sessionModule.getCurrentSessionId();
-    _streamSessionId = streamSessionId;
-    const streamQuery = msg;
-    _lastReaderActivity = Date.now();
-
-    // Acquire Web Lock to hint browser not to discard this tab while streaming
-    if (navigator.locks) {
-      navigator.locks.request('odysseus-stream-' + streamSessionId, { mode: 'exclusive', ifAvailable: true }, lock => {
-        if (!lock) return; // Another stream already holds a lock — fine
-        return new Promise(resolve => { _webLockRelease = resolve; });
-      }).catch(e => console.warn('web lock acquire failed:', e)); // Ignore lock errors — best-effort
-    }
+  // Acquire Web Lock to hint browser not to discard this tab while streaming
+  if (navigator.locks) {
+    navigator.locks
+      .request(
+        'odysseus-stream-' + streamSessionId,
+        { mode: 'exclusive', ifAvailable: true },
+        (lock) => {
+          if (!lock) return; // Another stream already holds a lock — fine
+          return new Promise((resolve) => {
+            _webLockRelease = resolve;
+          });
+        },
+      )
+      .catch((e) => console.warn('web lock acquire failed:', e)); // Ignore lock errors — best-effort
+  }
 
     // Declare accumulated outside try block so it's accessible in catch
     let accumulated = '';
@@ -837,87 +942,112 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       }
     };
 
-    // Reset tracking variables at start
-    currentAccumulated = '';
-    currentHolder = null;
-    
-    try {
-      // Re-enable auto-scroll when user sends a message
-      uiModule.setAutoScroll(true);
-      uiModule.scrollHistoryInstant();
-      // Clear completed dot now that user is interacting
-      if (sessionModule.clearStreamComplete) sessionModule.clearStreamComplete(sessionModule.getCurrentSessionId());
+  // Reset tracking variables at start
+  currentAccumulated = '';
+  currentHolder = null;
 
-      // Check for document selection context before consuming display override
-      const docSel = documentModule && documentModule.getSelectionContext();
-      if (docSel) {
-        const sels = Array.isArray(docSel) ? docSel : [docSel];
-        const lineRefs = sels.map(s =>
-          s.startLine === s.endLine ? `L${s.startLine}` : `L${s.startLine}-${s.endLine}`
-        );
-        _displayOverride = `[Doc edit: ${lineRefs.join(', ')}] ${msg}`;
-      }
+  try {
+    // Re-enable auto-scroll when user sends a message
+    uiModule.setAutoScroll(true);
+    uiModule.scrollHistoryInstant();
+    // Clear completed dot now that user is interacting
+    if (sessionModule.clearStreamComplete)
+      sessionModule.clearStreamComplete(sessionModule.getCurrentSessionId());
 
-      const userDisplay = _displayOverride || msg;
-      _displayOverride = null;
-      const skipBubble = _hideUserBubble;
-      _hideUserBubble = false;
-      // Auto-recovery counter: carries across a turn's auto-continues, but resets
-      // when the user genuinely sends a new message (so each task gets a fresh cap).
-      // A real user turn (visible bubble) ALWAYS resets the budget — even if a
-      // prior auto-continue's deferred click never cleared the pending flag — so a
-      // stuck flag can't silently eat the next turn's recovery budget.
-      if (!skipBubble) { _autoNudges = 0; _autoContinuePending = false; }
-      else if (_autoContinuePending) { _autoContinuePending = false; }
-      const _pendingAttachInfo = fileHandlerModule.getPendingCount() ? fileHandlerModule.getPendingInfo() : null;
-      // Pre-read importable file contents before upload clears pending files
-      const IMPORTABLE_EXT = /\.(txt|py|js|ts|html|htm|css|md|json|csv|yml|yaml|sh|sql|rs|go|java|c|cpp|h|rb|php|xml|jsx|tsx|log|toml|ini|conf|env|vue|svelte|scss|sass|less)$/i;
-      const _importableFiles = [];
-      if (_pendingAttachInfo && documentModule) {
-        const rawFiles = fileHandlerModule.getPendingRaw ? fileHandlerModule.getPendingRaw() : [];
-        for (let i = 0; i < _pendingAttachInfo.length; i++) {
-          const att = _pendingAttachInfo[i];
-          if (IMPORTABLE_EXT.test(att.name) && rawFiles[i]) {
-            _importableFiles.push({ info: att, file: rawFiles[i] });
-          }
+    // Check for document selection context before consuming display override
+    const docSel = documentModule && documentModule.getSelectionContext();
+    if (docSel) {
+      const sels = Array.isArray(docSel) ? docSel : [docSel];
+      const lineRefs = sels.map((s) =>
+        s.startLine === s.endLine
+          ? `L${s.startLine}`
+          : `L${s.startLine}-${s.endLine}`,
+      );
+      _displayOverride = `[Doc edit: ${lineRefs.join(', ')}] ${msg}`;
+    }
+
+    const userDisplay = _displayOverride || msg;
+    _displayOverride = null;
+    const skipBubble = _hideUserBubble;
+    _hideUserBubble = false;
+    // Auto-recovery counter: carries across a turn's auto-continues, but resets
+    // when the user genuinely sends a new message (so each task gets a fresh cap).
+    // A real user turn (visible bubble) ALWAYS resets the budget — even if a
+    // prior auto-continue's deferred click never cleared the pending flag — so a
+    // stuck flag can't silently eat the next turn's recovery budget.
+    if (!skipBubble) {
+      _autoNudges = 0;
+      _autoContinuePending = false;
+    } else if (_autoContinuePending) {
+      _autoContinuePending = false;
+    }
+    const _pendingAttachInfo = fileHandlerModule.getPendingCount()
+      ? fileHandlerModule.getPendingInfo()
+      : null;
+    // Pre-read importable file contents before upload clears pending files
+    const IMPORTABLE_EXT =
+      /\.(txt|py|js|ts|html|htm|css|md|json|csv|yml|yaml|sh|sql|rs|go|java|c|cpp|h|rb|php|xml|jsx|tsx|log|toml|ini|conf|env|vue|svelte|scss|sass|less)$/i;
+    const _importableFiles = [];
+    if (_pendingAttachInfo && documentModule) {
+      const rawFiles = fileHandlerModule.getPendingRaw
+        ? fileHandlerModule.getPendingRaw()
+        : [];
+      for (let i = 0; i < _pendingAttachInfo.length; i++) {
+        const att = _pendingAttachInfo[i];
+        if (IMPORTABLE_EXT.test(att.name) && rawFiles[i]) {
+          _importableFiles.push({ info: att, file: rawFiles[i] });
         }
       }
-      let _userMsgEl = null;
-      if (!skipBubble) {
-        _userMsgEl = addMessage('user', userDisplay, null, _pendingAttachInfo ? { attachments: _pendingAttachInfo } : null);
-      }
-      messageInput.value = '';
-      messageInput.style.height = '';
-      messageInput.dispatchEvent(new Event('input'));
-      // Mobile: dismiss the on-screen keyboard after sending. iOS in
-      // particular ignores a bare blur() in some cases (or some other
-      // listener refocuses straight after), so we temporarily mark the
-      // input readonly which forces the keyboard to retract, then blur,
-      // then drop the readonly attribute after the keyboard is gone so
-      // typing still works for the next message.
-      if (window.innerWidth <= 768) {
-        try {
-          messageInput.setAttribute('readonly', 'readonly');
-          messageInput.blur();
-          const _dropReadonly = () => { try { messageInput.removeAttribute('readonly'); } catch {} };
-          setTimeout(() => {
-            // If the blur stuck, the input is no longer the active element —
-            // safe to drop readonly now so the next message can be typed.
-            // If it did NOT stick (some mobile browsers keep the textarea
-            // focused after a programmatic blur), removing readonly here would
-            // re-summon the keyboard mid-stream — the "bounce up" that then
-            // lingers until the end-of-stream blur. In that case keep readonly
-            // on (keyboard stays down) and drop it the moment the user taps to
-            // type again, so typing still works without the bounce.
-            if (document.activeElement === messageInput) {
-              messageInput.addEventListener('pointerdown', _dropReadonly, { once: true });
-              messageInput.addEventListener('focus', _dropReadonly, { once: true });
-            } else {
-              _dropReadonly();
-            }
-          }, 120);
-        } catch {}
-      }
+    }
+    let _userMsgEl = null;
+    if (!skipBubble) {
+      _userMsgEl = addMessage(
+        'user',
+        userDisplay,
+        null,
+        _pendingAttachInfo ? { attachments: _pendingAttachInfo } : null,
+      );
+    }
+    messageInput.value = '';
+    messageInput.style.height = '';
+    messageInput.dispatchEvent(new Event('input'));
+    // Mobile: dismiss the on-screen keyboard after sending. iOS in
+    // particular ignores a bare blur() in some cases (or some other
+    // listener refocuses straight after), so we temporarily mark the
+    // input readonly which forces the keyboard to retract, then blur,
+    // then drop the readonly attribute after the keyboard is gone so
+    // typing still works for the next message.
+    if (window.innerWidth <= 768) {
+      try {
+        messageInput.setAttribute('readonly', 'readonly');
+        messageInput.blur();
+        const _dropReadonly = () => {
+          try {
+            messageInput.removeAttribute('readonly');
+          } catch {}
+        };
+        setTimeout(() => {
+          // If the blur stuck, the input is no longer the active element —
+          // safe to drop readonly now so the next message can be typed.
+          // If it did NOT stick (some mobile browsers keep the textarea
+          // focused after a programmatic blur), removing readonly here would
+          // re-summon the keyboard mid-stream — the "bounce up" that then
+          // lingers until the end-of-stream blur. In that case keep readonly
+          // on (keyboard stays down) and drop it the moment the user taps to
+          // type again, so typing still works without the bounce.
+          if (document.activeElement === messageInput) {
+            messageInput.addEventListener('pointerdown', _dropReadonly, {
+              once: true,
+            });
+            messageInput.addEventListener('focus', _dropReadonly, {
+              once: true,
+            });
+          } else {
+            _dropReadonly();
+          }
+        }, 120);
+      } catch {}
+    }
 
       let ids = [];
       try {
@@ -935,84 +1065,116 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         return;
       }
 
-      // Carry over the original message's file-ids on a regenerate so the new
-      // send still references the same photos / docs (and picks up the user's
-      // edited OCR text via the server-side .vision cache). Always CONSUME the
-      // slot — even when empty / errored — so the regen ids can't bleed into
-      // an unrelated next message if uploadPending() above had thrown.
-      if (_pendingRegenAttachments && _pendingRegenAttachments.length) {
-        ids = ids.concat(_pendingRegenAttachments);
-      }
-      _pendingRegenAttachments = null;
+    // Carry over the original message's file-ids on a regenerate so the new
+    // send still references the same photos / docs (and picks up the user's
+    // edited OCR text via the server-side .vision cache). Always CONSUME the
+    // slot — even when empty / errored — so the regen ids can't bleed into
+    // an unrelated next message if uploadPending() above had thrown.
+    if (_pendingRegenAttachments && _pendingRegenAttachments.length) {
+      ids = ids.concat(_pendingRegenAttachments);
+    }
+    _pendingRegenAttachments = null;
 
-      // The optimistic user bubble was rendered before the upload assigned ids,
-      // so image previews couldn't show (the renderer needs att.id). Now that
-      // the upload resolved, stamp the ids — plus width/height for images so
-      // the skeleton can size itself to the photo's aspect ratio — and
-      // re-render so the thumbnail appears live, no refresh needed.
-      if (_userMsgEl && _pendingAttachInfo && ids.length) {
-        const _meta = fileHandlerModule.getLastUploadedMeta?.() || [];
-        for (let i = 0; i < _pendingAttachInfo.length && i < ids.length; i++) {
-          _pendingAttachInfo[i].id = ids[i];
-          const _m = _meta[i];
-          if (_m) {
-            if (_m.width)  _pendingAttachInfo[i].width  = _m.width;
-            if (_m.height) _pendingAttachInfo[i].height = _m.height;
-          }
+    // The optimistic user bubble was rendered before the upload assigned ids,
+    // so image previews couldn't show (the renderer needs att.id). Now that
+    // the upload resolved, stamp the ids — plus width/height for images so
+    // the skeleton can size itself to the photo's aspect ratio — and
+    // re-render so the thumbnail appears live, no refresh needed.
+    if (_userMsgEl && _pendingAttachInfo && ids.length) {
+      const _meta = fileHandlerModule.getLastUploadedMeta?.() || [];
+      for (let i = 0; i < _pendingAttachInfo.length && i < ids.length; i++) {
+        _pendingAttachInfo[i].id = ids[i];
+        const _m = _meta[i];
+        if (_m) {
+          if (_m.width) _pendingAttachInfo[i].width = _m.width;
+          if (_m.height) _pendingAttachInfo[i].height = _m.height;
         }
-        chatRenderer.updateMessageAttachments(_userMsgEl, _pendingAttachInfo);
       }
+      chatRenderer.updateMessageAttachments(_userMsgEl, _pendingAttachInfo);
+    }
 
-      // Offer to import text files to document library
-      if (_importableFiles.length > 0) {
-        const existing = document.getElementById('import-prompt-banner');
-        if (existing) existing.remove();
-        const banner = document.createElement('div');
-        banner.id = 'import-prompt-banner';
-        banner.className = 'import-prompt-banner';
-        const label = _importableFiles.length === 1
+    // Offer to import text files to document library
+    if (_importableFiles.length > 0) {
+      const existing = document.getElementById('import-prompt-banner');
+      if (existing) existing.remove();
+      const banner = document.createElement('div');
+      banner.id = 'import-prompt-banner';
+      banner.className = 'import-prompt-banner';
+      const label =
+        _importableFiles.length === 1
           ? `Import "${_importableFiles[0].info.name}" to document library?`
           : `Import ${_importableFiles.length} files to document library?`;
-        const textEl = document.createElement('span');
-        textEl.textContent = label;
-        banner.appendChild(textEl);
-        const importBtn = document.createElement('button');
-        importBtn.textContent = 'Import';
-        importBtn.addEventListener('click', async () => {
-          importBtn.disabled = true;
-          importBtn.textContent = 'Importing…';
-          const EXT_LANG = {'.py':'python','.js':'javascript','.ts':'typescript','.html':'html','.css':'css','.md':'markdown','.json':'json','.yml':'yaml','.yaml':'yaml','.sh':'bash','.sql':'sql','.rs':'rust','.go':'go','.java':'java','.c':'c','.cpp':'cpp','.rb':'ruby','.php':'php','.xml':'xml','.jsx':'javascript','.tsx':'typescript'};
-          let imported = 0;
-          for (const { info, file } of _importableFiles) {
-            try {
-              const content = await file.text();
-              const dotIdx = info.name.lastIndexOf('.');
-              const title = dotIdx > 0 ? info.name.slice(0, dotIdx) : info.name;
-              const ext = dotIdx >= 0 ? info.name.slice(dotIdx).toLowerCase() : '';
-              await fetch(`${API_BASE}/api/document`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, language: EXT_LANG[ext] || '', content }),
-              });
-              imported++;
-            } catch (e) { console.error('Import failed:', info.name, e); }
+      const textEl = document.createElement('span');
+      textEl.textContent = label;
+      banner.appendChild(textEl);
+      const importBtn = document.createElement('button');
+      importBtn.textContent = 'Import';
+      importBtn.addEventListener('click', async () => {
+        importBtn.disabled = true;
+        importBtn.textContent = 'Importing…';
+        const EXT_LANG = {
+          '.py': 'python',
+          '.js': 'javascript',
+          '.ts': 'typescript',
+          '.html': 'html',
+          '.css': 'css',
+          '.md': 'markdown',
+          '.json': 'json',
+          '.yml': 'yaml',
+          '.yaml': 'yaml',
+          '.sh': 'bash',
+          '.sql': 'sql',
+          '.rs': 'rust',
+          '.go': 'go',
+          '.java': 'java',
+          '.c': 'c',
+          '.cpp': 'cpp',
+          '.rb': 'ruby',
+          '.php': 'php',
+          '.xml': 'xml',
+          '.jsx': 'javascript',
+          '.tsx': 'typescript',
+        };
+        let imported = 0;
+        for (const { info, file } of _importableFiles) {
+          try {
+            const content = await file.text();
+            const dotIdx = info.name.lastIndexOf('.');
+            const title = dotIdx > 0 ? info.name.slice(0, dotIdx) : info.name;
+            const ext =
+              dotIdx >= 0 ? info.name.slice(dotIdx).toLowerCase() : '';
+            await fetch(`${API_BASE}/api/document`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title,
+                language: EXT_LANG[ext] || '',
+                content,
+              }),
+            });
+            imported++;
+          } catch (e) {
+            console.error('Import failed:', info.name, e);
           }
-          banner.textContent = `Imported ${imported} file${imported !== 1 ? 's' : ''}`;
-          setTimeout(() => banner.remove(), 2000);
-        });
-        banner.appendChild(importBtn);
-        const dismissBtn = document.createElement('button');
-        dismissBtn.textContent = '\u00d7';
-        dismissBtn.className = 'import-prompt-dismiss';
-        dismissBtn.setAttribute('aria-label', 'Dismiss');
-        dismissBtn.title = 'Dismiss';
-        dismissBtn.addEventListener('click', () => banner.remove());
-        banner.appendChild(dismissBtn);
-        const chatBar = document.querySelector('.chat-input-bar');
-        if (chatBar) chatBar.parentNode.insertBefore(banner, chatBar);
-        // Auto-dismiss after 15 seconds
-        setTimeout(() => { if (banner.parentNode) banner.remove(); }, 15000);
-      }
+        }
+        banner.textContent = `Imported ${imported} file${imported !== 1 ? 's' : ''}`;
+        setTimeout(() => banner.remove(), 2000);
+      });
+      banner.appendChild(importBtn);
+      const dismissBtn = document.createElement('button');
+      dismissBtn.textContent = '\u00d7';
+      dismissBtn.className = 'import-prompt-dismiss';
+      dismissBtn.setAttribute('aria-label', 'Dismiss');
+      dismissBtn.title = 'Dismiss';
+      dismissBtn.addEventListener('click', () => banner.remove());
+      banner.appendChild(dismissBtn);
+      const chatBar = document.querySelector('.chat-input-bar');
+      if (chatBar) chatBar.parentNode.insertBefore(banner, chatBar);
+      // Auto-dismiss after 15 seconds
+      setTimeout(() => {
+        if (banner.parentNode) banner.remove();
+      }, 15000);
+    }
 
       // Auto-save document editor content before sending so the AI sees latest text
       const activeEmailComposerCtx = documentModule && typeof documentModule.getActiveEmailComposerContext === 'function'
@@ -1028,28 +1190,38 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         try { await documentModule.saveDocument(); } catch(e) { console.warn('doc auto-save failed', e); }
       }
 
-      // Inject document selection context if present
-      let finalMsg = msg;
-      if (docSel) {
-        const sels = Array.isArray(docSel) ? docSel : [docSel];
-        if (sels.length === 1) {
-          const s = sels[0];
-          const lineRef = s.startLine === s.endLine ? `line ${s.startLine}` : `lines ${s.startLine}-${s.endLine}`;
-          finalMsg = `In the document, edit this specific text (${lineRef}):\n\`\`\`\n${s.text}\n\`\`\`\n\nInstruction: ${msg}`;
-        } else {
-          const parts = sels.map((s, i) => {
-            const lineRef = s.startLine === s.endLine ? `line ${s.startLine}` : `lines ${s.startLine}-${s.endLine}`;
-            return `Selection ${i + 1} (${lineRef}):\n\`\`\`\n${s.text}\n\`\`\``;
-          });
-          finalMsg = `In the document, edit these specific sections:\n\n${parts.join('\n\n')}\n\nInstruction: ${msg}`;
-        }
+    // Inject document selection context if present
+    let finalMsg = msg;
+    if (docSel) {
+      const sels = Array.isArray(docSel) ? docSel : [docSel];
+      if (sels.length === 1) {
+        const s = sels[0];
+        const lineRef =
+          s.startLine === s.endLine
+            ? `line ${s.startLine}`
+            : `lines ${s.startLine}-${s.endLine}`;
+        finalMsg = `In the document, edit this specific text (${lineRef}):\n\`\`\`\n${s.text}\n\`\`\`\n\nInstruction: ${msg}`;
+      } else {
+        const parts = sels.map((s, i) => {
+          const lineRef =
+            s.startLine === s.endLine
+              ? `line ${s.startLine}`
+              : `lines ${s.startLine}-${s.endLine}`;
+          return `Selection ${i + 1} (${lineRef}):\n\`\`\`\n${s.text}\n\`\`\``;
+        });
+        finalMsg = `In the document, edit these specific sections:\n\n${parts.join('\n\n')}\n\nInstruction: ${msg}`;
       }
+    }
 
-      // Apply inject prefix/suffix
-      const _inject = presetsModule.getInject ? presetsModule.getInject() : { prefix: '', suffix: '' };
-      let _finalMsgWithInject = finalMsg;
-      if (_inject.prefix) _finalMsgWithInject = _inject.prefix + ' ' + _finalMsgWithInject;
-      if (_inject.suffix) _finalMsgWithInject = _finalMsgWithInject + ' ' + _inject.suffix;
+    // Apply inject prefix/suffix
+    const _inject = presetsModule.getInject
+      ? presetsModule.getInject()
+      : { prefix: '', suffix: '' };
+    let _finalMsgWithInject = finalMsg;
+    if (_inject.prefix)
+      _finalMsgWithInject = _inject.prefix + ' ' + _finalMsgWithInject;
+    if (_inject.suffix)
+      _finalMsgWithInject = _finalMsgWithInject + ' ' + _inject.suffix;
 
       const fd = new FormData();
       fd.append('message', _finalMsgWithInject);
@@ -1118,59 +1290,64 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       }
 
 
-      const abortCtrl = new AbortController();
-      abortCtrl._reason = '';
-      currentAbort = abortCtrl;
+    const abortCtrl = new AbortController();
+    abortCtrl._reason = '';
+    currentAbort = abortCtrl;
 
-      const _tState = Storage.loadToggleState();
-      const _isAgent = (_tState.mode || 'chat') === 'agent';
+    const _tState = Storage.loadToggleState();
+    const _isAgent = (_tState.mode || 'chat') === 'agent';
 
-      // Timeout: 6 min for research and agent mode, 3 min otherwise
-      const timeoutMs = el('research-toggle').checked || _isAgent ? RESEARCH_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
-      timeoutId = setTimeout(() => {
-        if (!abortCtrl.signal.aborted) {
-          timedOut = true;
-          abortCtrl._reason = 'timeout';
-          try {
-            if (streamSessionId) {
-              fetch(`/api/chat/stop/${encodeURIComponent(streamSessionId)}`, {
-                method: 'POST',
-                credentials: 'same-origin',
-              }).catch(() => {});
-            }
-          } catch (_) {}
-          abortCtrl.abort();
-        }
-      }, timeoutMs);
-      clearResponseTimeout = () => {
-        if (responseTimeoutCleared) return;
-        responseTimeoutCleared = true;
-        clearTimeout(timeoutId);
-      };
-      
-      const box = el('chat-history');
-      holder = document.createElement('div');
-      holder.className = 'msg msg-ai streaming';
+    // Timeout: 6 min for research and agent mode, 3 min otherwise
+    const timeoutMs =
+      el('research-toggle').checked || _isAgent
+        ? RESEARCH_TIMEOUT_MS
+        : DEFAULT_TIMEOUT_MS;
+    timeoutId = setTimeout(() => {
+      if (!abortCtrl.signal.aborted) {
+        timedOut = true;
+        abortCtrl._reason = 'timeout';
+        try {
+          if (streamSessionId) {
+            fetch(`/api/chat/stop/${encodeURIComponent(streamSessionId)}`, {
+              method: 'POST',
+              credentials: 'same-origin',
+            }).catch(() => {});
+          }
+        } catch (_) {}
+        abortCtrl.abort();
+      }
+    }, timeoutMs);
+    clearResponseTimeout = () => {
+      if (responseTimeoutCleared) return;
+      responseTimeoutCleared = true;
+      clearTimeout(timeoutId);
+    };
 
-      // Track holder globally so stop button can access it
-      currentHolder = holder;
-      holder._researchQuery = msg; // Store query for notification text
-      
-      const modelName = sessionModule.getCurrentModel() || null;
+    const box = el('chat-history');
+    holder = document.createElement('div');
+    holder.className = 'msg msg-ai streaming';
 
-      let loadingText = 'Initializing...';
+    // Track holder globally so stop button can access it
+    currentHolder = holder;
+    holder._researchQuery = msg; // Store query for notification text
 
-      if (el('web-toggle').checked && !_isAgent) {
-        const _searchLabel = searchModule ? searchModule.getProviderLabel() : 'web';
-        loadingText = `Searching via ${_searchLabel}...<br>
+    const modelName = sessionModule.getCurrentModel() || null;
+
+    let loadingText = 'Initializing...';
+
+    if (el('web-toggle').checked && !_isAgent) {
+      const _searchLabel = searchModule
+        ? searchModule.getProviderLabel()
+        : 'web';
+      loadingText = `Searching via ${_searchLabel}...<br>
                        <span style="font-size: 0.9em; opacity: 0.8;">
                        Query: "${msg.substring(0, 50)}${msg.length > 50 ? '...' : ''}"<br>
                        Fetching top results...</span>`;
-      } else if (el('research-toggle').checked) {
-        loadingText = 'Deep research mode active...';
-      } else {
-        loadingText = 'Processing request...';
-      }
+    } else if (el('research-toggle').checked) {
+      loadingText = 'Deep research mode active...';
+    } else {
+      loadingText = 'Processing request...';
+    }
 
       var roleLabel = _modelRouteLabel(modelName, modelName);
       var _charNameInit = presetsModule.getCharacterName ? presetsModule.getCharacterName() : '';
@@ -1209,75 +1386,79 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       box.appendChild(holder);
       uiModule.scrollHistory();
 
-      const enableResearchBtn = () => {
-        if (!researchBtn) return;
-        researchBtn.disabled = false;
-        researchBtn.classList.toggle('active', el('research-toggle').checked);
-      };
+    const enableResearchBtn = () => {
+      if (!researchBtn) return;
+      researchBtn.disabled = false;
+      researchBtn.classList.toggle('active', el('research-toggle').checked);
+    };
 
-      if (el('research-toggle').checked && researchBtn) {
-        researchBtn.style.display = 'none';
-        // Uncheck research toggle so follow-up messages don't trigger another research
-        el('research-toggle').checked = false;
+    if (el('research-toggle').checked && researchBtn) {
+      researchBtn.style.display = 'none';
+      // Uncheck research toggle so follow-up messages don't trigger another research
+      el('research-toggle').checked = false;
+    }
+
+    // User's current UTC offset in minutes (east of UTC). Threaded into
+    // the agent so natural-language times like "today at 9pm" are
+    // interpreted in YOUR timezone, not the server's.
+    const _tzOffsetMin = -new Date().getTimezoneOffset();
+    const _tzName = (() => {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      } catch {
+        return '';
       }
+    })();
+    const res = await fetch(`${API_BASE}/api/chat_stream`, {
+      method: 'POST',
+      body: fd,
+      headers: { 'X-Tz-Offset': String(_tzOffsetMin), 'X-Tz-Name': _tzName },
+      signal: abortCtrl.signal,
+    });
 
-      // User's current UTC offset in minutes (east of UTC). Threaded into
-      // the agent so natural-language times like "today at 9pm" are
-      // interpreted in YOUR timezone, not the server's.
-      const _tzOffsetMin = -new Date().getTimezoneOffset();
-      const _tzName = (() => {
-        try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }
-        catch { return ''; }
-      })();
-      const res = await fetch(`${API_BASE}/api/chat_stream`, {
-        method: 'POST',
-        body: fd,
-        headers: { 'X-Tz-Offset': String(_tzOffsetMin), 'X-Tz-Name': _tzName },
-        signal: abortCtrl.signal
-      });
-      
-      if (!res.ok) {
-        clearResponseTimeout();
-        if (res.status === 404) {
-          // Session was deleted (e.g. by AI) — reload and go to welcome
-          holder.remove();
-          if (sessionModule) await sessionModule.loadSessions();
-          return;
-        }
-        let errText = `Error ${res.status}`;
-        try {
-          const errBody = await res.text();
-          // Parse nested JSON error if present
-          const m = errBody.match(/"message"\s*:\s*"([^"]+)"/);
-          if (m) errText = m[1].replace(/\\"/g, '"');
-          else if (errBody.length < 200) errText = errBody;
-        } catch {}
-        // Auto-switch to chat mode for tool-related errors
-        if (errText.includes('tool') || errText.includes('auto')) {
-          errText = 'This model doesn\'t support agent tools — switched to Chat mode. Try again.';
-          const _ab = document.getElementById('mode-agent-btn');
-          const _cb = document.getElementById('mode-chat-btn');
-          if (_ab && _cb) {
-            _ab.classList.remove('active');
-            _cb.classList.add('active');
-            const _toggle = _ab.closest('.mode-toggle');
-            if (_toggle) _toggle.classList.add('mode-chat');
-          }
-          if (typeof Storage !== 'undefined' && Storage.KEYS) {
-            const _st = Storage.getJSON(Storage.KEYS.TOGGLES, {});
-            _st.mode = 'chat';
-            Storage.setJSON(Storage.KEYS.TOGGLES, _st);
-          }
-        }
-        typewriterInto(holder.querySelector('.body'), errText);
-        enableResearchBtn();
+    if (!res.ok) {
+      clearResponseTimeout();
+      if (res.status === 404) {
+        // Session was deleted (e.g. by AI) — reload and go to welcome
+        holder.remove();
+        if (sessionModule) await sessionModule.loadSessions();
         return;
       }
+      let errText = `Error ${res.status}`;
+      try {
+        const errBody = await res.text();
+        // Parse nested JSON error if present
+        const m = errBody.match(/"message"\s*:\s*"([^"]+)"/);
+        if (m) errText = m[1].replace(/\\"/g, '"');
+        else if (errBody.length < 200) errText = errBody;
+      } catch {}
+      // Auto-switch to chat mode for tool-related errors
+      if (errText.includes('tool') || errText.includes('auto')) {
+        errText =
+          "This model doesn't support agent tools — switched to Chat mode. Try again.";
+        const _ab = document.getElementById('mode-agent-btn');
+        const _cb = document.getElementById('mode-chat-btn');
+        if (_ab && _cb) {
+          _ab.classList.remove('active');
+          _cb.classList.add('active');
+          const _toggle = _ab.closest('.mode-toggle');
+          if (_toggle) _toggle.classList.add('mode-chat');
+        }
+        if (typeof Storage !== 'undefined' && Storage.KEYS) {
+          const _st = Storage.getJSON(Storage.KEYS.TOGGLES, {});
+          _st.mode = 'chat';
+          Storage.setJSON(Storage.KEYS.TOGGLES, _st);
+        }
+      }
+      typewriterInto(holder.querySelector('.body'), errText);
+      enableResearchBtn();
+      return;
+    }
 
-      // Mark the chat log busy while streaming so screen readers wait for the
-      // settled response instead of announcing every token. Cleared in finally.
-      const _chatLog = document.getElementById('chat-history');
-      if (_chatLog) _chatLog.setAttribute('aria-busy', 'true');
+    // Mark the chat log busy while streaming so screen readers wait for the
+    // settled response instead of announcing every token. Cleared in finally.
+    const _chatLog = document.getElementById('chat-history');
+    if (_chatLog) _chatLog.setAttribute('aria-busy', 'true');
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1394,19 +1575,22 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         _showThinkingSpinner(label);
       }
 
-      // Auto-show thinking spinner after text stops streaming
-      let _textPauseTimer = null;
-      function _scheduleThinkingSpinner() {
-        if (_textPauseTimer) clearTimeout(_textPauseTimer);
-        _textPauseTimer = setTimeout(() => {
-          if (!document.querySelector('.agent-thinking-dots') && isStreaming) {
-            _showThinkingSpinner(_thinkingLabel());
-          }
-        }, 400);
+    // Auto-show thinking spinner after text stops streaming
+    let _textPauseTimer = null;
+    function _scheduleThinkingSpinner() {
+      if (_textPauseTimer) clearTimeout(_textPauseTimer);
+      _textPauseTimer = setTimeout(() => {
+        if (!document.querySelector('.agent-thinking-dots') && isStreaming) {
+          _showThinkingSpinner(_thinkingLabel());
+        }
+      }, 400);
+    }
+    _cancelThinkingTimer = () => {
+      if (_textPauseTimer) {
+        clearTimeout(_textPauseTimer);
+        _textPauseTimer = null;
       }
-      _cancelThinkingTimer = () => {
-        if (_textPauseTimer) { clearTimeout(_textPauseTimer); _textPauseTimer = null; }
-      };
+    };
 
       // Document streaming state (text-fence detection)
       let _docFenceOpened = false;
@@ -1449,75 +1633,120 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         const bodyEl = roundHolder.querySelector('.body');
         const contentEl = _ensureStreamLayout(bodyEl);
 
-        // If thinking was already collapsed in-place, only render the reply portion
-        let liveReply = contentEl.querySelector('.live-reply-content');
-        if (liveReply) {
-          // Extract reply text — handle native <think> tags and non-tag patterns
-          const closedThinkReply = _replyAfterClosedThinking(dt);
-          const { thinkingBlocks, content: replyText } = closedThinkReply
-            ? { thinkingBlocks: [''], content: closedThinkReply }
-            : markdownModule.extractThinkingBlocks(dt);
-          let replyTrimmed = '';
-          if (thinkingBlocks.length) {
-            replyTrimmed = (replyText || '').trim();
+      // If thinking was already collapsed in-place, only render the reply portion
+      let liveReply = contentEl.querySelector('.live-reply-content');
+      if (liveReply) {
+        // Extract reply text — handle native <think> tags and non-tag patterns
+        const closedThinkReply = _replyAfterClosedThinking(dt);
+        const { thinkingBlocks, content: replyText } = closedThinkReply
+          ? { thinkingBlocks: [''], content: closedThinkReply }
+          : markdownModule.extractThinkingBlocks(dt);
+        let replyTrimmed = '';
+        if (thinkingBlocks.length) {
+          replyTrimmed = (replyText || '').trim();
+        } else {
+          // Non-tag: check for garbled <think> (reasoning\n<think>reply)
+          const _gm = dt.match(
+            /^[\s\S]+?<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>\s*([\s\S]*?)(?:<\/(?:think(?:ing)?|thought)>)?\s*$/i,
+          );
+          if (_gm && _gm[1].trim()) {
+            replyTrimmed = _gm[1].trim();
           } else {
-            // Non-tag: check for garbled <think> (reasoning\n<think>reply)
-            const _gm = dt.match(/^[\s\S]+?<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>\s*([\s\S]*?)(?:<\/(?:think(?:ing)?|thought)>)?\s*$/i);
-            if (_gm && _gm[1].trim()) {
-              replyTrimmed = _gm[1].trim();
-            } else {
-              // Pure non-tag: find reply boundary
-              const _rPrefixes = markdownModule.startsWithReasoningPrefix;
-              const _rpStarts = ['Hey', 'Hi ', 'Hi!', 'Hello', 'Sure', 'Yes', 'No ', 'No,', 'Yo', 'OK', 'Here', 'Absolutely', 'Of course', 'Great', 'Alright', 'Thanks', 'Welcome', 'Good ', "I'm happy", "I'd be"];
-              const _rt = (replyText || '').trimStart();
-              if (_rPrefixes(_rt)) {
-                const _rLines = _rt.split('\n');
-                for (let _ri = 1; _ri < _rLines.length; _ri++) {
-                  const _rl = _rLines[_ri].trim();
-                  if (!_rl) continue;
-                  if (_rpStarts.some(rp => _rl.startsWith(rp))) { replyTrimmed = _rLines.slice(_ri).join('\n'); break; }
+            // Pure non-tag: find reply boundary
+            const _rPrefixes = markdownModule.startsWithReasoningPrefix;
+            const _rpStarts = [
+              'Hey',
+              'Hi ',
+              'Hi!',
+              'Hello',
+              'Sure',
+              'Yes',
+              'No ',
+              'No,',
+              'Yo',
+              'OK',
+              'Here',
+              'Absolutely',
+              'Of course',
+              'Great',
+              'Alright',
+              'Thanks',
+              'Welcome',
+              'Good ',
+              "I'm happy",
+              "I'd be",
+            ];
+            const _rt = (replyText || '').trimStart();
+            if (_rPrefixes(_rt)) {
+              const _rLines = _rt.split('\n');
+              for (let _ri = 1; _ri < _rLines.length; _ri++) {
+                const _rl = _rLines[_ri].trim();
+                if (!_rl) continue;
+                if (_rpStarts.some((rp) => _rl.startsWith(rp))) {
+                  replyTrimmed = _rLines.slice(_ri).join('\n');
+                  break;
                 }
-                if (!replyTrimmed) {
-                  for (const rp of _rpStarts) {
-                    const rx = new RegExp('[.!?]\\s*(' + rp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')');
-                    const m = rx.exec(_rt);
-                    if (m && m.index > 20) { replyTrimmed = _rt.slice(m.index + 1).trim(); break; }
+              }
+              if (!replyTrimmed) {
+                for (const rp of _rpStarts) {
+                  const rx = new RegExp(
+                    '[.!?]\\s*(' +
+                      rp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+                      ')',
+                  );
+                  const m = rx.exec(_rt);
+                  if (m && m.index > 20) {
+                    replyTrimmed = _rt.slice(m.index + 1).trim();
+                    break;
                   }
                 }
               }
             }
           }
-          if (replyTrimmed) {
-            const r = liveReply._streamRenderer ||
-              (liveReply._streamRenderer = createStreamRenderer(liveReply, {
-                render: (t) => markdownModule.mdToHtml(markdownModule.squashOutsideCode(t)),
-                hljs: window.hljs,
-              }));
-            r.update(replyTrimmed);
-          }
-          // Reply empty or not — preserve thinking bar, don't fall through to full re-render
-          uiModule.scrollHistory();
-          return;
         }
+        if (replyTrimmed) {
+          const r =
+            liveReply._streamRenderer ||
+            (liveReply._streamRenderer = createStreamRenderer(liveReply, {
+              render: (t) =>
+                markdownModule.mdToHtml(markdownModule.squashOutsideCode(t)),
+              hljs: window.hljs,
+            }));
+          r.update(replyTrimmed);
+        }
+        // Reply empty or not — preserve thinking bar, don't fall through to full re-render
+        uiModule.scrollHistory();
+        return;
+      }
 
-        // If thinking is still streaming (unclosed <think>), show indicator instead of raw text
-        if (markdownModule.hasUnclosedThinkTag && markdownModule.hasUnclosedThinkTag(dt)) {
-          const thinkStart = dt.search(/<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>|<\|channel>thought/i);
-          const thinkContent = dt.substring(Math.max(thinkStart, 0))
-            .replace(/<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>|<\|channel>thought\s*\n?/i, '')
-            .replace(/<channel\|>/gi, '')
-            .trim();
-          const lines = thinkContent.split('\n').length;
-          // Don't show beforeThink text during streaming — it'll appear in the final render
-          // This prevents the "split into two" duplication
-          contentEl.innerHTML =
-            '<div class="thinking-section"><div class="thinking-header"><div class="thinking-header-left">Thinking' +
-            (lines > 1 ? ` (${lines} lines)` : '') + '</div></div></div>';
-          // The stream renderer self-heals when it next sees this overwritten
-          // container (streamingRenderer.js), so no explicit reset is needed here.
-          uiModule.scrollHistory();
-          return;
-        }
+      // If thinking is still streaming (unclosed <think>), show indicator instead of raw text
+      if (
+        markdownModule.hasUnclosedThinkTag &&
+        markdownModule.hasUnclosedThinkTag(dt)
+      ) {
+        const thinkStart = dt.search(
+          /<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>|<\|channel>thought/i,
+        );
+        const thinkContent = dt
+          .substring(Math.max(thinkStart, 0))
+          .replace(
+            /<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>|<\|channel>thought\s*\n?/i,
+            '',
+          )
+          .replace(/<channel\|>/gi, '')
+          .trim();
+        const lines = thinkContent.split('\n').length;
+        // Don't show beforeThink text during streaming — it'll appear in the final render
+        // This prevents the "split into two" duplication
+        contentEl.innerHTML =
+          '<div class="thinking-section"><div class="thinking-header"><div class="thinking-header-left">Thinking' +
+          (lines > 1 ? ` (${lines} lines)` : '') +
+          '</div></div></div>';
+        // The stream renderer self-heals when it next sees this overwritten
+        // container (streamingRenderer.js), so no explicit reset is needed here.
+        uiModule.scrollHistory();
+        return;
+      }
 
         // Incremental streaming render: freeze finalized blocks, re-render only the
         // growing tail, and highlight each code block once on completion. This is
@@ -1547,14 +1776,14 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         clearFirstTokenWaitTimers();
       };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        _lastReaderActivity = Date.now();
-        if (done) break;
+    while (true) {
+      const { done, value } = await reader.read();
+      _lastReaderActivity = Date.now();
+      if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
         for (const line of lines) {
           // Log SSE event types (e.g. "event: error") for debugging
@@ -1567,26 +1796,26 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
             const data = line.slice(6);
             if (data && data !== '[DONE]') markFirstVisibleOutput();
 
-            // (thinking spinner removal is handled in agent_step / tool_start / content handlers)
+          // (thinking spinner removal is handled in agent_step / tool_start / content handlers)
 
-            // Background detection: are we on a different session?
-            const _isBg = (sessionModule.getCurrentSessionId() !== streamSessionId);
+          // Background detection: are we on a different session?
+          const _isBg = sessionModule.getCurrentSessionId() !== streamSessionId;
 
-            // On first transition to background, store state in map
-            if (_isBg && !_backgroundStreams.has(streamSessionId)) {
-              _backgroundStreams.set(streamSessionId, {
-                status: 'running',
-                accumulated: accumulated,
-                sourcesHtml: _sourcesHtml,
-                findingsData: null,
-                abortCtrl: currentAbort,
-                query: streamQuery,
-                metrics: null,
-              });
-              if (sessionModule && sessionModule.markStreaming) {
-                sessionModule.markStreaming(streamSessionId);
-              }
+          // On first transition to background, store state in map
+          if (_isBg && !_backgroundStreams.has(streamSessionId)) {
+            _backgroundStreams.set(streamSessionId, {
+              status: 'running',
+              accumulated: accumulated,
+              sourcesHtml: _sourcesHtml,
+              findingsData: null,
+              abortCtrl: currentAbort,
+              query: streamQuery,
+              metrics: null,
+            });
+            if (sessionModule && sessionModule.markStreaming) {
+              sessionModule.markStreaming(streamSessionId);
             }
+          }
 
             if (data === '[DONE]') {
               _streamSawDone = true;
@@ -1710,12 +1939,12 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                   submitBtn.dataset.phase = 'receiving';
                 }
 
-                // Update background map if running in background
-                if (_isBg) {
-                  var bgEntry = _backgroundStreams.get(streamSessionId);
-                  if (bgEntry) bgEntry.accumulated = accumulated;
-                  continue; // Skip all DOM writes
-                }
+              // Update background map if running in background
+              if (_isBg) {
+                var bgEntry = _backgroundStreams.get(streamSessionId);
+                if (bgEntry) bgEntry.accumulated = accumulated;
+                continue; // Skip all DOM writes
+              }
 
                 // --- Text-fence doc streaming (for models that don't use native tool calls) ---
                 if (!_docFenceOpened && documentModule && (roundText.includes('```create_document\n') || roundText.includes('```document\n') || roundText.includes('```documen\n'))) {
@@ -1801,17 +2030,21 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                   }
                 }
 
-                if (hasUnclosedThink && !isThinking) {
-                  isThinking = true;
-                  thinkingStartTime = Date.now();
-                  if (spinner && spinner.element) spinner.destroy();
+              if (hasUnclosedThink && !isThinking) {
+                isThinking = true;
+                thinkingStartTime = Date.now();
+                if (spinner && spinner.element) spinner.destroy();
 
-                  // Create a live thinking box — starts expanded so content streams visibly
-                  var thinkBody = roundHolder.querySelector('.body');
-                  var thinkContent = _ensureStreamLayout(thinkBody);
-                  thinkContent.style.minHeight = '';
-                  _liveThinkDomId = 'live-think-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-                  thinkContent.innerHTML = `
+                // Create a live thinking box — starts expanded so content streams visibly
+                var thinkBody = roundHolder.querySelector('.body');
+                var thinkContent = _ensureStreamLayout(thinkBody);
+                thinkContent.style.minHeight = '';
+                _liveThinkDomId =
+                  'live-think-' +
+                  Date.now() +
+                  '-' +
+                  Math.random().toString(36).slice(2, 8);
+                thinkContent.innerHTML = `
                     <div class="thinking-section">
                       <div class="thinking-header" data-thinking-id="${_liveThinkDomId}">
                         <div class="thinking-header-left"><span class="live-think-header-text">Thinking\u2026</span></div>
@@ -1925,287 +2158,390 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                     }
                   }
 
-                  // Assign stable IDs (for click-toggle handler in markdown.js)
-                  var _thinkId = 'think-' + Date.now();
-                  var _liveHdr = _liveThinkSection && _liveThinkSection.querySelector('.thinking-header');
-                  if (_liveHdr) _liveHdr.dataset.thinkingId = _thinkId;
-                  if (_liveThinkContent) _liveThinkContent.id = _thinkId;
-                  if (_liveThinkToggle) _liveThinkToggle.id = _thinkId + '-toggle';
+                // Assign stable IDs (for click-toggle handler in markdown.js)
+                var _thinkId = 'think-' + Date.now();
+                var _liveHdr =
+                  _liveThinkSection &&
+                  _liveThinkSection.querySelector('.thinking-header');
+                if (_liveHdr) _liveHdr.dataset.thinkingId = _thinkId;
+                if (_liveThinkContent) _liveThinkContent.id = _thinkId;
+                if (_liveThinkToggle)
+                  _liveThinkToggle.id = _thinkId + '-toggle';
 
-                  // Append a container for the reply text that follows thinking
-                  var _streamEl = _liveThinkSection ? _liveThinkSection.parentElement : roundHolder.querySelector('.stream-content');
-                  if (!_streamEl) _streamEl = roundHolder.querySelector('.body');
-                  if (_streamEl) {
-                    var _replyEl = document.createElement('div');
-                    _replyEl.className = 'live-reply-content';
-                    _streamEl.appendChild(_replyEl);
+                // Append a container for the reply text that follows thinking
+                var _streamEl = _liveThinkSection
+                  ? _liveThinkSection.parentElement
+                  : roundHolder.querySelector('.stream-content');
+                if (!_streamEl) _streamEl = roundHolder.querySelector('.body');
+                if (_streamEl) {
+                  var _replyEl = document.createElement('div');
+                  _replyEl.className = 'live-reply-content';
+                  _streamEl.appendChild(_replyEl);
+                }
+
+                // Render any reply text that arrived with the closing </think> token
+                _renderStream();
+              } else {
+                // Normal streaming
+                if (spinner && spinner.element) spinner.destroy();
+                _renderStream();
+                _scheduleThinkingSpinner();
+                // Feed streaming TTS with accumulated text
+                if (streamingTTS)
+                  window.aiTTSManager.streamingUpdate(roundText);
+              }
+            } else if (json.type === 'research_progress') {
+              if (_isBg) continue; // Skip DOM updates in background
+              _researchingStreamIds.add(streamSessionId);
+              // Highlight research button while running
+              var _rToggle = document.getElementById('research-toggle-btn');
+              if (_rToggle) _rToggle.classList.add('research-running');
+              // Request notification permission on first research event
+              if (
+                'Notification' in window &&
+                Notification.permission === 'default'
+              ) {
+                Notification.requestPermission();
+              }
+              // Mark session as researching in sidebar
+              var _rSid = sessionModule && sessionModule.getCurrentSessionId();
+              if (_rSid && sessionModule.markResearching)
+                sessionModule.markResearching(_rSid);
+              const rp = json.data;
+              // Start research timer + synapse on first progress event
+              if (!_researchTimerEl && spinner && spinner.element) {
+                _researchStartTime = rp.started_at
+                  ? rp.started_at * 1000
+                  : Date.now();
+                _researchAvgDuration = rp.avg_duration || null;
+                _researchTimerEl = document.createElement('div');
+                _researchTimerEl.className = 'research-timer';
+                // Styles in .research-timer CSS class
+                spinner.element.parentNode.insertBefore(
+                  _researchTimerEl,
+                  spinner.element.nextSibling,
+                );
+                _researchTimerInterval = setInterval(() => {
+                  if (!_researchTimerEl) return;
+                  var elapsed = Math.floor(
+                    (Date.now() - _researchStartTime) / 1000,
+                  );
+                  var mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+                  var ss = String(elapsed % 60).padStart(2, '0');
+                  var txt = mm + ':' + ss;
+                  if (_researchAvgDuration) {
+                    var avgM = String(
+                      Math.floor(_researchAvgDuration / 60),
+                    ).padStart(2, '0');
+                    var avgS = String(
+                      Math.round(_researchAvgDuration % 60),
+                    ).padStart(2, '0');
+                    txt += ' / avg ' + avgM + ':' + avgS;
                   }
-
-                  // Render any reply text that arrived with the closing </think> token
-                  _renderStream();
-                } else {
-                  // Normal streaming
-                  if (spinner && spinner.element) spinner.destroy();
-                  _renderStream();
-                  _scheduleThinkingSpinner();
-                  // Feed streaming TTS with accumulated text
-                  if (streamingTTS) window.aiTTSManager.streamingUpdate(roundText);
-                }
-              } else if (json.type === 'research_progress') {
-                if (_isBg) continue; // Skip DOM updates in background
-                _researchingStreamIds.add(streamSessionId);
-                // Highlight research button while running
-                var _rToggle = document.getElementById('research-toggle-btn');
-                if (_rToggle) _rToggle.classList.add('research-running');
-                // Request notification permission on first research event
-                if ('Notification' in window && Notification.permission === 'default') {
-                  Notification.requestPermission();
-                }
-                // Mark session as researching in sidebar
-                var _rSid = sessionModule && sessionModule.getCurrentSessionId();
-                if (_rSid && sessionModule.markResearching) sessionModule.markResearching(_rSid);
-                const rp = json.data;
-                // Start research timer + synapse on first progress event
-                if (!_researchTimerEl && spinner && spinner.element) {
-                  _researchStartTime = rp.started_at ? rp.started_at * 1000 : Date.now();
-                  _researchAvgDuration = rp.avg_duration || null;
-                  _researchTimerEl = document.createElement('div');
-                  _researchTimerEl.className = 'research-timer';
-                  // Styles in .research-timer CSS class
-                  spinner.element.parentNode.insertBefore(_researchTimerEl, spinner.element.nextSibling);
-                  _researchTimerInterval = setInterval(() => {
-                    if (!_researchTimerEl) return;
-                    var elapsed = Math.floor((Date.now() - _researchStartTime) / 1000);
-                    var mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
-                    var ss = String(elapsed % 60).padStart(2, '0');
-                    var txt = mm + ':' + ss;
-                    if (_researchAvgDuration) {
-                      var avgM = String(Math.floor(_researchAvgDuration / 60)).padStart(2, '0');
-                      var avgS = String(Math.round(_researchAvgDuration % 60)).padStart(2, '0');
-                      txt += ' / avg ' + avgM + ':' + avgS;
-                    }
-                    _researchTimerEl.textContent = txt;
-                  }, 1000);
-                  // Synapse visualization — insert right above the timer so
-                  // it sits between the spinner message and the timer line.
-                  try {
-                    _researchSynapse = createResearchSynapse(spinner.element.parentNode, {
+                  _researchTimerEl.textContent = txt;
+                }, 1000);
+                // Synapse visualization — insert right above the timer so
+                // it sits between the spinner message and the timer line.
+                try {
+                  _researchSynapse = createResearchSynapse(
+                    spinner.element.parentNode,
+                    {
                       query: holder._researchQuery || rp.query || '',
                       startedAt: _researchStartTime,
-                    });
-                    // Move it to live between spinner and timer
-                    if (_researchSynapse.element && _researchTimerEl) {
-                      spinner.element.parentNode.insertBefore(_researchSynapse.element, _researchTimerEl);
-                    }
-                  } catch (e) { console.warn('synapse init failed', e); }
-                }
-                if (_researchSynapse) {
-                  _researchSynapse.setPhase(rp.phase, rp);
-                  if (typeof rp.round === 'number') _researchSynapse.setRound(rp.round);
-                  if (typeof rp.total_sources === 'number') _researchSynapse.setSourceCount(rp.total_sources);
-                  if (rp.phase === 'error') _researchSynapse.complete();
-                }
-                if (spinner && spinner.element) {
-                  if (rp.phase === 'probing') {
-                    spinner.updateMessage(`Verifying model: ${rp.model || '?'}`);
-                  } else if (rp.phase === 'planning') {
-                    spinner.updateMessage('Analyzing question & planning research strategy');
-                  } else if (rp.phase === 'searching') {
-                    const q = rp.queries ? `${rp.queries} queries` : '';
-                    const s = rp.total_sources ? ` · ${rp.total_sources} sources` : '';
-                    spinner.updateMessage(`Round ${rp.round || '?'}: Searching${q ? ' (' + q + ')' : ''}${s}`);
-                  } else if (rp.phase === 'reading') {
-                    spinner.updateMessage(rp.title ? `Reading: ${rp.title}` : `Round ${rp.round || '?'}: Reading ${rp.new_sources || ''} pages · ${rp.total_sources || 0} sources total`);
-                  } else if (rp.phase === 'analyzing') {
-                    spinner.updateMessage(`Round ${rp.round || '?'}: Analyzing ${rp.total_findings || 0} findings`);
-                  } else if (rp.phase === 'writing') {
-                    spinner.updateMessage(`Writing report · ${rp.total_sources || 0} sources`);
-                  } else if (rp.phase === 'error') {
-                    spinner.updateMessage(rp.message || 'Search error');
+                    },
+                  );
+                  // Move it to live between spinner and timer
+                  if (_researchSynapse.element && _researchTimerEl) {
+                    spinner.element.parentNode.insertBefore(
+                      _researchSynapse.element,
+                      _researchTimerEl,
+                    );
                   }
+                } catch (e) {
+                  console.warn('synapse init failed', e);
                 }
-              } else if (json.type === 'research_sources') {
-                if (_isBg) {
-                  // Store sources HTML in background map
-                  if (json.data && json.data.length > 0) {
-                    _sourcesHtml = _buildSourcesBox(json.data, 'research');
-                    var bgE = _backgroundStreams.get(streamSessionId);
-                    if (bgE) bgE.sourcesHtml = _sourcesHtml;
-                  }
-                  // Clear researching indicator for this background session
-                  if (sessionModule && sessionModule.clearResearching) sessionModule.clearResearching(streamSessionId);
-                  continue;
+              }
+              if (_researchSynapse) {
+                _researchSynapse.setPhase(rp.phase, rp);
+                if (typeof rp.round === 'number')
+                  _researchSynapse.setRound(rp.round);
+                if (typeof rp.total_sources === 'number')
+                  _researchSynapse.setSourceCount(rp.total_sources);
+                if (rp.phase === 'error') _researchSynapse.complete();
+              }
+              if (spinner && spinner.element) {
+                if (rp.phase === 'probing') {
+                  spinner.updateMessage(`Verifying model: ${rp.model || '?'}`);
+                } else if (rp.phase === 'planning') {
+                  spinner.updateMessage(
+                    'Analyzing question & planning research strategy',
+                  );
+                } else if (rp.phase === 'searching') {
+                  const q = rp.queries ? `${rp.queries} queries` : '';
+                  const s = rp.total_sources
+                    ? ` · ${rp.total_sources} sources`
+                    : '';
+                  spinner.updateMessage(
+                    `Round ${rp.round || '?'}: Searching${q ? ' (' + q + ')' : ''}${s}`,
+                  );
+                } else if (rp.phase === 'reading') {
+                  spinner.updateMessage(
+                    rp.title
+                      ? `Reading: ${rp.title}`
+                      : `Round ${rp.round || '?'}: Reading ${rp.new_sources || ''} pages · ${rp.total_sources || 0} sources total`,
+                  );
+                } else if (rp.phase === 'analyzing') {
+                  spinner.updateMessage(
+                    `Round ${rp.round || '?'}: Analyzing ${rp.total_findings || 0} findings`,
+                  );
+                } else if (rp.phase === 'writing') {
+                  spinner.updateMessage(
+                    `Writing report · ${rp.total_sources || 0} sources`,
+                  );
+                } else if (rp.phase === 'error') {
+                  spinner.updateMessage(rp.message || 'Search error');
                 }
-                // Research done — clean up timer, show sources box, then spinner for LLM response
-                _clearResearchTimer();
-                holder._researchSources = json.data;
-                var _rSid2 = sessionModule && sessionModule.getCurrentSessionId();
-                if (_rSid2 && sessionModule.clearResearching) sessionModule.clearResearching(_rSid2);
+              }
+            } else if (json.type === 'research_sources') {
+              if (_isBg) {
+                // Store sources HTML in background map
                 if (json.data && json.data.length > 0) {
-                  _sourcesData = json.data; _sourcesType = 'research';
                   _sourcesHtml = _buildSourcesBox(json.data, 'research');
+                  var bgE = _backgroundStreams.get(streamSessionId);
+                  if (bgE) bgE.sourcesHtml = _sourcesHtml;
                 }
-                if (document.hidden) {
-                  _notifyResearchComplete(_rSid2 || '', holder._researchQuery || '');
-                }
-              } else if (json.type === 'research_findings') {
-                if (_isBg) {
-                  var bgEf = _backgroundStreams.get(streamSessionId);
-                  if (bgEf) bgEf.findingsData = json.data;
-                  continue;
-                }
-                if (json.data && json.data.length > 0) {
-                  _findingsData = json.data;
-                }
-              } else if (json.type === 'research_done') {
-                // Research complete — reload session to show the persisted report
-                _clearResearchTimer();
-                if (sessionModule && sessionModule.clearResearching) {
+                // Clear researching indicator for this background session
+                if (sessionModule && sessionModule.clearResearching)
                   sessionModule.clearResearching(streamSessionId);
-                }
-                _researchingStreamIds.delete(streamSessionId);
-                // Small delay then reload session history which includes the full report
-                setTimeout(async () => {
-                  // Don't yank the user back to this chat if they've navigated
-                  // away (e.g. started a new chat) while research finished —
-                  // just refresh the sidebar so the report shows when they return.
-                  if (sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() === streamSessionId) {
-                    await sessionModule.selectSession(streamSessionId);
-                  } else {
-                    await sessionModule.loadSessions();
-                  }
-                }, 500);
                 continue;
-              } else if (json.type === 'web_sources') {
-                if (_isBg) {
-                  if (json.data && json.data.length > 0) {
-                    _sourcesHtml = _buildSourcesBox(json.data, 'web');
-                    var bgE2 = _backgroundStreams.get(streamSessionId);
-                    if (bgE2) bgE2.sourcesHtml = _sourcesHtml;
-                  }
-                  continue;
+              }
+              // Research done — clean up timer, show sources box, then spinner for LLM response
+              _clearResearchTimer();
+              holder._researchSources = json.data;
+              var _rSid2 = sessionModule && sessionModule.getCurrentSessionId();
+              if (_rSid2 && sessionModule.clearResearching)
+                sessionModule.clearResearching(_rSid2);
+              if (json.data && json.data.length > 0) {
+                _sourcesData = json.data;
+                _sourcesType = 'research';
+                _sourcesHtml = _buildSourcesBox(json.data, 'research');
+              }
+              if (document.hidden) {
+                _notifyResearchComplete(
+                  _rSid2 || '',
+                  holder._researchQuery || '',
+                );
+              }
+            } else if (json.type === 'research_findings') {
+              if (_isBg) {
+                var bgEf = _backgroundStreams.get(streamSessionId);
+                if (bgEf) bgEf.findingsData = json.data;
+                continue;
+              }
+              if (json.data && json.data.length > 0) {
+                _findingsData = json.data;
+              }
+            } else if (json.type === 'research_done') {
+              // Research complete — reload session to show the persisted report
+              _clearResearchTimer();
+              if (sessionModule && sessionModule.clearResearching) {
+                sessionModule.clearResearching(streamSessionId);
+              }
+              _researchingStreamIds.delete(streamSessionId);
+              // Small delay then reload session history which includes the full report
+              setTimeout(async () => {
+                // Don't yank the user back to this chat if they've navigated
+                // away (e.g. started a new chat) while research finished —
+                // just refresh the sidebar so the report shows when they return.
+                if (
+                  sessionModule.getCurrentSessionId &&
+                  sessionModule.getCurrentSessionId() === streamSessionId
+                ) {
+                  await sessionModule.selectSession(streamSessionId);
+                } else {
+                  await sessionModule.loadSessions();
                 }
-                // Web search done — store sources for final render (don't render mid-stream)
-                holder._webSources = json.data;
+              }, 500);
+              continue;
+            } else if (json.type === 'web_sources') {
+              if (_isBg) {
                 if (json.data && json.data.length > 0) {
-                  _sourcesData = json.data; _sourcesType = 'web';
                   _sourcesHtml = _buildSourcesBox(json.data, 'web');
-                }
-              } else if (json.type === 'workspace_rejected') {
-                // Server refused to bind the posted workspace (deleted folder,
-                // file path, sensitive dir, filesystem root). Clear the stored
-                // value so the pill stops claiming a confinement that is not in
-                // effect, and tell the user.
-                const _wsPath = (json.data && json.data.path) || '';
-                import('./workspace.js').then((m) => {
-                  const ws = m.default || m;
-                  if (ws && ws.setWorkspace) ws.setWorkspace('');
-                });
-                uiModule.showToast(
-                  `Workspace ${_wsPath || '(unknown)'} is no longer usable; running without confinement`,
-                  6000
-                );
-                continue;
-              } else if (json.type === 'model_fallback') {
-                // Model went offline — switched to fallback
-                var _fbData = json.data || {};
-                uiModule.showToast(
-                  `Model ${_fbData.old_model || '?'} offline — switched to ${_fbData.new_model || '?'}`,
-                  5000
-                );
-                // Update the model picker to reflect the new model
-                if (sessionModule && sessionModule.updateModelPicker) {
-                  sessionModule.updateModelPicker();
+                  var bgE2 = _backgroundStreams.get(streamSessionId);
+                  if (bgE2) bgE2.sourcesHtml = _sourcesHtml;
                 }
                 continue;
-              } else if (json.type === 'model_info') {
-                // Update role label with model name as soon as we know it
-                if (!_isBg && holder) {
-                  const roleEl = holder.querySelector('.role');
-                  if (roleEl) {
-                    holder._requestedModel = json.requested_model || json.model || holder._requestedModel;
-                    holder._actualModel = json.model || holder._actualModel || holder._requestedModel;
-                    if (json.suffix) holder._roleSuffix = json.suffix;
-                    // Prepend character name if sent by server or set locally
-                    var _charName = json.character_name || (presetsModule.getCharacterName ? presetsModule.getCharacterName() : '');
-                    if (_charName) holder._characterName = _charName;
-                    _setRoleModelLabel(roleEl, holder._requestedModel, holder._actualModel, {
+              }
+              // Web search done — store sources for final render (don't render mid-stream)
+              holder._webSources = json.data;
+              if (json.data && json.data.length > 0) {
+                _sourcesData = json.data;
+                _sourcesType = 'web';
+                _sourcesHtml = _buildSourcesBox(json.data, 'web');
+              }
+            } else if (json.type === 'workspace_rejected') {
+              // Server refused to bind the posted workspace (deleted folder,
+              // file path, sensitive dir, filesystem root). Clear the stored
+              // value so the pill stops claiming a confinement that is not in
+              // effect, and tell the user.
+              const _wsPath = (json.data && json.data.path) || '';
+              import('./workspace.js').then((m) => {
+                const ws = m.default || m;
+                if (ws && ws.setWorkspace) ws.setWorkspace('');
+              });
+              uiModule.showToast(
+                `Workspace ${_wsPath || '(unknown)'} is no longer usable; running without confinement`,
+                6000,
+              );
+              continue;
+            } else if (json.type === 'model_fallback') {
+              // Model went offline — switched to fallback
+              var _fbData = json.data || {};
+              uiModule.showToast(
+                `Model ${_fbData.old_model || '?'} offline — switched to ${_fbData.new_model || '?'}`,
+                5000,
+              );
+              // Update the model picker to reflect the new model
+              if (sessionModule && sessionModule.updateModelPicker) {
+                sessionModule.updateModelPicker();
+              }
+              continue;
+            } else if (json.type === 'model_info') {
+              // Update role label with model name as soon as we know it
+              if (!_isBg && holder) {
+                const roleEl = holder.querySelector('.role');
+                if (roleEl) {
+                  holder._requestedModel =
+                    json.requested_model ||
+                    json.model ||
+                    holder._requestedModel;
+                  holder._actualModel =
+                    json.model || holder._actualModel || holder._requestedModel;
+                  if (json.suffix) holder._roleSuffix = json.suffix;
+                  // Prepend character name if sent by server or set locally
+                  var _charName =
+                    json.character_name ||
+                    (presetsModule.getCharacterName
+                      ? presetsModule.getCharacterName()
+                      : '');
+                  if (_charName) holder._characterName = _charName;
+                  _setRoleModelLabel(
+                    roleEl,
+                    holder._requestedModel,
+                    holder._actualModel,
+                    {
                       suffix: holder._roleSuffix,
                       characterName: holder._characterName,
-                    });
-                  }
+                    },
+                  );
                 }
-              } else if (json.type === 'fallback') {
-                // The selected model failed and another provider answered. Make
-                // it visible so a misconfigured provider is never silently
-                // masked under the selected model's name.
-                if (!_isBg) {
-                  var _selM = _shortModel(json.selected_model || '');
-                  var _ansM = _shortModel(json.answered_by || '');
-                  uiModule.showToast('⚠ ' + _selM + ' failed — answered by ' + _ansM, 6000);
-                  if (holder) {
-                    var _rEl = holder.querySelector('.role');
-                    if (_rEl) {
-                      var _tsS = _rEl.querySelector('.role-timestamp');
-                      _rEl.textContent = _ansM + ' (fallback) ';
-                      _rEl.title = (json.selected_model || '') + ' failed' +
-                        (json.reason ? ': ' + json.reason : '') + ' — answered by ' + (json.answered_by || '');
-                      _applyModelColor(_rEl, json.answered_by);
-                      if (_tsS) _rEl.appendChild(_tsS);
-                      holder._requestedModel = json.selected_model || holder._requestedModel || modelName;
-                      const _hasResolvedActual = holder._actualModel && !_sameModelName(holder._actualModel, holder._requestedModel);
-                      holder._actualModel = _hasResolvedActual ? holder._actualModel : (json.answered_by || holder._actualModel || holder._requestedModel);
-                      _setRoleModelLabel(_rEl, holder._requestedModel, holder._actualModel, {
+              }
+            } else if (json.type === 'fallback') {
+              // The selected model failed and another provider answered. Make
+              // it visible so a misconfigured provider is never silently
+              // masked under the selected model's name.
+              if (!_isBg) {
+                var _selM = shortModel(json.selected_model || '');
+                var _ansM = shortModel(json.answered_by || '');
+                uiModule.showToast(
+                  '⚠ ' + _selM + ' failed — answered by ' + _ansM,
+                  6000,
+                );
+                if (holder) {
+                  var _rEl = holder.querySelector('.role');
+                  if (_rEl) {
+                    var _tsS = _rEl.querySelector('.role-timestamp');
+                    _rEl.textContent = _ansM + ' (fallback) ';
+                    _rEl.title =
+                      (json.selected_model || '') +
+                      ' failed' +
+                      (json.reason ? ': ' + json.reason : '') +
+                      ' — answered by ' +
+                      (json.answered_by || '');
+                    _applyModelColor(_rEl, json.answered_by);
+                    if (_tsS) _rEl.appendChild(_tsS);
+                    holder._requestedModel =
+                      json.selected_model ||
+                      holder._requestedModel ||
+                      modelName;
+                    const _hasResolvedActual =
+                      holder._actualModel &&
+                      !sameModelName(
+                        holder._actualModel,
+                        holder._requestedModel,
+                      );
+                    holder._actualModel = _hasResolvedActual
+                      ? holder._actualModel
+                      : json.answered_by ||
+                        holder._actualModel ||
+                        holder._requestedModel;
+                    _setRoleModelLabel(
+                      _rEl,
+                      holder._requestedModel,
+                      holder._actualModel,
+                      {
                         suffix: holder._roleSuffix,
                         characterName: holder._characterName,
                         reason: json.reason,
-                      });
-                    }
+                      },
+                    );
                   }
                 }
-              } else if (json.type === 'rounds_exhausted') {
-                // The agent hit the per-turn step limit while still working.
-                // Offer a Continue button instead of stalling silently.
-                // NOTE: append to the chat-history container (bottom), NOT the
-                // message body — the body innerHTML is re-rendered at stream
-                // finalize, which would wipe a note placed inside it.
-                const _chatBox = document.getElementById('chat-history');
-                if (!_isBg && _chatBox) {
-                  // Drop any prior box so repeated cap-hits each get a fresh
-                  // Continue at the bottom (multiple continues in a row).
-                  const _old = _chatBox.querySelector('.rounds-exhausted');
-                  if (_old) _old.remove();
-                  const note = document.createElement('div');
-                  note.className = 'stopped-indicator rounds-exhausted';
-                  const label = document.createElement('span');
-                  label.className = 'rounds-exhausted-label';
-                  label.textContent = `Reached the ${json.rounds || ''}-step limit — not finished.`;
-                  note.appendChild(label);
-                  const contBtn = document.createElement('button');
-                  contBtn.className = 'continue-btn';
-                  contBtn.title = 'Continue the task';
-                  contBtn.textContent = 'Continue ▸';
-                  const _holder = currentHolder;
-                  contBtn.addEventListener('click', () => {
-                    note.remove();
-                    _hideUserBubble = true;
-                    _pendingContinue = _holder;
-                    const msgInput = uiModule.el('message');
-                    if (msgInput) {
-                      msgInput.value = 'You hit the step limit before finishing — the task is not complete. Continue from exactly where you left off and keep going until it is done. Do NOT repeat work already done.';
-                      const sb = document.querySelector('.send-btn');
-                      if (sb) sb.click();
-                    }
-                  });
-                  note.appendChild(contBtn);
-                  _chatBox.appendChild(note);
-                  try { note.scrollIntoView({ block: 'end', behavior: 'smooth' }); } catch (_) { uiModule.scrollHistory && uiModule.scrollHistory(); }
+              }
+            } else if (json.type === 'rounds_exhausted') {
+              // The agent hit the per-turn step limit while still working.
+              // Offer a Continue button instead of stalling silently.
+              // NOTE: append to the chat-history container (bottom), NOT the
+              // message body — the body innerHTML is re-rendered at stream
+              // finalize, which would wipe a note placed inside it.
+              const _chatBox = document.getElementById('chat-history');
+              if (!_isBg && _chatBox) {
+                // Drop any prior box so repeated cap-hits each get a fresh
+                // Continue at the bottom (multiple continues in a row).
+                const _old = _chatBox.querySelector('.rounds-exhausted');
+                if (_old) _old.remove();
+                const note = document.createElement('div');
+                note.className = 'stopped-indicator rounds-exhausted';
+                const label = document.createElement('span');
+                label.className = 'rounds-exhausted-label';
+                label.textContent = `Reached the ${json.rounds || ''}-step limit — not finished.`;
+                note.appendChild(label);
+                const contBtn = document.createElement('button');
+                contBtn.className = 'continue-btn';
+                contBtn.title = 'Continue the task';
+                contBtn.textContent = 'Continue ▸';
+                const _holder = currentHolder;
+                contBtn.addEventListener('click', () => {
+                  note.remove();
+                  _hideUserBubble = true;
+                  _pendingContinue = _holder;
+                  const msgInput = uiModule.el('message');
+                  if (msgInput) {
+                    msgInput.value =
+                      'You hit the step limit before finishing — the task is not complete. Continue from exactly where you left off and keep going until it is done. Do NOT repeat work already done.';
+                    const sb = document.querySelector('.send-btn');
+                    if (sb) sb.click();
+                  }
+                });
+                note.appendChild(contBtn);
+                _chatBox.appendChild(note);
+                try {
+                  note.scrollIntoView({ block: 'end', behavior: 'smooth' });
+                } catch (_) {
+                  uiModule.scrollHistory && uiModule.scrollHistory();
                 }
-              } else if (json.type === 'model_actual') {
-                if (!_isBg && holder) {
-                  holder._requestedModel = json.requested_model || holder._requestedModel || modelName;
-                  holder._actualModel = json.model || holder._actualModel || holder._requestedModel;
-                  _setRoleModelLabel(holder.querySelector('.role'), holder._requestedModel, holder._actualModel, {
+              }
+            } else if (json.type === 'model_actual') {
+              if (!_isBg && holder) {
+                holder._requestedModel =
+                  json.requested_model || holder._requestedModel || modelName;
+                holder._actualModel =
+                  json.model || holder._actualModel || holder._requestedModel;
+                _setRoleModelLabel(
+                  holder.querySelector('.role'),
+                  holder._requestedModel,
+                  holder._actualModel,
+                  {
                     suffix: holder._roleSuffix,
                     characterName: holder._characterName,
                   });
@@ -2343,8 +2679,8 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                   }
                 }
 
-                // Track tool name for contextual spinner labels
-                _lastToolName = json.tool || '';
+              // Track tool name for contextual spinner labels
+              _lastToolName = json.tool || '';
 
                 // --- Thread timeline: group tools in a thread container ---
                 const cmd = json.command || '';
@@ -2482,79 +2818,115 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                       // Drop the leading diff marker (+/-/space) — the row colour
                       // already encodes add/del, and keeping it doubles up with
                       // markdown "- " bullets (reads as "+-"/"--").
-                      else if (line.startsWith('+')) { cls = 'diff-add'; text = line.slice(1); }
-                      else if (line.startsWith('-')) { cls = 'diff-del'; text = line.slice(1); }
-                      else if (line.startsWith(' ')) { text = line.slice(1); }
+                      else if (line.startsWith('+')) {
+                        cls = 'diff-add';
+                        text = line.slice(1);
+                      } else if (line.startsWith('-')) {
+                        cls = 'diff-del';
+                        text = line.slice(1);
+                      } else if (line.startsWith(' ')) {
+                        text = line.slice(1);
+                      }
                       return `<span class="${cls}">${esc(text) || '&nbsp;'}</span>`;
-                    }).join('');  // spans are display:block — a literal \n here would double-space the diff
-                    diffHtml = `<details class="agent-tool-output agent-tool-diff"><summary><span class="diff-file">${esc(d.file || 'diff')}</span> <span class="diff-summary-stats">${stat}</span></summary><pre class="diff-pre">${rows}</pre></details>`;
+                    })
+                    .join(''); // spans are display:block — a literal \n here would double-space the diff
+                  diffHtml = `<details class="agent-tool-output agent-tool-diff"><summary><span class="diff-file">${esc(d.file || 'diff')}</span> <span class="diff-summary-stats">${stat}</span></summary><pre class="diff-pre">${rows}</pre></details>`;
+                }
+                // For file edits the "command" is the raw JSON args — redundant
+                // next to the diff, so hide it when we have a diff to show.
+                const cmdHtml2 =
+                  cmd && !(json.diff && json.diff.text)
+                    ? `<pre class="agent-thread-cmd">${esc(cmd)}</pre>`
+                    : '';
+                // Preserve the user's .open choice across the innerHTML
+                // rewrite \u2014 otherwise expanding a running tool collapses
+                // it as soon as the result lands, forcing the user to
+                // click again. Click handling is delegated (see init at
+                // bottom of file) so no per-node listener needed.
+                const _wasOpen = currentToolBubble.classList.contains('open');
+                currentToolBubble.className =
+                  'agent-thread-node' +
+                  (ok ? '' : ' error') +
+                  (_wasOpen ? ' open' : '');
+                currentToolBubble.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(json.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${cmdHtml2}${outHtml}${diffHtml}</div>`;
+                // Reset so thinking spinner between tools says "Thinking" not the old tool's label
+                _lastToolName = '';
+                uiModule.scrollHistory();
+              }
+              // --- Render generated images inline ---
+              if (json.image_url) {
+                const chatBox = document.getElementById('chat-history');
+                chatBox.appendChild(
+                  _buildImageBubble(
+                    json.image_url,
+                    json.image_prompt,
+                    json.image_model,
+                    json.image_size,
+                    json.image_quality,
+                    json.image_id,
+                  ),
+                );
+                uiModule.scrollHistory();
+                // Notify gallery to refresh if open
+                window.dispatchEvent(new CustomEvent('gallery-refresh'));
+              }
+              // --- Render browser screenshots in tool output ---
+              if (json.screenshot && currentToolBubble) {
+                const contentEl = currentToolBubble.querySelector(
+                  '.agent-thread-content',
+                );
+                if (contentEl) {
+                  const screenshotSrc = safeToolScreenshotSrc(json.screenshot);
+                  if (screenshotSrc) {
+                    const details = document.createElement('details');
+                    details.className = 'agent-tool-output';
+                    const summary = document.createElement('summary');
+                    summary.textContent = 'Screenshot';
+                    const img = document.createElement('img');
+                    img.src = screenshotSrc;
+                    img.style.cssText =
+                      'max-width:100%;border-radius:6px;margin-top:6px;border:1px solid var(--border)';
+                    details.appendChild(summary);
+                    details.appendChild(img);
+                    contentEl.appendChild(details);
                   }
-                  // For file edits the "command" is the raw JSON args — redundant
-                  // next to the diff, so hide it when we have a diff to show.
-                  const cmdHtml2 = (cmd && !(json.diff && json.diff.text)) ? `<pre class="agent-thread-cmd">${esc(cmd)}</pre>` : '';
-                  // Preserve the user's .open choice across the innerHTML
-                  // rewrite \u2014 otherwise expanding a running tool collapses
-                  // it as soon as the result lands, forcing the user to
-                  // click again. Click handling is delegated (see init at
-                  // bottom of file) so no per-node listener needed.
-                  const _wasOpen = currentToolBubble.classList.contains('open');
-                  currentToolBubble.className = 'agent-thread-node' + (ok ? '' : ' error') + (_wasOpen ? ' open' : '');
-                  currentToolBubble.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(json.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${cmdHtml2}${outHtml}${diffHtml}</div>`;
-                  // Reset so thinking spinner between tools says "Thinking" not the old tool's label
-                  _lastToolName = '';
-                  uiModule.scrollHistory();
                 }
-                // --- Render generated images inline ---
-                if (json.image_url) {
-                  const chatBox = document.getElementById('chat-history');
-                  chatBox.appendChild(_buildImageBubble(json.image_url, json.image_prompt, json.image_model, json.image_size, json.image_quality, json.image_id));
-                  uiModule.scrollHistory();
-                  // Notify gallery to refresh if open
-                  window.dispatchEvent(new CustomEvent('gallery-refresh'));
-                }
-                // --- Render browser screenshots in tool output ---
-                if (json.screenshot && currentToolBubble) {
-                  const contentEl = currentToolBubble.querySelector('.agent-thread-content');
-                  if (contentEl) {
-                    const screenshotSrc = chatRenderer.safeToolScreenshotSrc(json.screenshot);
-                    if (screenshotSrc) {
-                      const details = document.createElement('details');
-                      details.className = 'agent-tool-output';
-                      const summary = document.createElement('summary');
-                      summary.textContent = 'Screenshot';
-                      const img = document.createElement('img');
-                      img.src = screenshotSrc;
-                      img.style.cssText = 'max-width:100%;border-radius:6px;margin-top:6px;border:1px solid var(--border)';
-                      details.appendChild(summary);
-                      details.appendChild(img);
-                      contentEl.appendChild(details);
-                    }
-                  }
-                }
-                // --- Reload sessions after manage_session tool (delete, rename, etc.) ---
-                // Debounce so bulk deletes don't fire loadSessions per call
-                if (json.tool === 'manage_session' && sessionModule) {
-                  if (window._manageSessionTimer) clearTimeout(window._manageSessionTimer);
-                  window._manageSessionTimer = setTimeout(() => sessionModule.loadSessions(), 1000);
-                }
-                // --- Live-refresh the calendar after manage_calendar (add/edit/delete) ---
-                // so a new event shows without the user hard-refreshing. Debounced
-                // so a batch of event creates only triggers one refetch.
-                if (json.tool === 'manage_calendar') {
-                  if (window._manageCalTimer) clearTimeout(window._manageCalTimer);
-                  window._manageCalTimer = setTimeout(
-                    () => window.dispatchEvent(new CustomEvent('calendar-refresh')), 600);
-                }
-                // --- Live-refresh Memories after manage_memory changes ---
-                if (json.tool === 'manage_memory') {
-                  if (window._manageMemoryTimer) clearTimeout(window._manageMemoryTimer);
-                  window._manageMemoryTimer = setTimeout(
-                    () => window.dispatchEvent(new CustomEvent('memory-refresh')), 600);
-                }
-                // --- Apply UI control actions embedded in tool_output ---
-                if (json.ui_event) {
-                  chatStream.handleUIControl(json);
-                }
+              }
+              // --- Reload sessions after manage_session tool (delete, rename, etc.) ---
+              // Debounce so bulk deletes don't fire loadSessions per call
+              if (json.tool === 'manage_session' && sessionModule) {
+                if (window._manageSessionTimer)
+                  clearTimeout(window._manageSessionTimer);
+                window._manageSessionTimer = setTimeout(
+                  () => sessionModule.loadSessions(),
+                  1000,
+                );
+              }
+              // --- Live-refresh the calendar after manage_calendar (add/edit/delete) ---
+              // so a new event shows without the user hard-refreshing. Debounced
+              // so a batch of event creates only triggers one refetch.
+              if (json.tool === 'manage_calendar') {
+                if (window._manageCalTimer)
+                  clearTimeout(window._manageCalTimer);
+                window._manageCalTimer = setTimeout(
+                  () =>
+                    window.dispatchEvent(new CustomEvent('calendar-refresh')),
+                  600,
+                );
+              }
+              // --- Live-refresh Memories after manage_memory changes ---
+              if (json.tool === 'manage_memory') {
+                if (window._manageMemoryTimer)
+                  clearTimeout(window._manageMemoryTimer);
+                window._manageMemoryTimer = setTimeout(
+                  () => window.dispatchEvent(new CustomEvent('memory-refresh')),
+                  600,
+                );
+              }
+              // --- Apply UI control actions embedded in tool_output ---
+              if (json.ui_event) {
+                chatStream.handleUIControl(json);
+              }
 
                 // Schedule a thinking spinner between tool rounds (short delay so
                 // agent_step in the same SSE chunk can cancel it before it shows)
@@ -2734,9 +3106,9 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         }
       }
 
-      if (!_streamSawDone) {
-        throw new Error('Stream closed before completion');
-      }
+    if (!_streamSawDone) {
+      throw new Error('Stream closed before completion');
+    }
 
       _renderStream();
       if (spinner && spinner.element) { try { spinner.destroy(); } catch (_) {} spinner = null; }
@@ -2749,54 +3121,72 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       holder.classList.remove('streaming');
       if (roundHolder && roundHolder !== holder) roundHolder.classList.remove('streaming');
 
-      const _isBgFinal = (sessionModule.getCurrentSessionId() !== streamSessionId) || _backgroundStreams.has(streamSessionId);
-      if (!_isBgFinal) {
-        finalMeta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
-        const _finalActualModel = metrics?.model || holder._actualModel || finalMeta?.model;
-        const _finalRequestedModel = metrics?.requested_model || holder._requestedModel || finalMeta?.model || _finalActualModel;
-        // Prepend character name if set
-        var _charNameFinal = presetsModule.getCharacterName ? presetsModule.getCharacterName() : '';
-        const roleEl = holder.querySelector('.role');
-        if (roleEl) {
-          _setRoleModelLabel(roleEl, _finalRequestedModel, _finalActualModel, {
-            suffix: holder._roleSuffix,
-            characterName: _charNameFinal || holder._characterName,
-          });
-        }
-        holder.dataset.raw = accumulated;
+    const _isBgFinal =
+      sessionModule.getCurrentSessionId() !== streamSessionId ||
+      _backgroundStreams.has(streamSessionId);
+    if (!_isBgFinal) {
+      finalMeta = sessionModule
+        .getSessions()
+        .find((s) => s.id === sessionModule.getCurrentSessionId());
+      const _finalActualModel =
+        metrics?.model || holder._actualModel || finalMeta?.model;
+      const _finalRequestedModel =
+        metrics?.requested_model ||
+        holder._requestedModel ||
+        finalMeta?.model ||
+        _finalActualModel;
+      // Prepend character name if set
+      var _charNameFinal = presetsModule.getCharacterName
+        ? presetsModule.getCharacterName()
+        : '';
+      const roleEl = holder.querySelector('.role');
+      if (roleEl) {
+        _setRoleModelLabel(roleEl, _finalRequestedModel, _finalActualModel, {
+          suffix: holder._roleSuffix,
+          characterName: _charNameFinal || holder._characterName,
+        });
+      }
+      holder.dataset.raw = accumulated;
 
-        // Anti-stall: a turn that ran tools but ended with essentially no
-        // final prose usually means the model stopped mid-task (the case
-        // where you had to type "did you finish?"). Offer a one-click
-        // Continue that resumes exactly where it left off — reuses the same
-        // resume mechanism as the user-stop "[Message interrupted]" button.
-        try {
-          const _usedTools = holder.querySelector('.agent-thread-node');
-          const _proseLen = (accumulated || '').replace(/<[^>]*>/g, '').trim().length;
-          if (_usedTools && _proseLen < 24 && !holder.querySelector('.agent-continue-btn')) {
-            const _stall = document.createElement('div');
-            _stall.className = 'stopped-indicator';
-            const _lbl = document.createElement('span');
-            _lbl.style.cssText = 'font-style:italic;opacity:0.7;';
-            _lbl.textContent = 'Paused mid-task';
-            _stall.appendChild(_lbl);
-            const _cont = document.createElement('button');
-            _cont.className = 'continue-btn agent-continue-btn';
-            _cont.title = 'Continue — pick up where it left off';
-            _cont.textContent = '▸';
-            _cont.addEventListener('click', () => {
-              _stall.remove();
-              const mi = uiModule.el('message');
-              if (mi) {
-                mi.value = 'Continue — you stopped before finishing. Pick up exactly where you left off and complete the task.';
-                const sb = document.querySelector('.send-btn');
-                if (sb) sb.click();
-              }
-            });
-            _stall.appendChild(_cont);
-            (holder.querySelector('.body') || holder).appendChild(_stall);
-          }
-        } catch (_) {}
+      // Anti-stall: a turn that ran tools but ended with essentially no
+      // final prose usually means the model stopped mid-task (the case
+      // where you had to type "did you finish?"). Offer a one-click
+      // Continue that resumes exactly where it left off — reuses the same
+      // resume mechanism as the user-stop "[Message interrupted]" button.
+      try {
+        const _usedTools = holder.querySelector('.agent-thread-node');
+        const _proseLen = (accumulated || '')
+          .replace(/<[^>]*>/g, '')
+          .trim().length;
+        if (
+          _usedTools &&
+          _proseLen < 24 &&
+          !holder.querySelector('.agent-continue-btn')
+        ) {
+          const _stall = document.createElement('div');
+          _stall.className = 'stopped-indicator';
+          const _lbl = document.createElement('span');
+          _lbl.style.cssText = 'font-style:italic;opacity:0.7;';
+          _lbl.textContent = 'Paused mid-task';
+          _stall.appendChild(_lbl);
+          const _cont = document.createElement('button');
+          _cont.className = 'continue-btn agent-continue-btn';
+          _cont.title = 'Continue — pick up where it left off';
+          _cont.textContent = '▸';
+          _cont.addEventListener('click', () => {
+            _stall.remove();
+            const mi = uiModule.el('message');
+            if (mi) {
+              mi.value =
+                'Continue — you stopped before finishing. Pick up exactly where you left off and complete the task.';
+              const sb = document.querySelector('.send-btn');
+              if (sb) sb.click();
+            }
+          });
+          _stall.appendChild(_cont);
+          (holder.querySelector('.body') || holder).appendChild(_stall);
+        }
+      } catch (_) {}
 
         // Clear streaming minHeight lock
         const _streamContent = roundHolder.querySelector('.stream-content');
@@ -2813,113 +3203,169 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
           // Preserve sources expanded state before final render
           var _wasExpanded = _sourcesExpanded || !!(_body4 && _body4.querySelector('.sources-content.expanded'));
 
-          // If thinking was collapsed in-place during streaming, preserve it
-          var _liveReplyEl = _body4 && _body4.querySelector('.live-reply-content');
-          var _extracted = _liveReplyEl ? markdownModule.extractThinkingBlocks(finalDisplay) : null;
-          var _finalReply = '';
-          if (_liveReplyEl) {
-            // Try standard extraction first (for native <think> tags)
-            if (_extracted?.thinkingBlocks?.length) {
-              _finalReply = (_extracted.content || '').trim();
+        // If thinking was collapsed in-place during streaming, preserve it
+        var _liveReplyEl =
+          _body4 && _body4.querySelector('.live-reply-content');
+        var _extracted = _liveReplyEl
+          ? markdownModule.extractThinkingBlocks(finalDisplay)
+          : null;
+        var _finalReply = '';
+        if (_liveReplyEl) {
+          // Try standard extraction first (for native <think> tags)
+          if (_extracted?.thinkingBlocks?.length) {
+            _finalReply = (_extracted.content || '').trim();
+          } else {
+            // Non-tag thinking: extract reply from raw text
+            // Handle garbled thinking tag: "Thinking: reasoning\n<think>reply"
+            const _garbledMatch = finalDisplay.match(
+              /^[\s\S]+?<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>\s*([\s\S]*?)(?:<\/(?:think(?:ing)?|thought)>)?\s*$/i,
+            );
+            if (_garbledMatch && _garbledMatch[1].trim()) {
+              _finalReply = _garbledMatch[1].trim();
             } else {
-              // Non-tag thinking: extract reply from raw text
-              // Handle garbled thinking tag: "Thinking: reasoning\n<think>reply"
-              const _garbledMatch = finalDisplay.match(/^[\s\S]+?<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>\s*([\s\S]*?)(?:<\/(?:think(?:ing)?|thought)>)?\s*$/i);
-              if (_garbledMatch && _garbledMatch[1].trim()) {
-                _finalReply = _garbledMatch[1].trim();
-              } else {
-                // Pure non-tag: find reply boundary by prefix patterns
-                const _rs2 = ['Hey', 'Hi ', 'Hi!', 'Hello', 'Sure', 'Yes', 'No ', 'No,', 'Yo', 'OK', 'Here', 'Absolutely', 'Of course', 'Great', 'Alright', 'Thanks', 'Welcome', 'Good ', "I'm happy", "I'd be"];
-                const _fr = (finalDisplay || '').trimStart();
-                if (markdownModule.startsWithReasoningPrefix(_fr)) {
-                  const _fLines = _fr.split('\n');
-                  for (let _fi = 1; _fi < _fLines.length; _fi++) {
-                    const _fl = _fLines[_fi].trim();
-                    if (!_fl) continue;
-                    if (_rs2.some(rp => _fl.startsWith(rp))) { _finalReply = _fLines.slice(_fi).join('\n'); break; }
+              // Pure non-tag: find reply boundary by prefix patterns
+              const _rs2 = [
+                'Hey',
+                'Hi ',
+                'Hi!',
+                'Hello',
+                'Sure',
+                'Yes',
+                'No ',
+                'No,',
+                'Yo',
+                'OK',
+                'Here',
+                'Absolutely',
+                'Of course',
+                'Great',
+                'Alright',
+                'Thanks',
+                'Welcome',
+                'Good ',
+                "I'm happy",
+                "I'd be",
+              ];
+              const _fr = (finalDisplay || '').trimStart();
+              if (markdownModule.startsWithReasoningPrefix(_fr)) {
+                const _fLines = _fr.split('\n');
+                for (let _fi = 1; _fi < _fLines.length; _fi++) {
+                  const _fl = _fLines[_fi].trim();
+                  if (!_fl) continue;
+                  if (_rs2.some((rp) => _fl.startsWith(rp))) {
+                    _finalReply = _fLines.slice(_fi).join('\n');
+                    break;
                   }
-                  // Within-line check
-                  if (!_finalReply) {
-                    for (const rp of _rs2) {
-                      const rx = new RegExp('[.!?]\\s*(' + rp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')');
-                      const m = rx.exec(_fr);
-                      if (m && m.index > 20) { _finalReply = _fr.slice(m.index + 1).trim(); break; }
+                }
+                // Within-line check
+                if (!_finalReply) {
+                  for (const rp of _rs2) {
+                    const rx = new RegExp(
+                      '[.!?]\\s*(' +
+                        rp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+                        ')',
+                    );
+                    const m = rx.exec(_fr);
+                    if (m && m.index > 20) {
+                      _finalReply = _fr.slice(m.index + 1).trim();
+                      break;
                     }
                   }
                 }
               }
             }
           }
-          if (_liveReplyEl && _finalReply) {
-            // Render reply into the live-reply container (thinking bar already showing)
-            var _replyHtml = markdownModule.mdToHtml(markdownModule.squashOutsideCode(_finalReply));
-            _liveReplyEl.innerHTML = _replyHtml;
-            _liveReplyEl.classList.remove('live-reply-content');
-            if (_sourcesData) {
-              var _srcEl = document.createElement('div');
-              _srcEl.innerHTML = _buildSourcesBox(_sourcesData, _sourcesType, _wasExpanded);
-              _body4.insertBefore(_srcEl.firstChild || _srcEl, _body4.firstChild);
-            }
-            if (_findingsData) _body4.insertAdjacentHTML('beforeend', chatRenderer.buildFindingsBox(_findingsData));
-          } else {
-            // Full re-render (reply empty or no live-reply container)
-            _body4.innerHTML = (_sourcesData ? _buildSourcesBox(_sourcesData, _sourcesType, _wasExpanded) : '')
-              + markdownModule.processWithThinking(markdownModule.squashOutsideCode(finalDisplay))
-              + (_findingsData ? chatRenderer.buildFindingsBox(_findingsData) : '');
+        }
+        if (_liveReplyEl && _finalReply) {
+          // Render reply into the live-reply container (thinking bar already showing)
+          var _replyHtml = markdownModule.mdToHtml(
+            markdownModule.squashOutsideCode(_finalReply),
+          );
+          _liveReplyEl.innerHTML = _replyHtml;
+          _liveReplyEl.classList.remove('live-reply-content');
+          if (_sourcesData) {
+            var _srcEl = document.createElement('div');
+            _srcEl.innerHTML = _buildSourcesBox(
+              _sourcesData,
+              _sourcesType,
+              _wasExpanded,
+            );
+            _body4.insertBefore(_srcEl.firstChild || _srcEl, _body4.firstChild);
           }
-        } else if (_sourcesHtml) {
-          var _body4b = roundHolder.querySelector('.body');
-          var _wasExpanded2 = _sourcesExpanded || !!(_body4b && _body4b.querySelector('.sources-content.expanded'));
-          _body4b.innerHTML = _sourcesData ? _buildSourcesBox(_sourcesData, _sourcesType, _wasExpanded2) : _sourcesHtml;
-        } else if (roundHolder !== holder) {
-          // Check if there's thinking content worth showing
-          const _thinkingOnly = markdownModule.extractThinkingBlocks(roundText);
-          if (_thinkingOnly.thinkingBlocks?.length && !_thinkingOnly.content) {
-            // Show thinking in a collapsed section even if no visible reply text
-            const _body4c = roundHolder.querySelector('.body');
-            if (_body4c) _body4c.innerHTML = markdownModule.processWithThinking(roundText);
-          } else {
-            roundHolder.style.display = 'none';
-            // Thread above expected a bubble below — remove has-bottom since bubble is hidden
-            const _lastThread = roundHolder.previousElementSibling;
-            if (_lastThread && _lastThread.classList.contains('agent-thread')) {
-              _lastThread.classList.remove('has-bottom');
-            }
+          if (_findingsData)
+            _body4.insertAdjacentHTML(
+              'beforeend',
+              chatRenderer.buildFindingsBox(_findingsData),
+            );
+        } else {
+          // Full re-render (reply empty or no live-reply container)
+          _body4.innerHTML =
+            (_sourcesData
+              ? _buildSourcesBox(_sourcesData, _sourcesType, _wasExpanded)
+              : '') +
+            markdownModule.processWithThinking(
+              markdownModule.squashOutsideCode(finalDisplay),
+            ) +
+            (_findingsData ? chatRenderer.buildFindingsBox(_findingsData) : '');
+        }
+      } else if (_sourcesHtml) {
+        var _body4b = roundHolder.querySelector('.body');
+        var _wasExpanded2 =
+          _sourcesExpanded ||
+          !!(_body4b && _body4b.querySelector('.sources-content.expanded'));
+        _body4b.innerHTML = _sourcesData
+          ? _buildSourcesBox(_sourcesData, _sourcesType, _wasExpanded2)
+          : _sourcesHtml;
+      } else if (roundHolder !== holder) {
+        // Check if there's thinking content worth showing
+        const _thinkingOnly = markdownModule.extractThinkingBlocks(roundText);
+        if (_thinkingOnly.thinkingBlocks?.length && !_thinkingOnly.content) {
+          // Show thinking in a collapsed section even if no visible reply text
+          const _body4c = roundHolder.querySelector('.body');
+          if (_body4c)
+            _body4c.innerHTML = markdownModule.processWithThinking(roundText);
+        } else {
+          roundHolder.style.display = 'none';
+          // Thread above expected a bubble below — remove has-bottom since bubble is hidden
+          const _lastThread = roundHolder.previousElementSibling;
+          if (_lastThread && _lastThread.classList.contains('agent-thread')) {
+            _lastThread.classList.remove('has-bottom');
           }
         }
+      }
 
+      if (window.hljs) {
+        roundHolder.querySelectorAll('pre code').forEach((block) => {
+          window.hljs.highlightElement(block);
+        });
+      }
+      if (markdownModule.renderMermaid)
+        markdownModule.renderMermaid(roundHolder);
 
-        if (window.hljs) {
-          roundHolder.querySelectorAll('pre code').forEach((block) => {
-            window.hljs.highlightElement(block);
-          });
-        }
-        if (markdownModule.renderMermaid) markdownModule.renderMermaid(roundHolder);
+      uiModule.scrollHistory();
+      // Render RAG sources if present
+      if (holder._ragSources && holder._ragSources.length) {
+        const details = document.createElement('details');
+        details.className = 'rag-sources';
+        const summary = document.createElement('summary');
+        summary.textContent = `Sources (${holder._ragSources.length} documents)`;
+        details.appendChild(summary);
+        holder._ragSources.forEach((src) => {
+          const item = document.createElement('div');
+          item.className = 'rag-source-item';
+          const _esc = uiModule.esc;
+          item.innerHTML = `<strong>${_esc(src.filename)}</strong> <span class="rag-similarity">${(src.similarity * 100).toFixed(1)}%</span><div class="rag-snippet">${_esc(src.snippet)}</div>`;
+          details.appendChild(item);
+        });
+        holder.querySelector('.body').appendChild(details);
+      }
 
-        uiModule.scrollHistory();
-        // Render RAG sources if present
-        if (holder._ragSources && holder._ragSources.length) {
-          const details = document.createElement('details');
-          details.className = 'rag-sources';
-          const summary = document.createElement('summary');
-          summary.textContent = `Sources (${holder._ragSources.length} documents)`;
-          details.appendChild(summary);
-          holder._ragSources.forEach(src => {
-            const item = document.createElement('div');
-            item.className = 'rag-source-item';
-            const _esc = uiModule.esc;
-            item.innerHTML = `<strong>${_esc(src.filename)}</strong> <span class="rag-similarity">${(src.similarity * 100).toFixed(1)}%</span><div class="rag-snippet">${_esc(src.snippet)}</div>`;
-            details.appendChild(item);
-          });
-          holder.querySelector('.body').appendChild(details);
-        }
-
-        // Hide first bubble if it has no visible text content (e.g. agent went straight to tools)
-        if (holder !== roundHolder && holder.style.display !== 'none') {
-          const _hBody = holder.querySelector('.body');
-          const _hText = _hBody ? _hBody.textContent.trim() : '';
-          if (!_hText) holder.style.display = 'none';
-        }
+      // Hide first bubble if it has no visible text content (e.g. agent went straight to tools)
+      if (holder !== roundHolder && holder.style.display !== 'none') {
+        const _hBody = holder.querySelector('.body');
+        const _hText = _hBody ? _hBody.textContent.trim() : '';
+        if (!_hText) holder.style.display = 'none';
+      }
 
         // Attach footer to the last visible bubble (roundHolder for multi-round agent, holder for single)
         const footerTarget = (roundHolder && roundHolder !== holder && roundHolder.style.display !== 'none') ? roundHolder : holder;
@@ -2970,196 +3416,214 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         // Attach variant navigation if this was a regeneration
         _attachVariantNav(footerTarget);
 
-        // Merge with previous stopped message if this was a continue
-        if (_pendingContinue) {
-          const prevEl = _pendingContinue;
-          _pendingContinue = null;
-          const prevBody = prevEl.querySelector('.body');
-          const newBody = footerTarget.querySelector('.body');
-          if (prevBody && newBody && prevEl.parentNode) {
-            // Merge: combine raw text with *(continued)* marker
-            const oldRaw = prevEl.dataset.raw || '';
-            const newRaw = footerTarget.dataset.raw || '';
-            const mergedRaw = oldRaw + '\n\n*(continued)*\n\n' + newRaw;
-            prevEl.dataset.raw = mergedRaw;
-            // Re-render merged content
-            prevBody.innerHTML = markdownModule.processWithThinking(
-              markdownModule.squashOutsideCode(mergedRaw)
-            );
-            // Remove the new bubble and re-add footer to the merged one
-            footerTarget.remove();
-            const oldFooter = prevEl.querySelector('.msg-footer');
-            if (oldFooter) oldFooter.remove();
-            prevEl.appendChild(createMsgFooter(prevEl));
-            if (window.hljs) {
-              prevEl.querySelectorAll('pre code').forEach(block => window.hljs.highlightElement(block));
-            }
+      // Merge with previous stopped message if this was a continue
+      if (_pendingContinue) {
+        const prevEl = _pendingContinue;
+        _pendingContinue = null;
+        const prevBody = prevEl.querySelector('.body');
+        const newBody = footerTarget.querySelector('.body');
+        if (prevBody && newBody && prevEl.parentNode) {
+          // Merge: combine raw text with *(continued)* marker
+          const oldRaw = prevEl.dataset.raw || '';
+          const newRaw = footerTarget.dataset.raw || '';
+          const mergedRaw = oldRaw + '\n\n*(continued)*\n\n' + newRaw;
+          prevEl.dataset.raw = mergedRaw;
+          // Re-render merged content
+          prevBody.innerHTML = markdownModule.processWithThinking(
+            markdownModule.squashOutsideCode(mergedRaw),
+          );
+          // Remove the new bubble and re-add footer to the merged one
+          footerTarget.remove();
+          const oldFooter = prevEl.querySelector('.msg-footer');
+          if (oldFooter) oldFooter.remove();
+          prevEl.appendChild(createMsgFooter(prevEl));
+          if (window.hljs) {
+            prevEl
+              .querySelectorAll('pre code')
+              .forEach((block) => window.hljs.highlightElement(block));
+          }
 
-            // Persist merge to server
-            const sid = sessionModule.getCurrentSessionId();
-            if (sid) {
-              fetch(`${API_BASE}/api/session/${sid}/merge-last-assistant`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ separator: '\n\n*(continued)*\n\n' })
-              }).catch(e => console.warn('merge-last-assistant failed:', e));
-            }
+          // Persist merge to server
+          const sid = sessionModule.getCurrentSessionId();
+          if (sid) {
+            fetch(`${API_BASE}/api/session/${sid}/merge-last-assistant`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ separator: '\n\n*(continued)*\n\n' }),
+            }).catch((e) => console.warn('merge-last-assistant failed:', e));
           }
         }
-      } // end if (!_isBgFinal)
+      }
+    } // end if (!_isBgFinal)
+  } catch (err) {
+    _renderStream();
+    // Clean up any active spinner (e.g. "Generating response" during tool calls)
+    if (spinner && spinner.element) spinner.destroy();
+    _cancelThinkingTimer();
+    _removeThinkingSpinner();
+    document
+      .querySelectorAll('.agent-thread.streaming')
+      .forEach((t) => t.classList.remove('streaming'));
+    // Check if this stream was running in background
+    const _isBgCatch =
+      sessionModule.getCurrentSessionId() !== streamSessionId ||
+      _backgroundStreams.has(streamSessionId);
 
-    } catch (err) {
-      _renderStream();
-      // Clean up any active spinner (e.g. "Generating response" during tool calls)
-      if (spinner && spinner.element) spinner.destroy();
-      _cancelThinkingTimer();
-      _removeThinkingSpinner();
-      document.querySelectorAll('.agent-thread.streaming').forEach(t => t.classList.remove('streaming'));
-      // Check if this stream was running in background
-      const _isBgCatch = (sessionModule.getCurrentSessionId() !== streamSessionId) || _backgroundStreams.has(streamSessionId);
-
-      if (_isBgCatch) {
-        // Error happened while backgrounded — update map, don't touch DOM
-        console.error('Background stream error:', err);
-        var bgErr = _backgroundStreams.get(streamSessionId);
-        if (bgErr && bgErr.status === 'completed') {
-          // [DONE] was already processed — this error is benign (e.g. reader.read() after close)
-          // Don't override the completed status; just ensure the completed dot stays
-          if (sessionModule && sessionModule.clearStreaming) {
-            sessionModule.clearStreaming(streamSessionId);
-          }
-        } else if (bgErr) {
-          bgErr.status = 'error';
-          if (sessionModule && sessionModule.clearStreaming) {
-            sessionModule.clearStreaming(streamSessionId);
-          }
+    if (_isBgCatch) {
+      // Error happened while backgrounded — update map, don't touch DOM
+      console.error('Background stream error:', err);
+      var bgErr = _backgroundStreams.get(streamSessionId);
+      if (bgErr && bgErr.status === 'completed') {
+        // [DONE] was already processed — this error is benign (e.g. reader.read() after close)
+        // Don't override the completed status; just ensure the completed dot stays
+        if (sessionModule && sessionModule.clearStreaming) {
+          sessionModule.clearStreaming(streamSessionId);
         }
-      } else {
-        // Stop streaming TTS on any error/abort
-        if (streamingTTS && window.aiTTSManager) window.aiTTSManager.stop();
+      } else if (bgErr) {
+        bgErr.status = 'error';
+        if (sessionModule && sessionModule.clearStreaming) {
+          sessionModule.clearStreaming(streamSessionId);
+        }
+      }
+    } else {
+      // Stop streaming TTS on any error/abort
+      if (streamingTTS && window.aiTTSManager) window.aiTTSManager.stop();
 
-        if (currentAbort && currentAbort.signal.aborted) {
-          const abortReason = currentAbort._reason || '';
-          // Timeout-triggered aborts should remain visible instead of disappearing.
-          if (timedOut || abortReason === 'timeout') {
-            const timeoutMsg = _isAgent
-              ? 'Agent response timed out. Try again, switch to a faster model, or reduce tool usage.'
-              : 'Response timed out. Try again.';
+      if (currentAbort && currentAbort.signal.aborted) {
+        const abortReason = currentAbort._reason || '';
+        // Timeout-triggered aborts should remain visible instead of disappearing.
+        if (timedOut || abortReason === 'timeout') {
+          const timeoutMsg = _isAgent
+            ? 'Agent response timed out. Try again, switch to a faster model, or reduce tool usage.'
+            : 'Response timed out. Try again.';
 
-            if (holder && !accumulated) {
-              holder.querySelector('.body').innerHTML =
-                `<div style="color: var(--color-error); font-style: italic; padding: 4px 0;">[${timeoutMsg}]</div>`;
-            } else if (holder && accumulated) {
-              const timeoutNote = document.createElement('div');
-              timeoutNote.className = 'stopped-indicator';
-              timeoutNote.innerHTML =
-                `<span style="color: var(--color-error);">[${timeoutMsg}]</span>`;
-              holder.querySelector('.body').appendChild(timeoutNote);
-            }
-            currentAbort = null;
-            return;
-          }
-
-          if (abortReason === 'offline') {
-            const offlineMsg = 'Endpoint offline — switch model or try again.';
-            if (holder && !accumulated) {
-              holder.querySelector('.body').innerHTML =
-                `<div style="color: var(--color-error); font-style: italic; padding: 4px 0;">[${offlineMsg}]</div>`;
-            } else if (holder && accumulated) {
-              const offlineNote = document.createElement('div');
-              offlineNote.className = 'stopped-indicator';
-              offlineNote.innerHTML =
-                `<span style="color: var(--color-error);">[${offlineMsg}]</span>`;
-              holder.querySelector('.body').appendChild(offlineNote);
-            }
-            currentAbort = null;
-            return;
-          }
-
-          if (abortReason === 'recovery') {
-            const recoveryMsg = 'Streaming was interrupted after the tab went inactive. Partial output was preserved.';
-            if (holder && !accumulated) {
-              holder.querySelector('.body').innerHTML =
-                `<div style="color: var(--color-error); font-style: italic; padding: 4px 0;">[${recoveryMsg}]</div>`;
-            } else if (holder && accumulated) {
-              const recoveryNote = document.createElement('div');
-              recoveryNote.className = 'stopped-indicator';
-              recoveryNote.innerHTML =
-                `<span style="color: var(--color-error);">[${recoveryMsg}]</span>`;
-              holder.querySelector('.body').appendChild(recoveryNote);
-            }
-            currentAbort = null;
-            return;
-          }
-
-          // User-initiated stop (or browser navigation abort).
-          // Stopped before any text arrived — keep the bubble as a
-          // "Cancelled by user" record (so it survives a refresh).
           if (holder && !accumulated) {
-            _renderCancelledBubble(holder);
+            holder.querySelector('.body').innerHTML =
+              `<div style="color: var(--color-error); font-style: italic; padding: 4px 0;">[${timeoutMsg}]</div>`;
+          } else if (holder && accumulated) {
+            const timeoutNote = document.createElement('div');
+            timeoutNote.className = 'stopped-indicator';
+            timeoutNote.innerHTML = `<span style="color: var(--color-error);">[${timeoutMsg}]</span>`;
+            holder.querySelector('.body').appendChild(timeoutNote);
           }
+          currentAbort = null;
+          return;
+        }
 
-          // But just in case the stop button didn't render it, render it here
-          if (holder && accumulated && !currentHolder) {
-            holder.dataset.raw = accumulated;
-            holder.querySelector('.body').innerHTML = markdownModule.processWithThinking(
-              markdownModule.squashOutsideCode(accumulated)
+        if (abortReason === 'offline') {
+          const offlineMsg = 'Endpoint offline — switch model or try again.';
+          if (holder && !accumulated) {
+            holder.querySelector('.body').innerHTML =
+              `<div style="color: var(--color-error); font-style: italic; padding: 4px 0;">[${offlineMsg}]</div>`;
+          } else if (holder && accumulated) {
+            const offlineNote = document.createElement('div');
+            offlineNote.className = 'stopped-indicator';
+            offlineNote.innerHTML = `<span style="color: var(--color-error);">[${offlineMsg}]</span>`;
+            holder.querySelector('.body').appendChild(offlineNote);
+          }
+          currentAbort = null;
+          return;
+        }
+
+        if (abortReason === 'recovery') {
+          const recoveryMsg =
+            'Streaming was interrupted after the tab went inactive. Partial output was preserved.';
+          if (holder && !accumulated) {
+            holder.querySelector('.body').innerHTML =
+              `<div style="color: var(--color-error); font-style: italic; padding: 4px 0;">[${recoveryMsg}]</div>`;
+          } else if (holder && accumulated) {
+            const recoveryNote = document.createElement('div');
+            recoveryNote.className = 'stopped-indicator';
+            recoveryNote.innerHTML = `<span style="color: var(--color-error);">[${recoveryMsg}]</span>`;
+            holder.querySelector('.body').appendChild(recoveryNote);
+          }
+          currentAbort = null;
+          return;
+        }
+
+        // User-initiated stop (or browser navigation abort).
+        // Stopped before any text arrived — keep the bubble as a
+        // "Cancelled by user" record (so it survives a refresh).
+        if (holder && !accumulated) {
+          _renderCancelledBubble(holder);
+        }
+
+        // But just in case the stop button didn't render it, render it here
+        if (holder && accumulated && !currentHolder) {
+          holder.dataset.raw = accumulated;
+          holder.querySelector('.body').innerHTML =
+            markdownModule.processWithThinking(
+              markdownModule.squashOutsideCode(accumulated),
             );
 
-            if (window.hljs) {
-              holder.querySelectorAll('pre code').forEach((block) => {
-                window.hljs.highlightElement(block);
-              });
-            }
-
-            const stoppedIndicator = document.createElement('div');
-            stoppedIndicator.className = 'stopped-indicator';
-            const stoppedLabel = document.createElement('span');
-            stoppedLabel.textContent = '[Message interrupted]';
-            stoppedIndicator.appendChild(stoppedLabel);
-            const continueBtn = document.createElement('button');
-            continueBtn.className = 'continue-btn';
-            continueBtn.title = 'Continue';
-            continueBtn.textContent = '\u25B8';
-            continueBtn.addEventListener('click', () => {
-              stoppedIndicator.remove();
-              _hideUserBubble = true;
-              _pendingContinue = holder;
-              const cutoff = accumulated;
-              const msgInput = uiModule.el('message');
-              if (msgInput) {
-                msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
-                const sb = document.querySelector('.send-btn');
-                if (sb) sb.click();
-              }
+          if (window.hljs) {
+            holder.querySelectorAll('pre code').forEach((block) => {
+              window.hljs.highlightElement(block);
             });
-            stoppedIndicator.appendChild(continueBtn);
-            holder.querySelector('.body').appendChild(stoppedIndicator);
-
-            // Tell server to mark this message as stopped
-            const _sid2 = sessionModule.getCurrentSessionId();
-            if (_sid2) fetch(`${API_BASE}/api/session/${_sid2}/mark-stopped`, { method: 'POST' }).catch(e => console.warn('mark-stopped failed:', e));
-
-            if (!holder.querySelector('.msg-footer')) {
-              holder.appendChild(createMsgFooter(holder));
-            }
-
-            uiModule.scrollHistory();
           }
 
-          // Now clear the abort controller
-          currentAbort = null;
-        } else {
-          console.error(err);
-          // Stream died with a tool node still spinning. Its per-node tickers
-          // (_elapsedTicker 50ms / _waveInterval 100ms) are normally cleared in
-          // `tool_output`, which will never arrive now — without this sweep they
-          // fire forever on the orphaned node (and auto-recover compounds it per
-          // nudge). Safe here: auto-recover's new send is deferred 200ms, so no
-          // fresh running nodes exist yet.
-          document.querySelectorAll('.agent-thread-node.running').forEach(node => {
-            if (node._waveInterval) { clearInterval(node._waveInterval); node._waveInterval = null; }
-            if (node._elapsedTicker) { clearInterval(node._elapsedTicker); node._elapsedTicker = null; }
+          const stoppedIndicator = document.createElement('div');
+          stoppedIndicator.className = 'stopped-indicator';
+          const stoppedLabel = document.createElement('span');
+          stoppedLabel.textContent = '[Message interrupted]';
+          stoppedIndicator.appendChild(stoppedLabel);
+          const continueBtn = document.createElement('button');
+          continueBtn.className = 'continue-btn';
+          continueBtn.title = 'Continue';
+          continueBtn.textContent = '\u25B8';
+          continueBtn.addEventListener('click', () => {
+            stoppedIndicator.remove();
+            _hideUserBubble = true;
+            _pendingContinue = holder;
+            const cutoff = accumulated;
+            const msgInput = uiModule.el('message');
+            if (msgInput) {
+              msgInput.value =
+                'Your previous response was interrupted. It ended with:\n\n' +
+                cutoff.slice(-500) +
+                '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
+              const sb = document.querySelector('.send-btn');
+              if (sb) sb.click();
+            }
+          });
+          stoppedIndicator.appendChild(continueBtn);
+          holder.querySelector('.body').appendChild(stoppedIndicator);
+
+          // Tell server to mark this message as stopped
+          const _sid2 = sessionModule.getCurrentSessionId();
+          if (_sid2)
+            fetch(`${API_BASE}/api/session/${_sid2}/mark-stopped`, {
+              method: 'POST',
+            }).catch((e) => console.warn('mark-stopped failed:', e));
+
+          if (!holder.querySelector('.msg-footer')) {
+            holder.appendChild(createMsgFooter(holder));
+          }
+
+          uiModule.scrollHistory();
+        }
+
+        // Now clear the abort controller
+        currentAbort = null;
+      } else {
+        console.error(err);
+        // Stream died with a tool node still spinning. Its per-node tickers
+        // (_elapsedTicker 50ms / _waveInterval 100ms) are normally cleared in
+        // `tool_output`, which will never arrive now — without this sweep they
+        // fire forever on the orphaned node (and auto-recover compounds it per
+        // nudge). Safe here: auto-recover's new send is deferred 200ms, so no
+        // fresh running nodes exist yet.
+        document
+          .querySelectorAll('.agent-thread-node.running')
+          .forEach((node) => {
+            if (node._waveInterval) {
+              clearInterval(node._waveInterval);
+              node._waveInterval = null;
+            }
+            if (node._elapsedTicker) {
+              clearInterval(node._elapsedTicker);
+              node._elapsedTicker = null;
+            }
             node.classList.remove('running');
           });
           // Stream died unexpectedly — the "silently died" case. Re-engage the
@@ -3194,84 +3658,96 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         if (_rToggleCleanup) _rToggleCleanup.classList.remove('research-running');
       }
 
-      // Only reset UI state if still on the stream's session and was never backgrounded
-      const _isBgFinally = (sessionModule.getCurrentSessionId() !== streamSessionId) || _backgroundStreams.has(streamSessionId);
+    // Only reset UI state if still on the stream's session and was never backgrounded
+    const _isBgFinally =
+      sessionModule.getCurrentSessionId() !== streamSessionId ||
+      _backgroundStreams.has(streamSessionId);
 
-      if (!_isBgFinally) {
-        // Reset button to idle state
-        updateSubmitButton('idle', submitBtn);
+    if (!_isBgFinally) {
+      // Reset button to idle state
+      updateSubmitButton('idle', submitBtn);
 
-        // Re-enable message input; on mobile blur to dismiss keyboard
-        if (messageInput) {
-          messageInput.disabled = false;
-          if (window.innerWidth <= 768) {
-            messageInput.blur();
-          } else {
-            messageInput.focus();
-          }
+      // Re-enable message input; on mobile blur to dismiss keyboard
+      if (messageInput) {
+        messageInput.disabled = false;
+        if (window.innerWidth <= 768) {
+          messageInput.blur();
+        } else {
+          messageInput.focus();
         }
-
-        // Clear tracking variables
-        currentAccumulated = '';
-        currentHolder = null;
-        currentSpinner = null;
-        _researchingStreamIds.delete(streamSessionId);
-        // Clear research-running highlight if no more active research
-        if (_researchingStreamIds.size === 0) {
-          var _rToggle2 = document.getElementById('research-toggle-btn');
-          if (_rToggle2) _rToggle2.classList.remove('research-running');
-        }
-        _clearResearchTimer();
-
-        // Re-enable research button and auto-untoggle after use
-        // (skip if clarification round — keep toggle on for follow-up)
-        const _el = uiModule.el;
-        const _researchBtn = _el('research-toggle-btn');
-        const _researchToggle = _el('research-toggle');
-        if (_researchToggle && _researchToggle.checked) {
-          _researchToggle.checked = false;
-          Storage.setToggle('research', false);
-        }
-        if (_researchBtn) {
-          _researchBtn.disabled = false;
-          _researchBtn.classList.remove('active');
-          _researchBtn.style.display = 'none';
-        }
-        // Also sync overflow and tool sidebar buttons
-        const _overflowRes = _el('overflow-research-btn');
-        if (_overflowRes) _overflowRes.classList.remove('active');
-        const _toolRes = _el('tool-research-btn');
-        if (_toolRes) _toolRes.classList.remove('active');
-
       }
 
-      // Research clarification timeout — if user doesn't reply within 5 min, show timeout
-      if (holder && holder._roleSuffix === 'Research' && !_researchingStreamIds.has(streamSessionId)) {
-        var _timeoutSessionId = streamSessionId;
-        var _timeoutTimer = setTimeout(async function() {
+      // Clear tracking variables
+      currentAccumulated = '';
+      currentHolder = null;
+      currentSpinner = null;
+      _researchingStreamIds.delete(streamSessionId);
+      // Clear research-running highlight if no more active research
+      if (_researchingStreamIds.size === 0) {
+        var _rToggle2 = document.getElementById('research-toggle-btn');
+        if (_rToggle2) _rToggle2.classList.remove('research-running');
+      }
+      _clearResearchTimer();
+
+      // Re-enable research button and auto-untoggle after use
+      // (skip if clarification round — keep toggle on for follow-up)
+      const _el = uiModule.el;
+      const _researchBtn = _el('research-toggle-btn');
+      const _researchToggle = _el('research-toggle');
+      if (_researchToggle && _researchToggle.checked) {
+        _researchToggle.checked = false;
+        Storage.setToggle('research', false);
+      }
+      if (_researchBtn) {
+        _researchBtn.disabled = false;
+        _researchBtn.classList.remove('active');
+        _researchBtn.style.display = 'none';
+      }
+      // Also sync overflow and tool sidebar buttons
+      const _overflowRes = _el('overflow-research-btn');
+      if (_overflowRes) _overflowRes.classList.remove('active');
+      const _toolRes = _el('tool-research-btn');
+      if (_toolRes) _toolRes.classList.remove('active');
+    }
+
+    // Research clarification timeout — if user doesn't reply within 5 min, show timeout
+    if (
+      holder &&
+      holder._roleSuffix === 'Research' &&
+      !_researchingStreamIds.has(streamSessionId)
+    ) {
+      var _timeoutSessionId = streamSessionId;
+      var _timeoutTimer = setTimeout(
+        async function () {
           // Check if research_pending is still active (user hasn't replied)
           try {
             var _box = document.getElementById('chat-history');
-            if (_box && sessionModule.getCurrentSessionId() === _timeoutSessionId) {
+            if (
+              _box &&
+              sessionModule.getCurrentSessionId() === _timeoutSessionId
+            ) {
               var _timeoutMsg = document.createElement('div');
               _timeoutMsg.className = 'msg msg-ai';
-              _timeoutMsg.innerHTML = '<div class="role">Odysseus</div><div class="body" style="opacity:0.6;font-style:italic;">Research clarification timed out. Toggle research again to start over.</div>';
+              _timeoutMsg.innerHTML =
+                '<div class="role">Odysseus</div><div class="body" style="opacity:0.6;font-style:italic;">Research clarification timed out. Toggle research again to start over.</div>';
               _box.appendChild(_timeoutMsg);
               uiModule.scrollHistory();
             }
-          } catch(_te) {}
-        }, 5 * 60 * 1000);
-        // Cancel timeout if user sends a message
-        var _origSubmit = window._researchTimeoutTimer;
-        if (_origSubmit) clearTimeout(_origSubmit);
-        window._researchTimeoutTimer = _timeoutTimer;
-      }
+          } catch (_te) {}
+        },
+        5 * 60 * 1000,
+      );
+      // Cancel timeout if user sends a message
+      var _origSubmit = window._researchTimeoutTimer;
+      if (_origSubmit) clearTimeout(_origSubmit);
+      window._researchTimeoutTimer = _timeoutTimer;
+    }
 
-      // Release Web Lock
-      if (_webLockRelease) {
-        _webLockRelease();
-        _webLockRelease = null;
-      }
+    // Release Web Lock
+    if (_webLockRelease) {
+      _webLockRelease();
+      _webLockRelease = null;
+    }
 
       // Refresh session list after a delay (picks up auto-generated names)
       setTimeout(() => {
@@ -3283,182 +3759,219 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     }
   }
 
-  /**
-   * Abort current chat request
-   */
-  // stopServer=true ONLY for an explicit user Stop. The run is now DETACHED
-  // (survives tab close / navigation), so the generic abort used by cleanup
-  // paths (session switch, delete, reader teardown on tab close) must NOT stop
-  // the server run — otherwise closing the tab would kill the background task,
-  // defeating the whole point. Only the Stop button cancels the server run.
-  export function abortCurrentRequest(stopServer = false) {
-    if (currentAbort) {
-      currentAbort.abort();
-      // Don't set to null here - let catch block handle it
-    }
-    if (stopServer) {
-      try {
-        const _sid = _streamSessionId
-          || (window.sessionModule && window.sessionModule.getCurrentSessionId && window.sessionModule.getCurrentSessionId());
-        if (_sid) {
-          fetch(`/api/chat/stop/${encodeURIComponent(_sid)}`, { method: 'POST', credentials: 'same-origin' }).catch(() => {});
-        }
-      } catch (_) {}
-    }
+/**
+ * Abort current chat request
+ */
+// stopServer=true ONLY for an explicit user Stop. The run is now DETACHED
+// (survives tab close / navigation), so the generic abort used by cleanup
+// paths (session switch, delete, reader teardown on tab close) must NOT stop
+// the server run — otherwise closing the tab would kill the background task,
+// defeating the whole point. Only the Stop button cancels the server run.
+export function abortCurrentRequest(stopServer = false) {
+  if (currentAbort) {
+    currentAbort.abort();
+    // Don't set to null here - let catch block handle it
   }
-
-  // ── Stall watchdog ──────────────────────────────────────────────
-  // Auto-recover a turn whose stream died (connection drop) or went silent:
-  // preserve the partial, then re-submit a completion handshake by reusing the
-  // existing continue/resume path. Returns false at the cap so the caller can
-  // surface the failure instead of nudging forever.
-  // Only auto-recover from connection-class failures (the genuine "silently
-  // died" case). Deterministic errors — unsupported tools, HTTP 4xx/5xx, JSON
-  // parse failures — will fail identically on retry, so surfacing them
-  // immediately is both more honest and avoids wasting the nudge budget.
-  function _isRecoverableStreamErr(err) {
-    if (!err) return false;
-    if (err.name === 'TypeError') return true;   // fetch/reader network failure
-    const m = (err.message || '').toLowerCase();
-    if (/\btool\b|unsupported|json|parse|\b4\d\d\b|\b5\d\d\b/.test(m)) return false;
-    return /network|fetch|connection|reset|closed|aborted|stream|tim(?:e|ed)\s?out|econn|eof/.test(m);
+  if (stopServer) {
+    try {
+      const _sid =
+        _streamSessionId ||
+        (window.sessionModule &&
+          window.sessionModule.getCurrentSessionId &&
+          window.sessionModule.getCurrentSessionId());
+      if (_sid) {
+        fetch(`/api/chat/stop/${encodeURIComponent(_sid)}`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        }).catch(() => {});
+      }
+    } catch (_) {}
   }
+}
 
-  function _tryAutoRecover(holder, accumulated, sessionId) {
-    if (_autoNudges >= _AUTO_NUDGE_CAP) return false;
-    _autoNudges++;
-    if (holder && accumulated) {
-      holder.dataset.raw = accumulated;
-      try {
-        holder.querySelector('.body').innerHTML =
-          markdownModule.processWithThinking(markdownModule.squashOutsideCode(accumulated));
-      } catch (_) {}
+// ── Stall watchdog ──────────────────────────────────────────────
+// Auto-recover a turn whose stream died (connection drop) or went silent:
+// preserve the partial, then re-submit a completion handshake by reusing the
+// existing continue/resume path. Returns false at the cap so the caller can
+// surface the failure instead of nudging forever.
+// Only auto-recover from connection-class failures (the genuine "silently
+// died" case). Deterministic errors — unsupported tools, HTTP 4xx/5xx, JSON
+// parse failures — will fail identically on retry, so surfacing them
+// immediately is both more honest and avoids wasting the nudge budget.
+function _isRecoverableStreamErr(err) {
+  if (!err) return false;
+  if (err.name === 'TypeError') return true; // fetch/reader network failure
+  const m = (err.message || '').toLowerCase();
+  if (/\btool\b|unsupported|json|parse|\b4\d\d\b|\b5\d\d\b/.test(m))
+    return false;
+  return /network|fetch|connection|reset|closed|aborted|stream|tim(?:e|ed)\s?out|econn|eof/.test(
+    m,
+  );
+}
+
+function _tryAutoRecover(holder, accumulated, sessionId) {
+  if (_autoNudges >= _AUTO_NUDGE_CAP) return false;
+  _autoNudges++;
+  if (holder && accumulated) {
+    holder.dataset.raw = accumulated;
+    try {
+      holder.querySelector('.body').innerHTML =
+        markdownModule.processWithThinking(
+          markdownModule.squashOutsideCode(accumulated),
+        );
+    } catch (_) {}
+  }
+  _pendingContinue = holder || null; // merge the continuation into the same bubble
+  _hideUserBubble = true; // no user bubble for the handshake
+  _autoContinuePending = true; // don't reset the counter on this submit
+  const _abandon = () => {
+    // clear the pending flags so they can't
+    _pendingContinue = null; // leak into whatever chat is now open
+    _hideUserBubble = false;
+    _autoContinuePending = false;
+  };
+  // Defer so the stream's finally resets state first — otherwise the send
+  // button is still in "stop" mode and clicking it would toggle, not send.
+  setTimeout(() => {
+    // The stream that died may not be the chat the user is now looking at —
+    // never inject the recovery handshake into the wrong conversation.
+    if (sessionId && sessionModule.getCurrentSessionId() !== sessionId) {
+      _abandon();
+      return;
     }
-    _pendingContinue = holder || null;   // merge the continuation into the same bubble
-    _hideUserBubble = true;              // no user bubble for the handshake
-    _autoContinuePending = true;         // don't reset the counter on this submit
-    const _abandon = () => {             // clear the pending flags so they can't
-      _pendingContinue = null;           // leak into whatever chat is now open
-      _hideUserBubble = false;
-      _autoContinuePending = false;
-    };
-    // Defer so the stream's finally resets state first — otherwise the send
-    // button is still in "stop" mode and clicking it would toggle, not send.
-    setTimeout(() => {
-      // The stream that died may not be the chat the user is now looking at —
-      // never inject the recovery handshake into the wrong conversation.
-      if (sessionId && sessionModule.getCurrentSessionId() !== sessionId) { _abandon(); return; }
-      const msgInput = uiModule.el('message');
+    const msgInput = uiModule.el('message');
+    const sb = document.querySelector('.send-btn');
+    if (!msgInput || !sb) {
+      _abandon();
+      return;
+    }
+    const tail = (accumulated || '').slice(-400);
+    msgInput.value = tail
+      ? `The stream dropped before you finished. It ended with:\n\n${tail}\n\nIf the task is fully complete, reply with just: DONE. Otherwise continue exactly where you left off and finish it — do not repeat what you already wrote.`
+      : `The stream dropped before you produced anything. If the task is already done, reply with just: DONE. Otherwise complete it now.`;
+    sb.click();
+  }, 200);
+  return true;
+}
+
+function _removeStallBanner() {
+  const b = document.getElementById('stall-banner');
+  if (b) b.remove();
+  _stallBannerShown = false;
+}
+function _showStallBanner(secs) {
+  if (document.getElementById('stall-banner')) return;
+  _stallBannerShown = true;
+  const box = document.getElementById('chat-history');
+  if (!box) return;
+  const bar = document.createElement('div');
+  bar.id = 'stall-banner';
+  bar.className = 'stall-banner';
+  const mins = Math.floor(secs / 60);
+  const label = mins >= 1 ? `${mins}m` : `${secs}s`;
+  bar.innerHTML = `<span class="stall-banner-txt">Quiet for ${label} — still working?</span>`;
+  const cont = document.createElement('button');
+  cont.className = 'stall-banner-btn';
+  cont.textContent = 'Nudge it';
+  cont.title = 'Stop the stalled stream and ask it to continue';
+  cont.addEventListener('click', () => {
+    _removeStallBanner();
+    const mi = uiModule.el('message');
+    if (mi) {
+      mi.value =
+        'Are you still working? If you stopped, continue exactly where you left off and finish the task.';
       const sb = document.querySelector('.send-btn');
-      if (!msgInput || !sb) { _abandon(); return; }
-      const tail = (accumulated || '').slice(-400);
-      msgInput.value = tail
-        ? `The stream dropped before you finished. It ended with:\n\n${tail}\n\nIf the task is fully complete, reply with just: DONE. Otherwise continue exactly where you left off and finish it — do not repeat what you already wrote.`
-        : `The stream dropped before you produced anything. If the task is already done, reply with just: DONE. Otherwise complete it now.`;
-      sb.click();
-    }, 200);
-    return true;
-  }
-
-  function _removeStallBanner() {
-    const b = document.getElementById('stall-banner');
-    if (b) b.remove();
-    _stallBannerShown = false;
-  }
-  function _showStallBanner(secs) {
-    if (document.getElementById('stall-banner')) return;
-    _stallBannerShown = true;
-    const box = document.getElementById('chat-history');
-    if (!box) return;
-    const bar = document.createElement('div');
-    bar.id = 'stall-banner';
-    bar.className = 'stall-banner';
-    const mins = Math.floor(secs / 60);
-    const label = mins >= 1 ? `${mins}m` : `${secs}s`;
-    bar.innerHTML = `<span class="stall-banner-txt">Quiet for ${label} — still working?</span>`;
-    const cont = document.createElement('button');
-    cont.className = 'stall-banner-btn';
-    cont.textContent = 'Nudge it';
-    cont.title = 'Stop the stalled stream and ask it to continue';
-    cont.addEventListener('click', () => {
-      _removeStallBanner();
-      const mi = uiModule.el('message');
-      if (mi) {
-        mi.value = 'Are you still working? If you stopped, continue exactly where you left off and finish the task.';
-        const sb = document.querySelector('.send-btn');
-        if (sb) sb.click();
-      }
-    });
-    const stop = document.createElement('button');
-    stop.className = 'stall-banner-btn stall-banner-stop';
-    stop.textContent = 'Stop';
-    stop.addEventListener('click', () => { _removeStallBanner(); abortCurrentRequest(true); });
-    bar.appendChild(cont);
-    bar.appendChild(stop);
-    box.appendChild(bar);
-    if (uiModule.scrollHistory) uiModule.scrollHistory();
-  }
-  function _startStallWatchdog() {
-    // Disabled: the server-side stall detector / auto-continue (agent
-    // loop-breaker) handles quiet/stalled streams now, so the manual
-    // "Quiet for Nm — still working?" banner is redundant (and annoying).
-    if (_stallWatchdog) { clearInterval(_stallWatchdog); _stallWatchdog = null; }
-    _removeStallBanner();
-  }
-  function _stopStallWatchdog() {
-    if (_stallWatchdog) { clearInterval(_stallWatchdog); _stallWatchdog = null; }
-    _removeStallBanner();
-  }
-
-  /** Show a "Cancelled by user" record in `holder` and persist an empty
-   *  assistant placeholder server-side so the turn survives a refresh.
-   *  Called from both abort paths when no tokens had streamed yet. */
-  function _renderCancelledBubble(holder) {
-    if (!holder) return;
-    holder.dataset.raw = '';
-    const body = holder.querySelector('.body');
-    if (body) {
-      body.innerHTML = '';
-      const indicator = document.createElement('div');
-      indicator.className = 'stopped-indicator';
-      const label = document.createElement('span');
-      label.style.fontStyle = 'italic';
-      label.style.opacity = '0.7';
-      label.textContent = '[Cancelled by user]';
-      indicator.appendChild(label);
-      body.appendChild(indicator);
+      if (sb) sb.click();
     }
-    if (typeof createMsgFooter === 'function' && !holder.querySelector('.msg-footer')) {
-      holder.appendChild(createMsgFooter(holder));
+  });
+  const stop = document.createElement('button');
+  stop.className = 'stall-banner-btn stall-banner-stop';
+  stop.textContent = 'Stop';
+  stop.addEventListener('click', () => {
+    _removeStallBanner();
+    abortCurrentRequest(true);
+  });
+  bar.appendChild(cont);
+  bar.appendChild(stop);
+  box.appendChild(bar);
+  if (uiModule.scrollHistory) uiModule.scrollHistory();
+}
+function _startStallWatchdog() {
+  // Disabled: the server-side stall detector / auto-continue (agent
+  // loop-breaker) handles quiet/stalled streams now, so the manual
+  // "Quiet for Nm — still working?" banner is redundant (and annoying).
+  if (_stallWatchdog) {
+    clearInterval(_stallWatchdog);
+    _stallWatchdog = null;
+  }
+  _removeStallBanner();
+}
+function _stopStallWatchdog() {
+  if (_stallWatchdog) {
+    clearInterval(_stallWatchdog);
+    _stallWatchdog = null;
+  }
+  _removeStallBanner();
+}
+
+/** Show a "Cancelled by user" record in `holder` and persist an empty
+ *  assistant placeholder server-side so the turn survives a refresh.
+ *  Called from both abort paths when no tokens had streamed yet. */
+function _renderCancelledBubble(holder) {
+  if (!holder) return;
+  holder.dataset.raw = '';
+  const body = holder.querySelector('.body');
+  if (body) {
+    body.innerHTML = '';
+    const indicator = document.createElement('div');
+    indicator.className = 'stopped-indicator';
+    const label = document.createElement('span');
+    label.style.fontStyle = 'italic';
+    label.style.opacity = '0.7';
+    label.textContent = '[Cancelled by user]';
+    indicator.appendChild(label);
+    body.appendChild(indicator);
+  }
+  if (
+    typeof createMsgFooter === 'function' &&
+    !holder.querySelector('.msg-footer')
+  ) {
+    holder.appendChild(createMsgFooter(holder));
+  }
+  // Persist as an assistant message with stopped+cancelled metadata so the
+  // chat-history loader renders the same indicator after a refresh.
+  // Include the model name so the bubble header still shows which model
+  // was running when the user hit Stop.
+  const sid = sessionModule.getCurrentSessionId();
+  if (sid) {
+    let modelName = '';
+    try {
+      modelName = sessionModule.getCurrentModel?.() || '';
+    } catch {}
+    // Fallback: pull from the holder's existing meta (the streaming
+    // placeholder usually has the model set in the header already).
+    if (!modelName) {
+      modelName =
+        holder.dataset.model ||
+        holder.querySelector('.msg-header .msg-model')?.textContent ||
+        '';
     }
-    // Persist as an assistant message with stopped+cancelled metadata so the
-    // chat-history loader renders the same indicator after a refresh.
-    // Include the model name so the bubble header still shows which model
-    // was running when the user hit Stop.
-    const sid = sessionModule.getCurrentSessionId();
-    if (sid) {
-      let modelName = '';
-      try { modelName = sessionModule.getCurrentModel?.() || ''; } catch {}
-      // Fallback: pull from the holder's existing meta (the streaming
-      // placeholder usually has the model set in the header already).
-      if (!modelName) {
-        modelName = holder.dataset.model
-          || holder.querySelector('.msg-header .msg-model')?.textContent
-          || '';
-      }
-      fetch(`${API_BASE}/api/session/${sid}/inject_messages`, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{
+    fetch(`${API_BASE}/api/session/${sid}/inject_messages`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          {
             role: 'assistant',
             content: '',
             metadata: { stopped: true, cancelled: true, model: modelName },
-          }],
-        }),
-      }).catch(() => {});
-    }
+          },
+        ],
+      }),
+    }).catch(() => {});
   }
+}
 
   /**
    * Detach current stream to run in background instead of aborting.
@@ -3495,56 +4008,63 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     if (submitBtn) updateSubmitButton('idle', submitBtn);
   }
 
-  // _notifyStreamComplete and _insertStreamDoneToast now in chatStream.js
-  var _notifyStreamComplete = chatStream.notifyStreamComplete;
-  var _insertStreamDoneToast = chatStream.insertStreamDoneToast;
+// _notifyStreamComplete and _insertStreamDoneToast now in chatStream.js
+var _notifyStreamComplete = chatStream.notifyStreamComplete;
+var _insertStreamDoneToast = chatStream.insertStreamDoneToast;
 
-  /**
-   * Live-resume a chat run still streaming detached on the server (#2539).
-   *
-   * On session re-entry, GET /api/chat/resume/{id} replays the run's buffer then
-   * streams live; reply tokens render as they arrive. On completion a plain text
-   * reply is finalized in place (canonical bubble via chatRenderer.addMessage, no
-   * reload); a "rich" reply (tool calls, sources, doc streaming, multi-round) is
-   * reloaded from the DB so its full render stays faithful. Returns true if it
-   * attached, false to let the caller fall back to spinner+poll.
-   */
-  export async function resumeStream(sessionId) {
-    if (!sessionId) return false;
-    if (hasActiveStream(sessionId)) return false;
+/**
+ * Live-resume a chat run still streaming detached on the server (#2539).
+ *
+ * On session re-entry, GET /api/chat/resume/{id} replays the run's buffer then
+ * streams live; reply tokens render as they arrive. On completion a plain text
+ * reply is finalized in place (canonical bubble via chatRenderer.addMessage, no
+ * reload); a "rich" reply (tool calls, sources, doc streaming, multi-round) is
+ * reloaded from the DB so its full render stays faithful. Returns true if it
+ * attached, false to let the caller fall back to spinner+poll.
+ */
+export async function resumeStream(sessionId) {
+  if (!sessionId) return false;
+  if (hasActiveStream(sessionId)) return false;
 
-    let res;
-    try {
-      res = await fetch(`${API_BASE}/api/chat/resume/${sessionId}`);
-    } catch (e) {
-      return false;
-    }
-    if (!res.ok || !res.body) return false;
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/chat/resume/${sessionId}`);
+  } catch (e) {
+    return false;
+  }
+  if (!res.ok || !res.body) return false;
 
-    const box = document.getElementById('chat-history');
-    if (!box) return false;
+  const box = document.getElementById('chat-history');
+  if (!box) return false;
 
-    // Block duplicate re-attach attempts while this reader is live. A dedicated
-    // set (not _backgroundStreams) so checkBackgroundStream doesn't mistake this
-    // for a same-tab POST stream and spawn its own spinner+poll on re-entry.
-    _resumingStreams.add(sessionId);
+  // Block duplicate re-attach attempts while this reader is live. A dedicated
+  // set (not _backgroundStreams) so checkBackgroundStream doesn't mistake this
+  // for a same-tab POST stream and spawn its own spinner+poll on re-entry.
+  _resumingStreams.add(sessionId);
 
-    const holder = document.createElement('div');
-    holder.className = 'msg msg-ai';
-    const meta = sessionModule.getSessions().find(s => s.id === sessionId);
-    const roleLabel = _shortModel(meta && meta.model);
-    const roleTs = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    holder.innerHTML = '<div class="role">' + uiModule.esc(roleLabel) +
-      ' <span class="role-timestamp">' + roleTs + '</span></div>' +
-      '<div class="body"><div class="stream-content"></div></div>';
-    _applyModelColor(holder.querySelector('.role'), meta && meta.model);
-    const contentDiv = holder.querySelector('.stream-content');
-    box.appendChild(holder);
+  const holder = document.createElement('div');
+  holder.className = 'msg msg-ai';
+  const meta = sessionModule.getSessions().find((s) => s.id === sessionId);
+  const roleLabel = shortModel(meta && meta.model);
+  const roleTs = new Date().toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  holder.innerHTML =
+    '<div class="role">' +
+    uiModule.esc(roleLabel) +
+    ' <span class="role-timestamp">' +
+    roleTs +
+    '</span></div>' +
+    '<div class="body"><div class="stream-content"></div></div>';
+  _applyModelColor(holder.querySelector('.role'), meta && meta.model);
+  const contentDiv = holder.querySelector('.stream-content');
+  box.appendChild(holder);
 
-    const spinner = spinnerModule.create('Generating response...', 'right');
-    holder.querySelector('.body').appendChild(spinner.createElement());
-    spinner.start();
-    uiModule.scrollHistory();
+  const spinner = spinnerModule.create('Generating response...', 'right');
+  holder.querySelector('.body').appendChild(spinner.createElement());
+  spinner.start();
+  uiModule.scrollHistory();
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -3559,10 +4079,12 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     // Plain text replies can be finalized in place without a reload.
     let rich = false;
 
-    const cleanup = () => {
-      try { spinner.destroy(); } catch (_) {}
-      _resumingStreams.delete(sessionId);
-    };
+  const cleanup = () => {
+    try {
+      spinner.destroy();
+    } catch (_) {}
+    _resumingStreams.delete(sessionId);
+  };
 
     const renderDelta = () => {
       const dt = markdownModule.normalizeThinkingMarkup(stripToolBlocks(_stripDocumentFenceForChat(roundText, { final: docFenceOpened })));
@@ -3632,20 +4154,23 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     if (docFenceOpened) _finishDocumentWritingStatus(holder, true);
     if (leftSession) { if (holder.parentNode) holder.remove(); return true; }
 
-    const onThisSession = sessionModule.getCurrentSessionId &&
-                          sessionModule.getCurrentSessionId() === sessionId;
+  const onThisSession =
+    sessionModule.getCurrentSessionId &&
+    sessionModule.getCurrentSessionId() === sessionId;
 
-    // Plain text reply: finalize in place. Replace the live bubble with a
-    // canonical single message (markdown + footer actions + metrics) using the
-    // same renderer history does. No history refetch, no end-of-stream flicker.
-    if (onThisSession && !rich && roundText.trim()) {
-      if (holder.parentNode) holder.remove();
-      const model = meta && meta.model;
-      const meta_ = metricsData ? Object.assign({ model }, metricsData) : { model };
-      chatRenderer.addMessage('assistant', roundText, model, meta_);
-      uiModule.scrollHistory();
-      return true;
-    }
+  // Plain text reply: finalize in place. Replace the live bubble with a
+  // canonical single message (markdown + footer actions + metrics) using the
+  // same renderer history does. No history refetch, no end-of-stream flicker.
+  if (onThisSession && !rich && roundText.trim()) {
+    if (holder.parentNode) holder.remove();
+    const model = meta && meta.model;
+    const meta_ = metricsData
+      ? Object.assign({ model }, metricsData)
+      : { model };
+    chatRenderer.addMessage('assistant', roundText, model, meta_);
+    uiModule.scrollHistory();
+    return true;
+  }
 
     // Rich response (tools, sources, docs, multi-round) or user moved on:
     // reload from the DB for the full canonical render.
@@ -3656,231 +4181,264 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     return true;
   }
 
-  /**
-   * Check for background streams when switching to a session.
-   * Called after history loads on session switch.
-   */
-  export function checkBackgroundStream(sessionId) {
-    if (!sessionId || !_backgroundStreams.has(sessionId)) return;
-    var entry = _backgroundStreams.get(sessionId);
+/**
+ * Check for background streams when switching to a session.
+ * Called after history loads on session switch.
+ */
+export function checkBackgroundStream(sessionId) {
+  if (!sessionId || !_backgroundStreams.has(sessionId)) return;
+  var entry = _backgroundStreams.get(sessionId);
 
-    if (entry.status === 'completed') {
-      // Response is already saved to DB and will appear in history — just clean up
-      _backgroundStreams.delete(sessionId);
-      return;
-    }
-
-    if (entry.status === 'error') {
-      _backgroundStreams.delete(sessionId);
-      var box = document.getElementById('chat-history');
-      if (box) {
-        var errHolder = document.createElement('div');
-        errHolder.className = 'msg msg-ai';
-        errHolder.innerHTML = '<div class="body"><i style="color: var(--color-error);">[Background stream encountered an error]</i></div>';
-        box.appendChild(errHolder);
-      }
-      return;
-    }
-
-    if (entry.status === 'running') {
-      // Stream is still active — show a clean spinner, poll until done,
-      // then reload history to show the final saved response.
-      var box = document.getElementById('chat-history');
-      if (!box) return;
-
-      // Replay any doc content that was streamed in the background
-      if (entry._docTitle != null && documentModule) {
-        documentModule.streamDocOpen(entry._docTitle, entry._docLang || '');
-        if (entry._docContent) {
-          documentModule.streamDocDelta(entry._docContent);
-        }
-      }
-
-      var holder = document.createElement('div');
-      holder.className = 'msg msg-ai';
-      var meta = sessionModule.getSessions().find(function(s) { return s.id === sessionId; });
-      var roleLabel = _shortModel(meta && meta.model);
-      var roleTs = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      holder.innerHTML = '<div class="role">' + uiModule.esc(roleLabel) + ' <span class="role-timestamp">' + roleTs + '</span></div><div class="body"></div>';
-      _applyModelColor(holder.querySelector('.role'), meta && meta.model);
-
-      var bodyDiv = holder.querySelector('.body');
-      var spinner = spinnerModule.create('Response streaming in background', 'right');
-      bodyDiv.appendChild(spinner.createElement());
-      spinner.start();
-
-      box.appendChild(holder);
-      uiModule.scrollHistory();
-
-      // Poll map until stream finishes, then reload history
-      var pollId = setInterval(function() {
-        if (sessionModule.getCurrentSessionId() !== sessionId) {
-          clearInterval(pollId);
-          spinner.destroy();
-          if (holder.parentNode) holder.remove();
-          return;
-        }
-        // Update doc content while polling
-        var curPoll = _backgroundStreams.get(sessionId);
-        if (curPoll && curPoll._docContent && documentModule) {
-          documentModule.streamDocDelta(curPoll._docContent);
-        }
-        if (!curPoll || curPoll.status !== 'running') {
-          clearInterval(pollId);
-          spinner.destroy();
-          if (holder.parentNode) holder.remove(); // Remove entire holder, not just spinner
-          _backgroundStreams.delete(sessionId);
-          // Reload session to show the completed response — but only if the user
-          // is still on it; don't yank them back from a new chat they opened.
-          if (sessionModule.getCurrentSessionId && sessionModule.getCurrentSessionId() === sessionId) {
-            sessionModule.selectSession(sessionId);
-          } else {
-            sessionModule.loadSessions();
-          }
-        }
-      }, 500);
-    }
+  if (entry.status === 'completed') {
+    // Response is already saved to DB and will appear in history — just clean up
+    _backgroundStreams.delete(sessionId);
+    return;
   }
 
-  // Tag short single-line code blocks with .pre-compact so the CSS can
-  // render the Run/Edit/Copy buttons as a slim row that doesn't make a
-  // 1-line bash block taller than its own contents.
-  function _markCompactPre(pre) {
-    const code = pre.querySelector('code');
-    if (!code) return;
-    const txt = code.textContent || '';
-    // Count visible lines — ignore trailing newline (common with fenced
-    // blocks) and treat any empty extra line as not a real second line.
-    const lines = txt.replace(/\n+$/, '').split('\n');
-    const compact = lines.length <= 1 && txt.length < 200;
-    pre.classList.toggle('pre-compact', compact);
+  if (entry.status === 'error') {
+    _backgroundStreams.delete(sessionId);
+    var box = document.getElementById('chat-history');
+    if (box) {
+      var errHolder = document.createElement('div');
+      errHolder.className = 'msg msg-ai';
+      errHolder.innerHTML =
+        '<div class="body"><i style="color: var(--color-error);">[Background stream encountered an error]</i></div>';
+      box.appendChild(errHolder);
+    }
+    return;
   }
-  function _scanCompactPres(root) {
-    if (!root || !root.querySelectorAll) return;
-    root.querySelectorAll('pre').forEach(_markCompactPre);
-  }
-  // Global observer so any <pre> added anywhere in the app (chat stream,
-  // chat re-renders, document library chat previews, slash commands,
-  // research previews, etc.) gets tagged without each call site needing
-  // to remember.
-  (function _initCompactPreObserver() {
-    if (window._cmpPreObserverWired) return;
-    window._cmpPreObserverWired = true;
-    _scanCompactPres(document.body);
-    const obs = new MutationObserver((muts) => {
-      for (const m of muts) {
-        for (const n of m.addedNodes) {
-          if (n.nodeType !== 1) continue;
-          if (n.tagName === 'PRE') _markCompactPre(n);
-          if (n.querySelectorAll) _scanCompactPres(n);
+
+  if (entry.status === 'running') {
+    // Stream is still active — show a clean spinner, poll until done,
+    // then reload history to show the final saved response.
+    var box = document.getElementById('chat-history');
+    if (!box) return;
+
+    // Replay any doc content that was streamed in the background
+    if (entry._docTitle != null && documentModule) {
+      documentModule.streamDocOpen(entry._docTitle, entry._docLang || '');
+      if (entry._docContent) {
+        documentModule.streamDocDelta(entry._docContent);
+      }
+    }
+
+    var holder = document.createElement('div');
+    holder.className = 'msg msg-ai';
+    var meta = sessionModule.getSessions().find(function (s) {
+      return s.id === sessionId;
+    });
+    var roleLabel = shortModel(meta && meta.model);
+    var roleTs = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    holder.innerHTML =
+      '<div class="role">' +
+      uiModule.esc(roleLabel) +
+      ' <span class="role-timestamp">' +
+      roleTs +
+      '</span></div><div class="body"></div>';
+    _applyModelColor(holder.querySelector('.role'), meta && meta.model);
+
+    var bodyDiv = holder.querySelector('.body');
+    var spinner = spinnerModule.create(
+      'Response streaming in background',
+      'right',
+    );
+    bodyDiv.appendChild(spinner.createElement());
+    spinner.start();
+
+    box.appendChild(holder);
+    uiModule.scrollHistory();
+
+    // Poll map until stream finishes, then reload history
+    var pollId = setInterval(function () {
+      if (sessionModule.getCurrentSessionId() !== sessionId) {
+        clearInterval(pollId);
+        spinner.destroy();
+        if (holder.parentNode) holder.remove();
+        return;
+      }
+      // Update doc content while polling
+      var curPoll = _backgroundStreams.get(sessionId);
+      if (curPoll && curPoll._docContent && documentModule) {
+        documentModule.streamDocDelta(curPoll._docContent);
+      }
+      if (!curPoll || curPoll.status !== 'running') {
+        clearInterval(pollId);
+        spinner.destroy();
+        if (holder.parentNode) holder.remove(); // Remove entire holder, not just spinner
+        _backgroundStreams.delete(sessionId);
+        // Reload session to show the completed response — but only if the user
+        // is still on it; don't yank them back from a new chat they opened.
+        if (
+          sessionModule.getCurrentSessionId &&
+          sessionModule.getCurrentSessionId() === sessionId
+        ) {
+          sessionModule.selectSession(sessionId);
+        } else {
+          sessionModule.loadSessions();
         }
       }
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-  })();
+    }, 500);
+  }
+}
 
-  /**
-   * Initialize event listeners
-   */
-  export function initListeners() {
-    // Global event delegation for copy-code buttons
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('.copy-code');
-      if (!btn) return;
-      e.stopPropagation();
-      const code = btn.getAttribute('data-code');
-      if (code && uiModule) {
-        uiModule.copyToClipboard(code);
-        // Visual feedback: swap the icon to a checkmark (regular size)
-        // and add .copied which the CSS uses to flash green + pulse.
-        // For slim/.pre-compact buttons the label text comes from a
-        // CSS ::before — swap it via data-state so we don't break the
-        // text-button layout.
-        const origHTML = btn.innerHTML;
-        const isCompact = !!btn.closest('pre.pre-compact');
-        if (!isCompact) {
-          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-        }
-        btn.classList.add('copied');
-        btn.dataset.state = 'copied';
-        setTimeout(() => {
-          if (!isCompact) btn.innerHTML = origHTML;
-          btn.classList.remove('copied');
-          delete btn.dataset.state;
-        }, 1500);
+// Tag short single-line code blocks with .pre-compact so the CSS can
+// render the Run/Edit/Copy buttons as a slim row that doesn't make a
+// 1-line bash block taller than its own contents.
+function _markCompactPre(pre) {
+  const code = pre.querySelector('code');
+  if (!code) return;
+  const txt = code.textContent || '';
+  // Count visible lines — ignore trailing newline (common with fenced
+  // blocks) and treat any empty extra line as not a real second line.
+  const lines = txt.replace(/\n+$/, '').split('\n');
+  const compact = lines.length <= 1 && txt.length < 200;
+  pre.classList.toggle('pre-compact', compact);
+}
+function _scanCompactPres(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('pre').forEach(_markCompactPre);
+}
+// Global observer so any <pre> added anywhere in the app (chat stream,
+// chat re-renders, document library chat previews, slash commands,
+// research previews, etc.) gets tagged without each call site needing
+// to remember.
+(function _initCompactPreObserver() {
+  if (window._cmpPreObserverWired) return;
+  window._cmpPreObserverWired = true;
+  _scanCompactPres(document.body);
+  const obs = new MutationObserver((muts) => {
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        if (n.tagName === 'PRE') _markCompactPre(n);
+        if (n.querySelectorAll) _scanCompactPres(n);
       }
-    });
+    }
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+})();
 
-    // Run code button delegation
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('.run-code');
-      if (!btn) return;
-      e.stopPropagation();
-      if (codeRunnerModule) codeRunnerModule.run(btn);
-    });
-
-    // Edit code button delegation — toggle contentEditable on the code element
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('.edit-code');
-      if (!btn) return;
-      e.stopPropagation();
-      const pre = btn.closest('pre');
-      if (!pre) return;
-      const codeEl = pre.querySelector('code');
-      if (!codeEl) return;
-      const isEditing = codeEl.contentEditable !== 'false' && codeEl.contentEditable !== 'inherit';
-      if (isEditing) {
-        // Save: exit edit mode, update data-code on copy/run buttons
-        codeEl.contentEditable = 'false';
-        codeEl.classList.remove('editing');
-        pre.classList.remove('editing');
-        const newCode = codeEl.textContent;
-        const copyBtn = pre.querySelector('.copy-code');
-        if (copyBtn) copyBtn.setAttribute('data-code', newCode);
-        const runBtn = pre.querySelector('.run-code');
-        if (runBtn) runBtn.setAttribute('data-code', newCode);
-        // Swap icon back to pencil
-        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-        btn.title = 'Edit';
-        btn.classList.remove('active');
-      } else {
-        // Enter edit mode. Firefox (especially on mobile) historically lacks
-        // contentEditable="plaintext-only" — setting it there leaves the block
-        // non-editable, so the tap "just gets a checkmark" with no way to type.
-        // Fall back to "true" when plaintext-only didn't take.
-        try { codeEl.contentEditable = 'plaintext-only'; } catch (_) { /* unsupported value */ }
-        if (codeEl.contentEditable !== 'plaintext-only') codeEl.contentEditable = 'true';
-        codeEl.classList.add('editing');
-        pre.classList.add('editing');
-        // preventScroll keeps the page from jumping to the codeblock when
-        // focusing the editable on mobile — the browser would otherwise
-        // scroll it into view above the keyboard, which reads as "auto-
-        // scroll triggered by clicking Edit".
-        try { codeEl.focus({ preventScroll: true }); } catch (_) { codeEl.focus(); }
-        // Swap icon to checkmark
-        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-        btn.title = 'Done editing';
-        btn.classList.add('active');
+/**
+ * Initialize event listeners
+ */
+export function initListeners() {
+  // Global event delegation for copy-code buttons
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.copy-code');
+    if (!btn) return;
+    e.stopPropagation();
+    const code = btn.getAttribute('data-code');
+    if (code && uiModule) {
+      uiModule.copyToClipboard(code);
+      // Visual feedback: swap the icon to a checkmark (regular size)
+      // and add .copied which the CSS uses to flash green + pulse.
+      // For slim/.pre-compact buttons the label text comes from a
+      // CSS ::before — swap it via data-state so we don't break the
+      // text-button layout.
+      const origHTML = btn.innerHTML;
+      const isCompact = !!btn.closest('pre.pre-compact');
+      if (!isCompact) {
+        btn.innerHTML =
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
       }
-    });
+      btn.classList.add('copied');
+      btn.dataset.state = 'copied';
+      setTimeout(() => {
+        if (!isCompact) btn.innerHTML = origHTML;
+        btn.classList.remove('copied');
+        delete btn.dataset.state;
+      }, 1500);
+    }
+  });
 
-    // Tapping a code block body (not its buttons) toggles the overlay
-    // copy/edit/run buttons, which otherwise cover the text on mobile.
-    document.addEventListener('click', (e) => {
-      if (e.target.closest('.copy-code, .edit-code, .run-code')) return;
-      const pre = e.target.closest('pre');
-      if (!pre || !pre.querySelector('.copy-code')) return;
-      // Don't hide while editing — the buttons (incl. the Done checkmark) matter.
-      if (pre.classList.contains('editing')) return;
-      pre.classList.toggle('buttons-hidden');
-    });
+  // Run code button delegation
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.run-code');
+    if (!btn) return;
+    e.stopPropagation();
+    if (codeRunnerModule) codeRunnerModule.run(btn);
+  });
 
-    // Position copy/run buttons top or bottom based on viewport position
-    // — DESKTOP ONLY. On mobile this was constantly retriggering on tap
-    // (synthetic mouseenter) and made the buttons jump, so the user's
-    // finger landed on the moved target. Keep them pinned at the top on
-    // touch — no auto-repositioning.
-    document.addEventListener('mouseenter', (e) => {
+  // Edit code button delegation — toggle contentEditable on the code element
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.edit-code');
+    if (!btn) return;
+    e.stopPropagation();
+    const pre = btn.closest('pre');
+    if (!pre) return;
+    const codeEl = pre.querySelector('code');
+    if (!codeEl) return;
+    const isEditing =
+      codeEl.contentEditable !== 'false' &&
+      codeEl.contentEditable !== 'inherit';
+    if (isEditing) {
+      // Save: exit edit mode, update data-code on copy/run buttons
+      codeEl.contentEditable = 'false';
+      codeEl.classList.remove('editing');
+      pre.classList.remove('editing');
+      const newCode = codeEl.textContent;
+      const copyBtn = pre.querySelector('.copy-code');
+      if (copyBtn) copyBtn.setAttribute('data-code', newCode);
+      const runBtn = pre.querySelector('.run-code');
+      if (runBtn) runBtn.setAttribute('data-code', newCode);
+      // Swap icon back to pencil
+      btn.innerHTML =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+      btn.title = 'Edit';
+      btn.classList.remove('active');
+    } else {
+      // Enter edit mode. Firefox (especially on mobile) historically lacks
+      // contentEditable="plaintext-only" — setting it there leaves the block
+      // non-editable, so the tap "just gets a checkmark" with no way to type.
+      // Fall back to "true" when plaintext-only didn't take.
+      try {
+        codeEl.contentEditable = 'plaintext-only';
+      } catch (_) {
+        /* unsupported value */
+      }
+      if (codeEl.contentEditable !== 'plaintext-only')
+        codeEl.contentEditable = 'true';
+      codeEl.classList.add('editing');
+      pre.classList.add('editing');
+      // preventScroll keeps the page from jumping to the codeblock when
+      // focusing the editable on mobile — the browser would otherwise
+      // scroll it into view above the keyboard, which reads as "auto-
+      // scroll triggered by clicking Edit".
+      try {
+        codeEl.focus({ preventScroll: true });
+      } catch (_) {
+        codeEl.focus();
+      }
+      // Swap icon to checkmark
+      btn.innerHTML =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      btn.title = 'Done editing';
+      btn.classList.add('active');
+    }
+  });
+
+  // Tapping a code block body (not its buttons) toggles the overlay
+  // copy/edit/run buttons, which otherwise cover the text on mobile.
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.copy-code, .edit-code, .run-code')) return;
+    const pre = e.target.closest('pre');
+    if (!pre || !pre.querySelector('.copy-code')) return;
+    // Don't hide while editing — the buttons (incl. the Done checkmark) matter.
+    if (pre.classList.contains('editing')) return;
+    pre.classList.toggle('buttons-hidden');
+  });
+
+  // Position copy/run buttons top or bottom based on viewport position
+  // — DESKTOP ONLY. On mobile this was constantly retriggering on tap
+  // (synthetic mouseenter) and made the buttons jump, so the user's
+  // finger landed on the moved target. Keep them pinned at the top on
+  // touch — no auto-repositioning.
+  document.addEventListener(
+    'mouseenter',
+    (e) => {
       if (window.matchMedia('(max-width: 768px)').matches) return;
       const pre = e.target.closest ? e.target.closest('pre') : null;
       if (!pre || pre.dataset.btnPosComputed) return;
@@ -3894,169 +4452,187 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       const runBtn = pre.querySelector('.run-code');
       if (runBtn) runBtn.classList.toggle('bottom', isBottom);
       pre.dataset.btnPosComputed = '1';
-    }, true);
+    },
+    true,
+  );
 
-    // Tab suspension recovery: when user tabs back in, check if stream froze
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible') return;
+  // Tab suspension recovery: when user tabs back in, check if stream froze
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!isStreaming) return;
+
+    // Stream claims to be running — check if reader is actually alive
+    const staleSince = Date.now() - _lastReaderActivity;
+    if (staleSince < 20000) return; // Active recently, probably fine
+
+    // Reader hasn't produced data in 5+ seconds after tab resume.
+    // Give it a short grace period then recover.
+    console.warn(
+      '[tab-recovery] Stream appears frozen (no activity for ' +
+        Math.round(staleSince / 1000) +
+        's). Recovering...',
+    );
+
+    setTimeout(() => {
+      // Re-check — maybe the reader woke up during the grace period
       if (!isStreaming) return;
+      const stillStale = Date.now() - _lastReaderActivity;
+      if (stillStale < 5000) return; // Came back to life
 
-      // Stream claims to be running — check if reader is actually alive
-      const staleSince = Date.now() - _lastReaderActivity;
-      if (staleSince < 20000) return; // Active recently, probably fine
+      console.warn(
+        '[tab-recovery] Stream confirmed dead. Aborting and reloading session.',
+      );
 
-      // Reader hasn't produced data in 5+ seconds after tab resume.
-      // Give it a short grace period then recover.
-      console.warn('[tab-recovery] Stream appears frozen (no activity for ' + Math.round(staleSince/1000) + 's). Recovering...');
-
-      setTimeout(() => {
-        // Re-check — maybe the reader woke up during the grace period
-        if (!isStreaming) return;
-        const stillStale = Date.now() - _lastReaderActivity;
-        if (stillStale < 5000) return; // Came back to life
-
-        console.warn('[tab-recovery] Stream confirmed dead. Aborting and reloading session.');
-
-        // Abort the frozen stream, but preserve the visible bubble.
-        if (currentAbort) {
-          currentAbort._reason = 'recovery';
-          currentAbort.abort();
-        }
-        isStreaming = false;
-
-        // Release Web Lock
-        if (_webLockRelease) {
-          _webLockRelease();
-          _webLockRelease = null;
-        }
-
-        // Reset UI state
-        var _submitBtn = document.getElementById('submit');
-        updateSubmitButton('idle', _submitBtn);
-        var _msgInput = document.getElementById('message');
-        if (_msgInput) _msgInput.disabled = false;
-      }, 2000); // 2 second grace period
-    });
-
-    // On mobile, fade out welcome text when keyboard opens to prevent overlap
-    if (window.innerWidth <= 768) {
-      const msgInput = document.getElementById('message');
-      if (msgInput) {
-        msgInput.addEventListener('focus', () => {
-          const ws = document.getElementById('welcome-screen');
-          if (ws && !ws.classList.contains('hidden')) {
-            ws.classList.add('kb-hidden');
-          }
-        });
-        msgInput.addEventListener('blur', () => {
-          const ws = document.getElementById('welcome-screen');
-          if (ws && !ws.classList.contains('hidden')) {
-            // Delay re-show so tapping within chatbox doesn't flash
-            setTimeout(() => {
-              if (document.activeElement !== msgInput) {
-                ws.classList.remove('kb-hidden');
-              }
-            }, 200);
-          }
-        });
+      // Abort the frozen stream, but preserve the visible bubble.
+      if (currentAbort) {
+        currentAbort._reason = 'recovery';
+        currentAbort.abort();
       }
-      // Smooth viewport resize when keyboard opens/closes
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
-          document.documentElement.style.setProperty('--vh', window.visualViewport.height + 'px');
-        });
-        document.documentElement.style.setProperty('--vh', window.visualViewport.height + 'px');
+      isStreaming = false;
+
+      // Release Web Lock
+      if (_webLockRelease) {
+        _webLockRelease();
+        _webLockRelease = null;
       }
+
+      // Reset UI state
+      var _submitBtn = document.getElementById('submit');
+      updateSubmitButton('idle', _submitBtn);
+      var _msgInput = document.getElementById('message');
+      if (_msgInput) _msgInput.disabled = false;
+    }, 2000); // 2 second grace period
+  });
+
+  // On mobile, fade out welcome text when keyboard opens to prevent overlap
+  if (window.innerWidth <= 768) {
+    const msgInput = document.getElementById('message');
+    if (msgInput) {
+      msgInput.addEventListener('focus', () => {
+        const ws = document.getElementById('welcome-screen');
+        if (ws && !ws.classList.contains('hidden')) {
+          ws.classList.add('kb-hidden');
+        }
+      });
+      msgInput.addEventListener('blur', () => {
+        const ws = document.getElementById('welcome-screen');
+        if (ws && !ws.classList.contains('hidden')) {
+          // Delay re-show so tapping within chatbox doesn't flash
+          setTimeout(() => {
+            if (document.activeElement !== msgInput) {
+              ws.classList.remove('kb-hidden');
+            }
+          }, 200);
+        }
+      });
     }
-
-    // If the browser discarded and restored this tab, reload the current session
-    // so the user sees the server-saved partial response instead of a blank page
-    if (document.wasDiscarded) {
-      console.warn('[tab-recovery] Tab was discarded by browser — reloading session');
-      setTimeout(() => {
-        var _sid = sessionModule && sessionModule.getCurrentSessionId();
-        if (_sid) sessionModule.selectSession(_sid);
-      }, 500);
+    // Smooth viewport resize when keyboard opens/closes
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => {
+        document.documentElement.style.setProperty(
+          '--vh',
+          window.visualViewport.height + 'px',
+        );
+      });
+      document.documentElement.style.setProperty(
+        '--vh',
+        window.visualViewport.height + 'px',
+      );
     }
   }
 
-  /**
-   * Regenerate response: truncate history to the user message before this AI message,
-   * then re-submit that user message.
-   */
-  /**
-   * Edit a user message: show an input, truncate to before it, resubmit the edited text.
-   */
-  export async function editUserMessage(userMsgElement) {
-    const box = document.getElementById('chat-history');
-    const allMsgs = Array.from(box.querySelectorAll('.msg'));
-    const msgIndex = allMsgs.indexOf(userMsgElement);
-    if (msgIndex < 0) return;
+  // If the browser discarded and restored this tab, reload the current session
+  // so the user sees the server-saved partial response instead of a blank page
+  if (document.wasDiscarded) {
+    console.warn(
+      '[tab-recovery] Tab was discarded by browser — reloading session',
+    );
+    setTimeout(() => {
+      var _sid = sessionModule && sessionModule.getCurrentSessionId();
+      if (_sid) sessionModule.selectSession(_sid);
+    }, 500);
+  }
+}
 
-    const bodyEl = userMsgElement.querySelector('.body');
-    const currentText = bodyEl ? bodyEl.textContent.trim().replace(/\s*\[\d+ attachment\(s\)\]$/, '') : '';
+/**
+ * Regenerate response: truncate history to the user message before this AI message,
+ * then re-submit that user message.
+ */
+/**
+ * Edit a user message: show an input, truncate to before it, resubmit the edited text.
+ */
+export async function editUserMessage(userMsgElement) {
+  const box = document.getElementById('chat-history');
+  const allMsgs = Array.from(box.querySelectorAll('.msg'));
+  const msgIndex = allMsgs.indexOf(userMsgElement);
+  if (msgIndex < 0) return;
 
-    // Replace body with an editable textarea
-    const editor = document.createElement('textarea');
-    editor.className = 'edit-textarea';
-    editor.value = currentText;
-    editor.rows = Math.max(2, currentText.split('\n').length);
+  const bodyEl = userMsgElement.querySelector('.body');
+  const currentText = bodyEl
+    ? bodyEl.textContent.trim().replace(/\s*\[\d+ attachment\(s\)\]$/, '')
+    : '';
 
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex; gap:6px; margin-top:4px;';
+  // Replace body with an editable textarea
+  const editor = document.createElement('textarea');
+  editor.className = 'edit-textarea';
+  editor.value = currentText;
+  editor.rows = Math.max(2, currentText.split('\n').length);
 
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'edit-save-btn';
-    saveBtn.textContent = 'Send';
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'edit-cancel-btn';
-    cancelBtn.textContent = 'Cancel';
-    btnRow.appendChild(saveBtn);
-    btnRow.appendChild(cancelBtn);
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex; gap:6px; margin-top:4px;';
 
-    const originalHTML = bodyEl.innerHTML;
-    bodyEl.innerHTML = '';
-    bodyEl.appendChild(editor);
-    bodyEl.appendChild(btnRow);
-    editor.focus();
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'edit-save-btn';
+  saveBtn.textContent = 'Send';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'edit-cancel-btn';
+  cancelBtn.textContent = 'Cancel';
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(cancelBtn);
 
-    cancelBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      bodyEl.innerHTML = originalHTML;
-    });
+  const originalHTML = bodyEl.innerHTML;
+  bodyEl.innerHTML = '';
+  bodyEl.appendChild(editor);
+  bodyEl.appendChild(btnRow);
+  editor.focus();
 
-    saveBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const newText = editor.value.trim();
-      if (!newText) return;
+  cancelBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    bodyEl.innerHTML = originalHTML;
+  });
 
-      const sessionId = sessionModule.getCurrentSessionId();
-      if (!sessionId) return;
+  saveBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const newText = editor.value.trim();
+    if (!newText) return;
 
-      const keepCount = msgIndex;
-      try {
-        await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keep_count: keepCount })
-        });
+    const sessionId = sessionModule.getCurrentSessionId();
+    if (!sessionId) return;
 
-        // Remove DOM elements from msgIndex onward
-        for (let i = allMsgs.length - 1; i >= msgIndex; i--) {
-          allMsgs[i].remove();
-        }
+    const keepCount = msgIndex;
+    try {
+      await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keep_count: keepCount }),
+      });
 
-        // Submit the edited text
-        const messageInput = uiModule.el('message');
-        messageInput.value = newText;
-        const submitBtn = document.querySelector('.send-btn');
-        if (submitBtn) submitBtn.click();
-      } catch (err) {
-        console.error('Edit failed:', err);
-        if (uiModule) uiModule.showError('Edit failed: ' + err.message);
-        bodyEl.innerHTML = originalHTML;
+      // Remove DOM elements from msgIndex onward
+      for (let i = allMsgs.length - 1; i >= msgIndex; i--) {
+        allMsgs[i].remove();
       }
-    });
+
+      // Submit the edited text
+      const messageInput = uiModule.el('message');
+      messageInput.value = newText;
+      const submitBtn = document.querySelector('.send-btn');
+      if (submitBtn) submitBtn.click();
+    } catch (err) {
+      console.error('Edit failed:', err);
+      if (uiModule) uiModule.showError('Edit failed: ' + err.message);
+      bodyEl.innerHTML = originalHTML;
+    }
+  });
 
     // Also submit on Enter (without shift)
     editor.addEventListener('keydown', (e) => {
@@ -4080,45 +4656,62 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     const msgIndex = allMsgs.indexOf(userMsgElement);
     if (msgIndex < 0) return;
 
-    // Prefer dataset.raw (stripped original user text) over .body.textContent
-    // — the latter slurps the rendered "View image description" collapsible
-    // content too, which would then be sent back as the user's question and
-    // the AI would reply to that gibberish instead of the actual prompt.
-    const bodyEl = userMsgElement.querySelector('.body');
-    let text = (userMsgElement.dataset.raw || (bodyEl ? bodyEl.textContent : '') || '').trim();
-    text = text.replace(/\s*\[\d+ attachment\(s\)\]$/, '');
+  // Prefer dataset.raw (stripped original user text) over .body.textContent
+  // — the latter slurps the rendered "View image description" collapsible
+  // content too, which would then be sent back as the user's question and
+  // the AI would reply to that gibberish instead of the actual prompt.
+  const bodyEl = userMsgElement.querySelector('.body');
+  let text = (
+    userMsgElement.dataset.raw ||
+    (bodyEl ? bodyEl.textContent : '') ||
+    ''
+  ).trim();
+  text = text.replace(/\s*\[\d+ attachment\(s\)\]$/, '');
 
-    // Collect file_ids attached to this user message so the resend re-carries
-    // the photos / docs (and the chat handler picks up the user-edited OCR
-    // text cached server-side under those file ids).
-    const _attachEls = userMsgElement.querySelectorAll('[data-file-id]');
-    let _ids = Array.from(_attachEls).map(el => el.dataset.fileId).filter(Boolean);
-    if (!_ids.length) {
-      const _imgs = userMsgElement.querySelectorAll('.attach-image-preview img, .attach-card img');
-      for (const _im of _imgs) {
-        const _m = (_im.getAttribute('src') || '').match(/\/api\/upload\/([A-Za-z0-9_\-]+)/);
-        if (_m && _m[1] && !_ids.includes(_m[1])) _ids.push(_m[1]);
-      }
+  // Collect file_ids attached to this user message so the resend re-carries
+  // the photos / docs (and the chat handler picks up the user-edited OCR
+  // text cached server-side under those file ids).
+  const _attachEls = userMsgElement.querySelectorAll('[data-file-id]');
+  let _ids = Array.from(_attachEls)
+    .map((el) => el.dataset.fileId)
+    .filter(Boolean);
+  if (!_ids.length) {
+    const _imgs = userMsgElement.querySelectorAll(
+      '.attach-image-preview img, .attach-card img',
+    );
+    for (const _im of _imgs) {
+      const _m = (_im.getAttribute('src') || '').match(
+        /\/api\/upload\/([A-Za-z0-9_-]+)/,
+      );
+      if (_m && _m[1] && !_ids.includes(_m[1])) _ids.push(_m[1]);
     }
+  }
 
-    // Rescue: legacy bubbles may have stored the filename as the message
-    // content (artifact of earlier broken resends). Don't re-send that as
-    // the user prompt if we still have the file attached. Loosen the regex
-    // to cover real-world camera/screenshot names with spaces, parens,
-    // multi-dots: "Screen Shot 2026-05-28 at 4.05.32 PM.png", "IMG (1).JPG".
-    if (text && _ids.length && /^[^\n\r]{1,200}\.(png|jpe?g|gif|webp|svg|bmp|heic|heif)$/i.test(text)) {
-      text = '';
-    }
-    // Empty text + no attachments → tell the user instead of silently bailing.
-    // The common case is a regen during a pre-upload race where the bubble
-    // never had an `[data-file-id]` to scrape.
-    if (!text && !_ids.length) {
-      if (uiModule?.showError) uiModule.showError('Nothing to resend — message has no text and no attachments yet (try again after the upload finishes).');
-      return;
-    }
+  // Rescue: legacy bubbles may have stored the filename as the message
+  // content (artifact of earlier broken resends). Don't re-send that as
+  // the user prompt if we still have the file attached. Loosen the regex
+  // to cover real-world camera/screenshot names with spaces, parens,
+  // multi-dots: "Screen Shot 2026-05-28 at 4.05.32 PM.png", "IMG (1).JPG".
+  if (
+    text &&
+    _ids.length &&
+    /^[^\n\r]{1,200}\.(png|jpe?g|gif|webp|svg|bmp|heic|heif)$/i.test(text)
+  ) {
+    text = '';
+  }
+  // Empty text + no attachments → tell the user instead of silently bailing.
+  // The common case is a regen during a pre-upload race where the bubble
+  // never had an `[data-file-id]` to scrape.
+  if (!text && !_ids.length) {
+    if (uiModule?.showError)
+      uiModule.showError(
+        'Nothing to resend — message has no text and no attachments yet (try again after the upload finishes).',
+      );
+    return;
+  }
 
-    const sessionId = sessionModule.getCurrentSessionId();
-    if (!sessionId) return;
+  const sessionId = sessionModule.getCurrentSessionId();
+  if (!sessionId) return;
 
     try {
       if (replaceFromHere) {
@@ -4144,295 +4737,346 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       }
       _pendingRegenAttachments = _ids;
 
-      // Resubmit
-      const messageInput = uiModule.el('message');
-      messageInput.value = text;
-      const submitBtn = document.querySelector('.send-btn');
-      if (submitBtn) submitBtn.click();
-    } catch (err) {
-      console.error('Resend failed:', err);
-      if (uiModule) uiModule.showError('Resend failed: ' + err.message);
+    // Resubmit
+    const messageInput = uiModule.el('message');
+    messageInput.value = text;
+    const submitBtn = document.querySelector('.send-btn');
+    if (submitBtn) submitBtn.click();
+  } catch (err) {
+    console.error('Resend failed:', err);
+    if (uiModule) uiModule.showError('Resend failed: ' + err.message);
+  }
+}
+
+export async function regenerateFrom(aiMsgElement) {
+  const box = document.getElementById('chat-history');
+  const allMsgs = Array.from(box.querySelectorAll('.msg'));
+  const aiIndex = allMsgs.indexOf(aiMsgElement);
+  if (aiIndex < 0) return;
+
+  // Find the preceding user message
+  let userIndex = -1;
+  let userText = '';
+  let userMsgEl = null;
+  for (let i = aiIndex - 1; i >= 0; i--) {
+    if (allMsgs[i].classList.contains('msg-user')) {
+      userIndex = i;
+      userMsgEl = allMsgs[i];
+      // Prefer dataset.raw (set by addMessage with the stripped, original
+      // user text) over the rendered body's textContent — the latter
+      // pulls in the "View image description" collapsible content too,
+      // duplicating the OCR text on regen.
+      const bodyEl = userMsgEl.querySelector('.body');
+      userText = (
+        userMsgEl.dataset.raw ||
+        (bodyEl ? bodyEl.textContent : '') ||
+        ''
+      ).trim();
+      userText = userText.replace(/\s*\[\d+ attachment\(s\)\]$/, '');
+      break;
     }
   }
 
-  export async function regenerateFrom(aiMsgElement) {
-    const box = document.getElementById('chat-history');
-    const allMsgs = Array.from(box.querySelectorAll('.msg'));
-    const aiIndex = allMsgs.indexOf(aiMsgElement);
-    if (aiIndex < 0) return;
-
-    // Find the preceding user message
-    let userIndex = -1;
-    let userText = '';
-    let userMsgEl = null;
-    for (let i = aiIndex - 1; i >= 0; i--) {
-      if (allMsgs[i].classList.contains('msg-user')) {
-        userIndex = i;
-        userMsgEl = allMsgs[i];
-        // Prefer dataset.raw (set by addMessage with the stripped, original
-        // user text) over the rendered body's textContent — the latter
-        // pulls in the "View image description" collapsible content too,
-        // duplicating the OCR text on regen.
-        const bodyEl = userMsgEl.querySelector('.body');
-        userText = (userMsgEl.dataset.raw || (bodyEl ? bodyEl.textContent : '') || '').trim();
-        userText = userText.replace(/\s*\[\d+ attachment\(s\)\]$/, '');
-        break;
-      }
-    }
-
-    if (userIndex < 0) {
-      if (uiModule) uiModule.showError('Could not find the user message to regenerate');
-      return;
-    }
-
-    // Collect any file_ids attached to the original user message so the
-    // regenerated send re-uses them. Without this the AI is regenerated on
-    // text alone — photos (and the user-edited OCR text cached server-side
-    // under that file_id) would be silently dropped.
-    const _attachEls = userMsgEl ? userMsgEl.querySelectorAll('[data-file-id]') : [];
-    let _regenIds = Array.from(_attachEls).map(el => el.dataset.fileId).filter(Boolean);
-    // Fallback for bubbles rendered before the data-file-id stamp landed:
-    // sniff the file id straight out of any `.attach-image-preview img`
-    // src URLs (matches /api/upload/<id>). Otherwise an older bubble would
-    // regen with zero attachments and the photo would be lost from the
-    // resulting message even though the file still exists on disk.
-    if (!_regenIds.length && userMsgEl) {
-      const _imgs = userMsgEl.querySelectorAll('.attach-image-preview img, .attach-card img');
-      for (const _im of _imgs) {
-        const _m = (_im.getAttribute('src') || '').match(/\/api\/upload\/([A-Za-z0-9_\-]+)/);
-        if (_m && _m[1] && !_regenIds.includes(_m[1])) _regenIds.push(_m[1]);
-      }
-    }
-    _pendingRegenAttachments = _regenIds;
-
-    // Rescue: earlier-version regens (before the dataset.raw fix) stored the
-    // photo's filename as the user-message content. On a follow-up regen,
-    // that filename would be sent back as the literal user prompt, so the
-    // AI thinks the question is "blue_night_preview.jpg" and replies "that's
-    // an image file". If userText is just a bare image filename and we have
-    // attachments, drop it so the OCR text (or the image bytes for vision
-    // models) is what the model actually sees.
-    if (userText && _pendingRegenAttachments.length &&
-        /^[^\n\r]{1,200}\.(png|jpe?g|gif|webp|svg|bmp|heic|heif)$/i.test(userText.trim())) {
-      userText = '';
-    }
-
-    // A photo-only message has empty user text — regen must still proceed,
-    // because the attachments themselves are the message. Bail only if there
-    // is no text AND no attachments to send.
-    if (!userText && !_pendingRegenAttachments.length) {
-      if (uiModule) uiModule.showError('Nothing to regenerate — the user message has no text and no attachments');
-      return;
-    }
-
-    const sessionId = sessionModule.getCurrentSessionId();
-    if (!sessionId) return;
-
-    // Save current response as a variant
-    const oldRaw = aiMsgElement.dataset.raw || aiMsgElement.querySelector('.body')?.textContent || '';
-    const oldHtml = aiMsgElement.querySelector('.body')?.innerHTML || '';
-    let variants = [];
-    try { variants = JSON.parse(aiMsgElement.dataset.variants || '[]'); } catch(_) {}
-    if (variants.length === 0) {
-      // First regen — save the original as variant 0
-      variants.push({ raw: oldRaw, html: oldHtml, label: 'original' });
-    }
-
-    const keepCount = userIndex;
-
-    try {
-      await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keep_count: keepCount })
-      });
-
-      for (let i = allMsgs.length - 1; i > aiIndex; i--) {
-        allMsgs[i].remove();
-      }
-
-      // Remove the AI message from DOM — it will be replaced by the new streaming response
-      // But first, stash the variants data so we can transfer it to the new element
-      _pendingVariants = variants;
-      _pendingVariantLabel = 'regen';
-      aiMsgElement.remove();
-
-      _hideUserBubble = true;
-      const messageInput = uiModule.el('message');
-      messageInput.value = userText;
-      const submitBtn = document.querySelector('.send-btn');
-      if (submitBtn) submitBtn.click();
-
-    } catch (err) {
-      console.error('Regenerate failed:', err);
-      if (uiModule) uiModule.showError('Regenerate failed: ' + err.message);
-    }
+  if (userIndex < 0) {
+    if (uiModule)
+      uiModule.showError('Could not find the user message to regenerate');
+    return;
   }
 
-  // Pending variants from a regeneration — transferred to new streaming element
-  let _pendingVariants = null;
-  let _pendingVariantLabel = null;
-  // File-ids carried over from the original user message during a regen, so
-  // photos / OCR overrides survive into the new send. Consumed once.
-  let _pendingRegenAttachments = null;
-
-  /**
-   * Called after streaming completes to attach variant navigation if this was a regen.
-   */
-  function _attachVariantNav(msgElement) {
-    if (!_pendingVariants) return;
-    const variants = _pendingVariants;
-    _pendingVariants = null;
-
-    // Add the new response as the latest variant
-    const newRaw = msgElement.dataset.raw || msgElement.querySelector('.body')?.textContent || '';
-    const newHtml = msgElement.querySelector('.body')?.innerHTML || '';
-    const varLabel = _pendingVariantLabel || 'regen';
-    _pendingVariantLabel = null;
-    variants.push({ raw: newRaw, html: newHtml, label: varLabel });
-
-    msgElement.dataset.variants = JSON.stringify(variants);
-    msgElement.dataset.variantIndex = String(variants.length - 1);
-
-    _renderVariantNav(msgElement, variants, variants.length - 1);
-
-    // Persist variants to server
-    const sid = sessionModule.getCurrentSessionId();
-    if (sid) {
-      fetch(`${API_BASE}/api/session/${sid}/update-last-meta`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ metadata: { variants: variants, variantIndex: variants.length - 1 } })
-      }).catch(e => console.warn('update-last-meta (variants) failed:', e));
+  // Collect any file_ids attached to the original user message so the
+  // regenerated send re-uses them. Without this the AI is regenerated on
+  // text alone — photos (and the user-edited OCR text cached server-side
+  // under that file_id) would be silently dropped.
+  const _attachEls = userMsgEl
+    ? userMsgEl.querySelectorAll('[data-file-id]')
+    : [];
+  let _regenIds = Array.from(_attachEls)
+    .map((el) => el.dataset.fileId)
+    .filter(Boolean);
+  // Fallback for bubbles rendered before the data-file-id stamp landed:
+  // sniff the file id straight out of any `.attach-image-preview img`
+  // src URLs (matches /api/upload/<id>). Otherwise an older bubble would
+  // regen with zero attachments and the photo would be lost from the
+  // resulting message even though the file still exists on disk.
+  if (!_regenIds.length && userMsgEl) {
+    const _imgs = userMsgEl.querySelectorAll(
+      '.attach-image-preview img, .attach-card img',
+    );
+    for (const _im of _imgs) {
+      const _m = (_im.getAttribute('src') || '').match(
+        /\/api\/upload\/([A-Za-z0-9_-]+)/,
+      );
+      if (_m && _m[1] && !_regenIds.includes(_m[1])) _regenIds.push(_m[1]);
     }
   }
+  _pendingRegenAttachments = _regenIds;
 
-  const _VARIANT_ICONS = { regen: '\u21BB', shorter: '\u2702', simpler: '?', original: '\u25CB' };
-  function _variantTagText(label) {
-    return _VARIANT_ICONS[label] || _VARIANT_ICONS['original'];
+  // Rescue: earlier-version regens (before the dataset.raw fix) stored the
+  // photo's filename as the user-message content. On a follow-up regen,
+  // that filename would be sent back as the literal user prompt, so the
+  // AI thinks the question is "blue_night_preview.jpg" and replies "that's
+  // an image file". If userText is just a bare image filename and we have
+  // attachments, drop it so the OCR text (or the image bytes for vision
+  // models) is what the model actually sees.
+  if (
+    userText &&
+    _pendingRegenAttachments.length &&
+    /^[^\n\r]{1,200}\.(png|jpe?g|gif|webp|svg|bmp|heic|heif)$/i.test(
+      userText.trim(),
+    )
+  ) {
+    userText = '';
   }
 
-  function _renderVariantNav(msgElement, variants, currentIdx) {
-    // Remove existing nav if any
-    const old = msgElement.querySelector('.variant-nav');
-    if (old) old.remove();
-
-    if (variants.length < 2) return;
-
-    const nav = document.createElement('span');
-    nav.className = 'variant-nav';
-    nav.addEventListener('click', (e) => e.stopPropagation());
-
-    // Label showing what this variant is
-    // Divider
-    const divider = document.createElement('span');
-    divider.className = 'variant-divider';
-    divider.textContent = '|';
-    nav.appendChild(divider);
-
-    // Label
-    const curVariant = variants[currentIdx];
-    const tagLabel = document.createElement('span');
-    tagLabel.className = 'variant-tag' + (curVariant?.label === 'shorter' ? ' variant-tag-scissors' : '');
-    tagLabel.textContent = _variantTagText(curVariant?.label);
-    nav.appendChild(tagLabel);
-
-    // < button
-    const prevBtn = document.createElement('button');
-    prevBtn.className = 'variant-btn';
-    prevBtn.textContent = '<';
-    prevBtn.disabled = currentIdx === 0;
-    prevBtn.addEventListener('click', (e) => { e.stopPropagation(); _switchVariant(msgElement, variants, currentIdx - 1); });
-    nav.appendChild(prevBtn);
-
-    // Clickable number for current index (click left number = go left, right = go right)
-    const numLeft = document.createElement('button');
-    numLeft.className = 'variant-num';
-    numLeft.textContent = String(currentIdx + 1);
-    numLeft.disabled = currentIdx === 0;
-    numLeft.addEventListener('click', (e) => { e.stopPropagation(); _switchVariant(msgElement, variants, currentIdx - 1); });
-    nav.appendChild(numLeft);
-
-    const slash = document.createElement('span');
-    slash.className = 'variant-slash';
-    slash.textContent = '/';
-    nav.appendChild(slash);
-
-    const numRight = document.createElement('button');
-    numRight.className = 'variant-num';
-    numRight.textContent = String(variants.length);
-    numRight.disabled = currentIdx === variants.length - 1;
-    numRight.addEventListener('click', (e) => { e.stopPropagation(); _switchVariant(msgElement, variants, currentIdx + 1); });
-    nav.appendChild(numRight);
-
-    // > button
-    const nextBtn = document.createElement('button');
-    nextBtn.className = 'variant-btn';
-    nextBtn.textContent = '>';
-    nextBtn.disabled = currentIdx === variants.length - 1;
-    nextBtn.addEventListener('click', (e) => { e.stopPropagation(); _switchVariant(msgElement, variants, currentIdx + 1); });
-    nav.appendChild(nextBtn);
-
-    // Insert into the .role header
-    const roleEl = msgElement.querySelector('.role');
-    if (roleEl) {
-      roleEl.appendChild(nav);
-    } else {
-      msgElement.appendChild(nav);
-    }
+  // A photo-only message has empty user text — regen must still proceed,
+  // because the attachments themselves are the message. Bail only if there
+  // is no text AND no attachments to send.
+  if (!userText && !_pendingRegenAttachments.length) {
+    if (uiModule)
+      uiModule.showError(
+        'Nothing to regenerate — the user message has no text and no attachments',
+      );
+    return;
   }
 
-  function _switchVariant(msgElement, variants, newIdx) {
-    if (newIdx < 0 || newIdx >= variants.length) return;
-    const v = variants[newIdx];
-    const body = msgElement.querySelector('.body');
-    if (body) body.innerHTML = v.html;
-    msgElement.dataset.raw = v.raw;
-    msgElement.dataset.variantIndex = String(newIdx);
-    if (window.hljs) {
-      msgElement.querySelectorAll('pre code').forEach(block => window.hljs.highlightElement(block));
-    }
-    _renderVariantNav(msgElement, variants, newIdx);
+  const sessionId = sessionModule.getCurrentSessionId();
+  if (!sessionId) return;
 
-    // Persist selected variant to server
-    const sid = sessionModule.getCurrentSessionId();
-    if (sid) {
-      fetch(`${API_BASE}/api/session/${sid}/update-last-meta`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ metadata: { variantIndex: newIdx } })
-      }).catch(e => console.warn('update-last-meta (variantIndex) failed:', e));
-    }
+  // Save current response as a variant
+  const oldRaw =
+    aiMsgElement.dataset.raw ||
+    aiMsgElement.querySelector('.body')?.textContent ||
+    '';
+  const oldHtml = aiMsgElement.querySelector('.body')?.innerHTML || '';
+  let variants = [];
+  try {
+    variants = JSON.parse(aiMsgElement.dataset.variants || '[]');
+  } catch (_) {}
+  if (variants.length === 0) {
+    // First regen — save the original as variant 0
+    variants.push({ raw: oldRaw, html: oldHtml, label: 'original' });
   }
 
-  export async function forkFrom(aiMsgElement) {
-    const box = document.getElementById('chat-history');
-    const allMsgs = Array.from(box.querySelectorAll('.msg'));
-    const aiIndex = allMsgs.indexOf(aiMsgElement);
-    if (aiIndex < 0) return;
+  const keepCount = userIndex;
 
-    const sessionId = sessionModule.getCurrentSessionId();
-    if (!sessionId) return;
+  try {
+    await fetch(`${API_BASE}/api/session/${sessionId}/truncate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keep_count: keepCount }),
+    });
 
-    const keepCount = aiIndex + 1;
-
-    try {
-      const res = await fetch(`${API_BASE}/api/session/${sessionId}/fork`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keep_count: keepCount }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-
-      await sessionModule.loadSessions();
-      await sessionModule.selectSession(data.id);
-      if (uiModule) uiModule.showToast(`Forked → ${data.name}`);
-    } catch (err) {
-      console.error('Fork failed:', err);
-      if (uiModule) uiModule.showError('Fork failed: ' + err.message);
+    for (let i = allMsgs.length - 1; i > aiIndex; i--) {
+      allMsgs[i].remove();
     }
+
+    // Remove the AI message from DOM — it will be replaced by the new streaming response
+    // But first, stash the variants data so we can transfer it to the new element
+    _pendingVariants = variants;
+    _pendingVariantLabel = 'regen';
+    aiMsgElement.remove();
+
+    _hideUserBubble = true;
+    const messageInput = uiModule.el('message');
+    messageInput.value = userText;
+    const submitBtn = document.querySelector('.send-btn');
+    if (submitBtn) submitBtn.click();
+  } catch (err) {
+    console.error('Regenerate failed:', err);
+    if (uiModule) uiModule.showError('Regenerate failed: ' + err.message);
   }
+}
+
+// Pending variants from a regeneration — transferred to new streaming element
+let _pendingVariants = null;
+let _pendingVariantLabel = null;
+// File-ids carried over from the original user message during a regen, so
+// photos / OCR overrides survive into the new send. Consumed once.
+let _pendingRegenAttachments = null;
+
+/**
+ * Called after streaming completes to attach variant navigation if this was a regen.
+ */
+function _attachVariantNav(msgElement) {
+  if (!_pendingVariants) return;
+  const variants = _pendingVariants;
+  _pendingVariants = null;
+
+  // Add the new response as the latest variant
+  const newRaw =
+    msgElement.dataset.raw ||
+    msgElement.querySelector('.body')?.textContent ||
+    '';
+  const newHtml = msgElement.querySelector('.body')?.innerHTML || '';
+  const varLabel = _pendingVariantLabel || 'regen';
+  _pendingVariantLabel = null;
+  variants.push({ raw: newRaw, html: newHtml, label: varLabel });
+
+  msgElement.dataset.variants = JSON.stringify(variants);
+  msgElement.dataset.variantIndex = String(variants.length - 1);
+
+  _renderVariantNav(msgElement, variants, variants.length - 1);
+
+  // Persist variants to server
+  const sid = sessionModule.getCurrentSessionId();
+  if (sid) {
+    fetch(`${API_BASE}/api/session/${sid}/update-last-meta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        metadata: { variants: variants, variantIndex: variants.length - 1 },
+      }),
+    }).catch((e) => console.warn('update-last-meta (variants) failed:', e));
+  }
+}
+
+const _VARIANT_ICONS = {
+  regen: '\u21BB',
+  shorter: '\u2702',
+  simpler: '?',
+  original: '\u25CB',
+};
+function _variantTagText(label) {
+  return _VARIANT_ICONS[label] || _VARIANT_ICONS['original'];
+}
+
+function _renderVariantNav(msgElement, variants, currentIdx) {
+  // Remove existing nav if any
+  const old = msgElement.querySelector('.variant-nav');
+  if (old) old.remove();
+
+  if (variants.length < 2) return;
+
+  const nav = document.createElement('span');
+  nav.className = 'variant-nav';
+  nav.addEventListener('click', (e) => e.stopPropagation());
+
+  // Label showing what this variant is
+  // Divider
+  const divider = document.createElement('span');
+  divider.className = 'variant-divider';
+  divider.textContent = '|';
+  nav.appendChild(divider);
+
+  // Label
+  const curVariant = variants[currentIdx];
+  const tagLabel = document.createElement('span');
+  tagLabel.className =
+    'variant-tag' +
+    (curVariant?.label === 'shorter' ? ' variant-tag-scissors' : '');
+  tagLabel.textContent = _variantTagText(curVariant?.label);
+  nav.appendChild(tagLabel);
+
+  // < button
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'variant-btn';
+  prevBtn.textContent = '<';
+  prevBtn.disabled = currentIdx === 0;
+  prevBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _switchVariant(msgElement, variants, currentIdx - 1);
+  });
+  nav.appendChild(prevBtn);
+
+  // Clickable number for current index (click left number = go left, right = go right)
+  const numLeft = document.createElement('button');
+  numLeft.className = 'variant-num';
+  numLeft.textContent = String(currentIdx + 1);
+  numLeft.disabled = currentIdx === 0;
+  numLeft.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _switchVariant(msgElement, variants, currentIdx - 1);
+  });
+  nav.appendChild(numLeft);
+
+  const slash = document.createElement('span');
+  slash.className = 'variant-slash';
+  slash.textContent = '/';
+  nav.appendChild(slash);
+
+  const numRight = document.createElement('button');
+  numRight.className = 'variant-num';
+  numRight.textContent = String(variants.length);
+  numRight.disabled = currentIdx === variants.length - 1;
+  numRight.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _switchVariant(msgElement, variants, currentIdx + 1);
+  });
+  nav.appendChild(numRight);
+
+  // > button
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'variant-btn';
+  nextBtn.textContent = '>';
+  nextBtn.disabled = currentIdx === variants.length - 1;
+  nextBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _switchVariant(msgElement, variants, currentIdx + 1);
+  });
+  nav.appendChild(nextBtn);
+
+  // Insert into the .role header
+  const roleEl = msgElement.querySelector('.role');
+  if (roleEl) {
+    roleEl.appendChild(nav);
+  } else {
+    msgElement.appendChild(nav);
+  }
+}
+
+function _switchVariant(msgElement, variants, newIdx) {
+  if (newIdx < 0 || newIdx >= variants.length) return;
+  const v = variants[newIdx];
+  const body = msgElement.querySelector('.body');
+  if (body) body.innerHTML = v.html;
+  msgElement.dataset.raw = v.raw;
+  msgElement.dataset.variantIndex = String(newIdx);
+  if (window.hljs) {
+    msgElement
+      .querySelectorAll('pre code')
+      .forEach((block) => window.hljs.highlightElement(block));
+  }
+  _renderVariantNav(msgElement, variants, newIdx);
+
+  // Persist selected variant to server
+  const sid = sessionModule.getCurrentSessionId();
+  if (sid) {
+    fetch(`${API_BASE}/api/session/${sid}/update-last-meta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metadata: { variantIndex: newIdx } }),
+    }).catch((e) => console.warn('update-last-meta (variantIndex) failed:', e));
+  }
+}
+
+export async function forkFrom(aiMsgElement) {
+  const box = document.getElementById('chat-history');
+  const allMsgs = Array.from(box.querySelectorAll('.msg'));
+  const aiIndex = allMsgs.indexOf(aiMsgElement);
+  if (aiIndex < 0) return;
+
+  const sessionId = sessionModule.getCurrentSessionId();
+  if (!sessionId) return;
+
+  const keepCount = aiIndex + 1;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/session/${sessionId}/fork`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keep_count: keepCount }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+
+    await sessionModule.loadSessions();
+    await sessionModule.selectSession(data.id);
+    if (uiModule) uiModule.showToast(`Forked → ${data.name}`);
+  } catch (err) {
+    console.error('Fork failed:', err);
+    if (uiModule) uiModule.showError('Fork failed: ' + err.message);
+  }
+}
 
   /**
    * Check for pending/completed research after page refresh or session switch.
@@ -4449,230 +5093,306 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       }
       const data = await res.json();
 
-      if (data.status === 'done') {
-        // Fetch and render the completed result
-        _notifyResearchComplete(sessionId, data.query || '');
-        if (sessionModule && sessionModule.clearResearching) sessionModule.clearResearching(sessionId);
-        const resultRes = await fetch(`${API_BASE}/api/research/result/${sessionId}`, { method: 'POST' });
-        if (resultRes.ok) {
-          const resultData = await resultRes.json();
-          if (resultData.result) {
-            // Skip if history already has a research message for this session
-            if (document.querySelector(`#chat-history .msg-ai[data-research-session="${sessionId}"]`)) return;
+    if (data.status === 'done') {
+      // Fetch and render the completed result
+      _notifyResearchComplete(sessionId, data.query || '');
+      if (sessionModule && sessionModule.clearResearching)
+        sessionModule.clearResearching(sessionId);
+      const resultRes = await fetch(
+        `${API_BASE}/api/research/result/${sessionId}`,
+        { method: 'POST' },
+      );
+      if (resultRes.ok) {
+        const resultData = await resultRes.json();
+        if (resultData.result) {
+          // Skip if history already has a research message for this session
+          if (
+            document.querySelector(
+              `#chat-history .msg-ai[data-research-session="${sessionId}"]`,
+            )
+          )
+            return;
 
-            var srcBox = '';
-            if (resultData.sources && resultData.sources.length > 0) {
-              srcBox = _buildSourcesBox(resultData.sources, 'research');
-            }
-            var findingsBox = chatRenderer.buildFindingsBox(resultData.raw_findings);
-            var cleanResult = resultData.result;
-            // Build DOM directly to avoid double-processing through addMessage
-            chatRenderer.hideWelcomeScreen();
-            var _box = document.getElementById('chat-history');
-            if (_box) {
-              var _wrap = document.createElement('div');
-              _wrap.className = 'msg msg-ai';
-              _wrap.dataset.researchSession = sessionId;
-              var _role = document.createElement('div');
-              _role.className = 'role';
-              var _meta = sessionModule.getSessions().find(function(s) { return s.id === sessionId; });
-              _role.textContent = _shortModel(_meta?.model);
-              _applyModelColor(_role, _meta?.model);
-              _role.appendChild(chatRenderer.roleTimestamp());
-              var _body = document.createElement('div');
-              _body.className = 'body';
-              _body.innerHTML = srcBox + markdownModule.processWithThinking(
-                markdownModule.squashOutsideCode(cleanResult)
-              ) + findingsBox;
-              _wrap.dataset.raw = cleanResult;
-              _wrap.appendChild(_role);
-              _wrap.appendChild(_body);
-              _wrap.appendChild(chatRenderer.createMsgFooter(_wrap));
-              _appendViewReportLink(_wrap, sessionId);
-              _box.appendChild(_wrap);
-              if (window.hljs) _wrap.querySelectorAll('pre code').forEach(function(b) { window.hljs.highlightElement(b); });
-              uiModule.scrollHistory();
-            }
+          var srcBox = '';
+          if (resultData.sources && resultData.sources.length > 0) {
+            srcBox = _buildSourcesBox(resultData.sources, 'research');
           }
+          var findingsBox = chatRenderer.buildFindingsBox(
+            resultData.raw_findings,
+          );
+          var cleanResult = resultData.result;
+          // Build DOM directly to avoid double-processing through addMessage
+          chatRenderer.hideWelcomeScreen();
+          var _box = document.getElementById('chat-history');
+          if (_box) {
+            var _wrap = document.createElement('div');
+            _wrap.className = 'msg msg-ai';
+            _wrap.dataset.researchSession = sessionId;
+            var _role = document.createElement('div');
+            _role.className = 'role';
+            var _meta = sessionModule.getSessions().find(function (s) {
+              return s.id === sessionId;
+            });
+            _role.textContent = shortModel(_meta?.model);
+            _applyModelColor(_role, _meta?.model);
+            _role.appendChild(chatRenderer.roleTimestamp());
+            var _body = document.createElement('div');
+            _body.className = 'body';
+            _body.innerHTML =
+              srcBox +
+              markdownModule.processWithThinking(
+                markdownModule.squashOutsideCode(cleanResult),
+              ) +
+              findingsBox;
+            _wrap.dataset.raw = cleanResult;
+            _wrap.appendChild(_role);
+            _wrap.appendChild(_body);
+            _wrap.appendChild(chatRenderer.createMsgFooter(_wrap));
+            _appendViewReportLink(_wrap, sessionId);
+            _box.appendChild(_wrap);
+            if (window.hljs)
+              _wrap.querySelectorAll('pre code').forEach(function (b) {
+                window.hljs.highlightElement(b);
+              });
+            uiModule.scrollHistory();
+          }
+        }
+      }
+      return;
+    }
+
+    if (data.status !== 'running') return;
+
+    // Don't show reconnect UI if we've already switched away
+    if (sessionModule.getCurrentSessionId() !== sessionId) return;
+
+    // Research is still running — show reconnect UI with spinner
+    const box = document.getElementById('chat-history');
+    if (!box) return;
+
+    const holder = document.createElement('div');
+    holder.className = 'msg msg-ai research-reconnect';
+    holder.dataset.researchSession = sessionId;
+    const roleTs = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const agentMeta = sessionModule
+      .getSessions()
+      .find((s) => s.id === sessionModule.getCurrentSessionId());
+    const agentModelLabel = shortModel(agentMeta?.model);
+    holder.innerHTML = `<div class="role">${uiModule.esc(agentModelLabel)} <span class="role-timestamp">${roleTs}</span></div><div class="body"></div>`;
+    _applyModelColor(holder.querySelector('.role'), agentMeta?.model);
+    box.appendChild(holder);
+
+    const bodyDiv = holder.querySelector('.body');
+    const spinner = spinnerModule.create(
+      'Reconnecting to research...',
+      'right',
+    );
+    bodyDiv.appendChild(spinner.createElement());
+    spinner.start();
+
+    // Update spinner with current progress if available
+    function updateSpinnerFromProgress(progress) {
+      if (!progress || !progress.phase) return;
+      const rp = progress;
+      if (rp.phase === 'probing') {
+        spinner.updateMessage(`Verifying model: ${rp.model || '?'}`);
+      } else if (rp.phase === 'planning') {
+        spinner.updateMessage(
+          'Analyzing question & planning research strategy',
+        );
+      } else if (rp.phase === 'searching') {
+        const q = rp.queries ? `${rp.queries} queries` : '';
+        const s = rp.total_sources ? ` · ${rp.total_sources} sources` : '';
+        spinner.updateMessage(
+          `Round ${rp.round || '?'}: Searching${q ? ' (' + q + ')' : ''}${s}`,
+        );
+      } else if (rp.phase === 'reading') {
+        spinner.updateMessage(
+          rp.title
+            ? `Reading: ${rp.title}`
+            : `Round ${rp.round || '?'}: Reading ${rp.new_sources || ''} pages · ${rp.total_sources || 0} sources total`,
+        );
+      } else if (rp.phase === 'analyzing') {
+        spinner.updateMessage(
+          `Round ${rp.round || '?'}: Analyzing ${rp.total_findings || 0} findings`,
+        );
+      } else if (rp.phase === 'writing') {
+        spinner.updateMessage(
+          `Writing report · ${rp.total_sources || 0} sources`,
+        );
+      }
+    }
+
+    updateSpinnerFromProgress(data.progress);
+    _researchingStreamIds.add(sessionId);
+    if (sessionModule && sessionModule.markResearching)
+      sessionModule.markResearching(sessionId);
+
+    // Restore research timer from started_at
+    if (data.started_at && spinner && spinner.element) {
+      _researchStartTime = data.started_at * 1000;
+      _researchAvgDuration = data.avg_duration || null;
+      _researchTimerEl = document.createElement('div');
+      _researchTimerEl.className = 'research-timer';
+      _researchTimerEl.style.cssText =
+        'font-size:0.8em; opacity:0.6; margin-top:4px; font-family:monospace;';
+      spinner.element.parentNode.insertBefore(
+        _researchTimerEl,
+        spinner.element.nextSibling,
+      );
+      _researchTimerInterval = setInterval(() => {
+        if (!_researchTimerEl) return;
+        var elapsed = Math.floor((Date.now() - _researchStartTime) / 1000);
+        var mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        var ss = String(elapsed % 60).padStart(2, '0');
+        var txt = mm + ':' + ss;
+        if (_researchAvgDuration) {
+          var avgM = String(Math.floor(_researchAvgDuration / 60)).padStart(
+            2,
+            '0',
+          );
+          var avgS = String(Math.round(_researchAvgDuration % 60)).padStart(
+            2,
+            '0',
+          );
+          txt += ' / avg ' + avgM + ':' + avgS;
+        }
+        _researchTimerEl.textContent = txt;
+      }, 1000);
+      // Reconnect synapse — seed it with whatever progress is already known
+      try {
+        _researchSynapse = createResearchSynapse(spinner.element.parentNode, {
+          query: data.query || '',
+          startedAt: _researchStartTime,
+        });
+        if (_researchSynapse.element && _researchTimerEl) {
+          spinner.element.parentNode.insertBefore(
+            _researchSynapse.element,
+            _researchTimerEl,
+          );
+        }
+        if (data.progress) {
+          _researchSynapse.setPhase(data.progress.phase, data.progress);
+          if (typeof data.progress.round === 'number')
+            _researchSynapse.setRound(data.progress.round);
+          if (typeof data.progress.total_sources === 'number')
+            _researchSynapse.setSourceCount(data.progress.total_sources);
+        }
+      } catch (e) {
+        console.warn('synapse reconnect failed', e);
+      }
+    }
+
+    // Poll for completion
+    const pollInterval = setInterval(async () => {
+      // Stop polling if user switched to a different session
+      if (sessionModule.getCurrentSessionId() !== sessionId) {
+        clearInterval(pollInterval);
+        spinner.destroy();
+        _clearResearchTimer();
+        if (holder.parentNode) holder.remove();
+        _researchingStreamIds.delete(sessionId);
+        if (_researchingStreamIds.size === 0) {
+          var _rToggleP = document.getElementById('research-toggle-btn');
+          if (_rToggleP) _rToggleP.classList.remove('research-running');
         }
         return;
       }
-
-      if (data.status !== 'running') return;
-
-      // Don't show reconnect UI if we've already switched away
-      if (sessionModule.getCurrentSessionId() !== sessionId) return;
-
-      // Research is still running — show reconnect UI with spinner
-      const box = document.getElementById('chat-history');
-      if (!box) return;
-
-      const holder = document.createElement('div');
-      holder.className = 'msg msg-ai research-reconnect';
-      holder.dataset.researchSession = sessionId;
-      const roleTs = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      const agentMeta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
-      const agentModelLabel = _shortModel(agentMeta?.model);
-      holder.innerHTML = `<div class="role">${uiModule.esc(agentModelLabel)} <span class="role-timestamp">${roleTs}</span></div><div class="body"></div>`;
-      _applyModelColor(holder.querySelector('.role'), agentMeta?.model);
-      box.appendChild(holder);
-
-      const bodyDiv = holder.querySelector('.body');
-      const spinner = spinnerModule.create('Reconnecting to research...', 'right');
-      bodyDiv.appendChild(spinner.createElement());
-      spinner.start();
-
-      // Update spinner with current progress if available
-      function updateSpinnerFromProgress(progress) {
-        if (!progress || !progress.phase) return;
-        const rp = progress;
-        if (rp.phase === 'probing') {
-          spinner.updateMessage(`Verifying model: ${rp.model || '?'}`);
-        } else if (rp.phase === 'planning') {
-          spinner.updateMessage('Analyzing question & planning research strategy');
-        } else if (rp.phase === 'searching') {
-          const q = rp.queries ? `${rp.queries} queries` : '';
-          const s = rp.total_sources ? ` · ${rp.total_sources} sources` : '';
-          spinner.updateMessage(`Round ${rp.round || '?'}: Searching${q ? ' (' + q + ')' : ''}${s}`);
-        } else if (rp.phase === 'reading') {
-          spinner.updateMessage(rp.title ? `Reading: ${rp.title}` : `Round ${rp.round || '?'}: Reading ${rp.new_sources || ''} pages · ${rp.total_sources || 0} sources total`);
-        } else if (rp.phase === 'analyzing') {
-          spinner.updateMessage(`Round ${rp.round || '?'}: Analyzing ${rp.total_findings || 0} findings`);
-        } else if (rp.phase === 'writing') {
-          spinner.updateMessage(`Writing report · ${rp.total_sources || 0} sources`);
-        }
-      }
-
-      updateSpinnerFromProgress(data.progress);
-      _researchingStreamIds.add(sessionId);
-      if (sessionModule && sessionModule.markResearching) sessionModule.markResearching(sessionId);
-
-      // Restore research timer from started_at
-      if (data.started_at && spinner && spinner.element) {
-        _researchStartTime = data.started_at * 1000;
-        _researchAvgDuration = data.avg_duration || null;
-        _researchTimerEl = document.createElement('div');
-        _researchTimerEl.className = 'research-timer';
-        _researchTimerEl.style.cssText = 'font-size:0.8em; opacity:0.6; margin-top:4px; font-family:monospace;';
-        spinner.element.parentNode.insertBefore(_researchTimerEl, spinner.element.nextSibling);
-        _researchTimerInterval = setInterval(() => {
-          if (!_researchTimerEl) return;
-          var elapsed = Math.floor((Date.now() - _researchStartTime) / 1000);
-          var mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
-          var ss = String(elapsed % 60).padStart(2, '0');
-          var txt = mm + ':' + ss;
-          if (_researchAvgDuration) {
-            var avgM = String(Math.floor(_researchAvgDuration / 60)).padStart(2, '0');
-            var avgS = String(Math.round(_researchAvgDuration % 60)).padStart(2, '0');
-            txt += ' / avg ' + avgM + ':' + avgS;
-          }
-          _researchTimerEl.textContent = txt;
-        }, 1000);
-        // Reconnect synapse — seed it with whatever progress is already known
-        try {
-          _researchSynapse = createResearchSynapse(spinner.element.parentNode, {
-            query: data.query || '',
-            startedAt: _researchStartTime,
-          });
-          if (_researchSynapse.element && _researchTimerEl) {
-            spinner.element.parentNode.insertBefore(_researchSynapse.element, _researchTimerEl);
-          }
-          if (data.progress) {
-            _researchSynapse.setPhase(data.progress.phase, data.progress);
-            if (typeof data.progress.round === 'number') _researchSynapse.setRound(data.progress.round);
-            if (typeof data.progress.total_sources === 'number') _researchSynapse.setSourceCount(data.progress.total_sources);
-          }
-        } catch (e) { console.warn('synapse reconnect failed', e); }
-      }
-
-      // Poll for completion
-      const pollInterval = setInterval(async () => {
-        // Stop polling if user switched to a different session
-        if (sessionModule.getCurrentSessionId() !== sessionId) {
+      try {
+        const pollRes = await fetch(
+          `${API_BASE}/api/research/status/${sessionId}`,
+        );
+        if (!pollRes.ok) {
           clearInterval(pollInterval);
           spinner.destroy();
           _clearResearchTimer();
-          if (holder.parentNode) holder.remove();
           _researchingStreamIds.delete(sessionId);
-          if (_researchingStreamIds.size === 0) {
-            var _rToggleP = document.getElementById('research-toggle-btn');
-            if (_rToggleP) _rToggleP.classList.remove('research-running');
-          }
+          if (sessionModule && sessionModule.clearResearching)
+            sessionModule.clearResearching(sessionId);
           return;
         }
-        try {
-          const pollRes = await fetch(`${API_BASE}/api/research/status/${sessionId}`);
-          if (!pollRes.ok) {
-            clearInterval(pollInterval);
-            spinner.destroy();
-            _clearResearchTimer();
-            _researchingStreamIds.delete(sessionId);
-            if (sessionModule && sessionModule.clearResearching) sessionModule.clearResearching(sessionId);
-            return;
-          }
-          const pollData = await pollRes.json();
-          updateSpinnerFromProgress(pollData.progress);
-          if (_researchSynapse && pollData.progress) {
-            _researchSynapse.setPhase(pollData.progress.phase, pollData.progress);
-            if (typeof pollData.progress.round === 'number') _researchSynapse.setRound(pollData.progress.round);
-            if (typeof pollData.progress.total_sources === 'number') _researchSynapse.setSourceCount(pollData.progress.total_sources);
-          }
+        const pollData = await pollRes.json();
+        updateSpinnerFromProgress(pollData.progress);
+        if (_researchSynapse && pollData.progress) {
+          _researchSynapse.setPhase(pollData.progress.phase, pollData.progress);
+          if (typeof pollData.progress.round === 'number')
+            _researchSynapse.setRound(pollData.progress.round);
+          if (typeof pollData.progress.total_sources === 'number')
+            _researchSynapse.setSourceCount(pollData.progress.total_sources);
+        }
 
-          if (pollData.status !== 'running') {
-            clearInterval(pollInterval);
-            spinner.destroy();
-            _clearResearchTimer();
-            _researchingStreamIds.delete(sessionId);
-            if (sessionModule && sessionModule.clearResearching) sessionModule.clearResearching(sessionId);
+        if (pollData.status !== 'running') {
+          clearInterval(pollInterval);
+          spinner.destroy();
+          _clearResearchTimer();
+          _researchingStreamIds.delete(sessionId);
+          if (sessionModule && sessionModule.clearResearching)
+            sessionModule.clearResearching(sessionId);
 
-            if (pollData.status === 'done') {
-              _notifyResearchComplete(sessionId, data.query || '');
-              const rRes = await fetch(`${API_BASE}/api/research/result/${sessionId}`, { method: 'POST' });
-              if (rRes.ok) {
-                const rData = await rRes.json();
-                if (rData.result) {
-                  var srcHtml = '';
-                  if (rData.sources && rData.sources.length > 0) {
-                    srcHtml = _buildSourcesBox(rData.sources, 'research');
-                  }
-                  var findingsHtml = chatRenderer.buildFindingsBox(rData.raw_findings);
-                  bodyDiv.innerHTML = srcHtml + markdownModule.processWithThinking(
-                    markdownModule.squashOutsideCode(rData.result)
-                  ) + findingsHtml;
-                  holder.dataset.raw = rData.result;
-                  _appendViewReportLink(holder, sessionId);
-                  if (window.hljs) {
-                    holder.querySelectorAll('pre code').forEach(b => window.hljs.highlightElement(b));
-                  }
+          if (pollData.status === 'done') {
+            _notifyResearchComplete(sessionId, data.query || '');
+            const rRes = await fetch(
+              `${API_BASE}/api/research/result/${sessionId}`,
+              { method: 'POST' },
+            );
+            if (rRes.ok) {
+              const rData = await rRes.json();
+              if (rData.result) {
+                var srcHtml = '';
+                if (rData.sources && rData.sources.length > 0) {
+                  srcHtml = _buildSourcesBox(rData.sources, 'research');
+                }
+                var findingsHtml = chatRenderer.buildFindingsBox(
+                  rData.raw_findings,
+                );
+                bodyDiv.innerHTML =
+                  srcHtml +
+                  markdownModule.processWithThinking(
+                    markdownModule.squashOutsideCode(rData.result),
+                  ) +
+                  findingsHtml;
+                holder.dataset.raw = rData.result;
+                _appendViewReportLink(holder, sessionId);
+                if (window.hljs) {
+                  holder
+                    .querySelectorAll('pre code')
+                    .forEach((b) => window.hljs.highlightElement(b));
                 }
               }
-            } else {
-              bodyDiv.innerHTML = '<i style="color: var(--color-error);">[Research ' + pollData.status + ']</i>';
             }
+          } else {
+            bodyDiv.innerHTML =
+              '<i style="color: var(--color-error);">[Research ' +
+              pollData.status +
+              ']</i>';
           }
-        } catch (e) {
-          console.error('Research poll error:', e);
         }
-      }, 2000);
-    } catch (e) {
-      // No research pending, that's fine
-    }
+      } catch (e) {
+        console.error('Research poll error:', e);
+      }
+    }, 2000);
+  } catch (e) {
+    // No research pending, that's fine
   }
+}
 
-  /** Set a display override for the next user message bubble */
-  export function setDisplayOverride(text) {
-    _displayOverride = text;
-  }
+/** Set a display override for the next user message bubble */
+export function setDisplayOverride(text) {
+  _displayOverride = text;
+}
 
-  /** Hide the user bubble for the next submit (e.g. continue after stop) */
-  export function setHideUserBubble() {
-    _hideUserBubble = true;
-  }
+/** Hide the user bubble for the next submit (e.g. continue after stop) */
+export function setHideUserBubble() {
+  _hideUserBubble = true;
+}
 
-  /** Set the AI element to merge with the next streamed response (continue after stop) */
-  export function setPendingContinue(el) {
-    _pendingContinue = el;
-  }
+/** Set the AI element to merge with the next streamed response (continue after stop) */
+export function setPendingContinue(el) {
+  _pendingContinue = el;
+}
 
   /**
    * Delete an AI message and its preceding user message from the conversation.
@@ -4692,492 +5412,607 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     const clickedIndex = allMsgs.indexOf(msgElement);
     if (clickedIndex < 0) return;
 
-    // No early-out on a missing session: an output shown before any model was
-    // selected (issue #1428) has no session/persisted rows, but its "x" must
-    // still remove it. We only need the session id for the server-side delete
-    // below; without one we fall back to removing the DOM.
-    const sessionId = sessionModule.getCurrentSessionId();
+  // No early-out on a missing session: an output shown before any model was
+  // selected (issue #1428) has no session/persisted rows, but its "x" must
+  // still remove it. We only need the session id for the server-side delete
+  // below; without one we fall back to removing the DOM.
+  const sessionId = sessionModule.getCurrentSessionId();
 
-    const clickedIsUser = msgElement.classList.contains('msg-user');
+  const clickedIsUser = msgElement.classList.contains('msg-user');
 
-    // Find the user+AI pair
-    let userIndex = -1;
-    let aiIndex = -1;
-    if (clickedIsUser) {
-      userIndex = clickedIndex;
-      // Find the following AI message
-      for (let i = clickedIndex + 1; i < allMsgs.length; i++) {
-        if (allMsgs[i].classList.contains('msg-ai') && !allMsgs[i].classList.contains('msg-continuation')) {
-          aiIndex = i;
-          break;
-        }
-        if (allMsgs[i].classList.contains('msg-user')) break; // next user msg, no AI response
+  // Find the user+AI pair
+  let userIndex = -1;
+  let aiIndex = -1;
+  if (clickedIsUser) {
+    userIndex = clickedIndex;
+    // Find the following AI message
+    for (let i = clickedIndex + 1; i < allMsgs.length; i++) {
+      if (
+        allMsgs[i].classList.contains('msg-ai') &&
+        !allMsgs[i].classList.contains('msg-continuation')
+      ) {
+        aiIndex = i;
+        break;
       }
-    } else {
-      // If clicked on a continuation, walk back to the main AI message
-      let mainAiIndex = clickedIndex;
-      if (allMsgs[mainAiIndex].classList.contains('msg-continuation')) {
-        for (let i = mainAiIndex - 1; i >= 0; i--) {
-          if (allMsgs[i].classList.contains('msg-ai') && !allMsgs[i].classList.contains('msg-continuation')) {
-            mainAiIndex = i;
-            break;
-          }
-        }
-      }
-      aiIndex = mainAiIndex;
-      // Find the preceding user message
-      for (let i = aiIndex - 1; i >= 0; i--) {
-        if (allMsgs[i].classList.contains('msg-user')) {
-          userIndex = i;
+      if (allMsgs[i].classList.contains('msg-user')) break; // next user msg, no AI response
+    }
+  } else {
+    // If clicked on a continuation, walk back to the main AI message
+    let mainAiIndex = clickedIndex;
+    if (allMsgs[mainAiIndex].classList.contains('msg-continuation')) {
+      for (let i = mainAiIndex - 1; i >= 0; i--) {
+        if (
+          allMsgs[i].classList.contains('msg-ai') &&
+          !allMsgs[i].classList.contains('msg-continuation')
+        ) {
+          mainAiIndex = i;
           break;
         }
       }
     }
+    aiIndex = mainAiIndex;
+    // Find the preceding user message
+    for (let i = aiIndex - 1; i >= 0; i--) {
+      if (allMsgs[i].classList.contains('msg-user')) {
+        userIndex = i;
+        break;
+      }
+    }
+  }
 
-    // Collect DB message IDs and DOM elements to remove
-    const msgIds = [];
-    const domToRemove = [];
+  // Collect DB message IDs and DOM elements to remove
+  const msgIds = [];
+  const domToRemove = [];
 
-    // Add the user message if found
+  // Add the user message if found
+  if (userIndex >= 0) {
+    domToRemove.push(allMsgs[userIndex]);
+    const uid = allMsgs[userIndex].dataset.dbId;
+    if (uid) msgIds.push(uid);
+  }
+
+  // Add the AI message if found
+  if (aiIndex >= 0) {
+    domToRemove.push(allMsgs[aiIndex]);
+    const aid = allMsgs[aiIndex].dataset.dbId;
+    if (aid) msgIds.push(aid);
+
+    const aiEl = allMsgs[aiIndex];
+    // Also remove agent-thread elements BETWEEN user and AI
     if (userIndex >= 0) {
-      domToRemove.push(allMsgs[userIndex]);
-      const uid = allMsgs[userIndex].dataset.dbId;
-      if (uid) msgIds.push(uid);
-    }
-
-    // Add the AI message if found
-    if (aiIndex >= 0) {
-      domToRemove.push(allMsgs[aiIndex]);
-      const aid = allMsgs[aiIndex].dataset.dbId;
-      if (aid) msgIds.push(aid);
-
-      const aiEl = allMsgs[aiIndex];
-      // Also remove agent-thread elements BETWEEN user and AI
-      if (userIndex >= 0) {
-        let between = allMsgs[userIndex].nextElementSibling;
-        while (between && between !== aiEl) {
-          domToRemove.push(between);
-          between = between.nextElementSibling;
-        }
-      }
-      // Walk forward from the AI element to remove continuations and tool bubbles
-      let sibling = aiEl.nextElementSibling;
-      while (sibling) {
-        if (sibling.classList.contains('msg-user') ||
-            (sibling.classList.contains('msg-ai') && !sibling.classList.contains('msg-continuation'))) {
-          break;
-        }
-        domToRemove.push(sibling);
-        sibling = sibling.nextElementSibling;
+      let between = allMsgs[userIndex].nextElementSibling;
+      while (between && between !== aiEl) {
+        domToRemove.push(between);
+        between = between.nextElementSibling;
       }
     }
+    // Walk forward from the AI element to remove continuations and tool bubbles
+    let sibling = aiEl.nextElementSibling;
+    while (sibling) {
+      if (
+        sibling.classList.contains('msg-user') ||
+        (sibling.classList.contains('msg-ai') &&
+          !sibling.classList.contains('msg-continuation'))
+      ) {
+        break;
+      }
+      domToRemove.push(sibling);
+      sibling = sibling.nextElementSibling;
+    }
+  }
 
-    if (!msgIds.length || !sessionId) {
-      // No persisted rows to delete (no DB IDs, or no session at all — e.g. an
-      // error output shown before a model was selected, #1428). Just remove the
-      // DOM so the "x" works regardless.
-      domToRemove.forEach(el => el.remove());
-      if (uiModule) uiModule.showToast('Message deleted');
+  if (!msgIds.length || !sessionId) {
+    // No persisted rows to delete (no DB IDs, or no session at all — e.g. an
+    // error output shown before a model was selected, #1428). Just remove the
+    // DOM so the "x" works regardless.
+    domToRemove.forEach((el) => el.remove());
+    if (uiModule) uiModule.showToast('Message deleted');
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/session/${sessionId}/delete-messages`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msg_ids: msgIds }),
+      },
+    );
+    if (!res.ok) throw new Error('Server error ' + res.status);
+    domToRemove.forEach((el) => el.remove());
+    if (uiModule) uiModule.showToast('Message deleted');
+  } catch (err) {
+    console.error('Delete failed:', err);
+    if (uiModule) uiModule.showError('Delete failed: ' + err.message);
+  }
+}
+
+/**
+ * Edit an AI message inline. Makes the body contentEditable, saves to DB on confirm.
+ */
+export async function editAIMessage(msgElement) {
+  const body = msgElement.querySelector('.body');
+  if (!body) return;
+
+  const isEditing =
+    body.contentEditable === 'true' ||
+    body.contentEditable === 'plaintext-only';
+  if (isEditing) return; // already editing
+
+  const originalRaw = msgElement.dataset.raw || body.textContent || '';
+
+  // Create editable textarea overlay
+  const textarea = document.createElement('textarea');
+  textarea.className = 'msg-edit-textarea';
+  textarea.value = originalRaw;
+  textarea.style.width = '100%';
+  textarea.style.minHeight = Math.max(100, body.offsetHeight) + 'px';
+  body.style.display = 'none';
+  body.parentNode.insertBefore(textarea, body.nextSibling);
+  textarea.focus();
+
+  // Add save/cancel bar
+  const bar = document.createElement('div');
+  bar.className = 'msg-edit-bar';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'msg-edit-save';
+  saveBtn.textContent = 'Save';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'msg-edit-cancel';
+  cancelBtn.textContent = 'Cancel';
+  bar.appendChild(saveBtn);
+  bar.appendChild(cancelBtn);
+  textarea.parentNode.insertBefore(bar, textarea.nextSibling);
+
+  function cleanup() {
+    textarea.remove();
+    bar.remove();
+    body.style.display = '';
+  }
+
+  cancelBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    cleanup();
+  });
+
+  saveBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const newContent = textarea.value;
+    if (newContent === originalRaw) {
+      cleanup();
+      return;
+    }
+
+    const msgId = msgElement.dataset.dbId;
+    if (!msgId) {
+      if (uiModule) uiModule.showError('Cannot edit: message ID not found');
+      cleanup();
+      return;
+    }
+
+    const sessionId = sessionModule.getCurrentSessionId();
+    if (!sessionId) {
+      cleanup();
       return;
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/session/${sessionId}/delete-messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ msg_ids: msgIds })
-      });
-      if (!res.ok) throw new Error('Server error ' + res.status);
-      domToRemove.forEach(el => el.remove());
-      if (uiModule) uiModule.showToast('Message deleted');
-    } catch (err) {
-      console.error('Delete failed:', err);
-      if (uiModule) uiModule.showError('Delete failed: ' + err.message);
-    }
-  }
-
-  /**
-   * Edit an AI message inline. Makes the body contentEditable, saves to DB on confirm.
-   */
-  export async function editAIMessage(msgElement) {
-    const body = msgElement.querySelector('.body');
-    if (!body) return;
-
-    const isEditing = body.contentEditable === 'true' || body.contentEditable === 'plaintext-only';
-    if (isEditing) return; // already editing
-
-    const originalRaw = msgElement.dataset.raw || body.textContent || '';
-
-    // Create editable textarea overlay
-    const textarea = document.createElement('textarea');
-    textarea.className = 'msg-edit-textarea';
-    textarea.value = originalRaw;
-    textarea.style.width = '100%';
-    textarea.style.minHeight = Math.max(100, body.offsetHeight) + 'px';
-    body.style.display = 'none';
-    body.parentNode.insertBefore(textarea, body.nextSibling);
-    textarea.focus();
-
-    // Add save/cancel bar
-    const bar = document.createElement('div');
-    bar.className = 'msg-edit-bar';
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'msg-edit-save';
-    saveBtn.textContent = 'Save';
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'msg-edit-cancel';
-    cancelBtn.textContent = 'Cancel';
-    bar.appendChild(saveBtn);
-    bar.appendChild(cancelBtn);
-    textarea.parentNode.insertBefore(bar, textarea.nextSibling);
-
-    function cleanup() {
-      textarea.remove();
-      bar.remove();
-      body.style.display = '';
-    }
-
-    cancelBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      cleanup();
-    });
-
-    saveBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const newContent = textarea.value;
-      if (newContent === originalRaw) { cleanup(); return; }
-
-      const msgId = msgElement.dataset.dbId;
-      if (!msgId) { if (uiModule) uiModule.showError('Cannot edit: message ID not found'); cleanup(); return; }
-
-      const sessionId = sessionModule.getCurrentSessionId();
-      if (!sessionId) { cleanup(); return; }
-
-      try {
-        const res = await fetch(`${API_BASE}/api/session/${sessionId}/edit-message`, {
+      const res = await fetch(
+        `${API_BASE}/api/session/${sessionId}/edit-message`,
+        {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ msg_id: msgId, content: newContent }),
-        });
-        if (!res.ok) throw new Error('Server error ' + res.status);
+        },
+      );
+      if (!res.ok) throw new Error('Server error ' + res.status);
 
-        // Re-render body with markdown
-        body.innerHTML = markdownModule.processWithThinking(markdownModule.squashOutsideCode(newContent));
-        msgElement.dataset.raw = newContent;
+      // Re-render body with markdown
+      body.innerHTML = markdownModule.processWithThinking(
+        markdownModule.squashOutsideCode(newContent),
+      );
+      msgElement.dataset.raw = newContent;
 
-        // Add edited indicator if not already present
-        if (!msgElement.querySelector('.edited-indicator')) {
-          const indicator = document.createElement('div');
-          indicator.className = 'edited-indicator';
-          indicator.textContent = '[Message edited]';
-          body.parentNode.insertBefore(indicator, body.nextSibling);
-        }
-
-        cleanup();
-        if (uiModule) uiModule.showToast('Message edited');
-      } catch (err) {
-        console.error('Edit failed:', err);
-        if (uiModule) uiModule.showError('Edit failed: ' + err.message);
+      // Add edited indicator if not already present
+      if (!msgElement.querySelector('.edited-indicator')) {
+        const indicator = document.createElement('div');
+        indicator.className = 'edited-indicator';
+        indicator.textContent = '[Message edited]';
+        body.parentNode.insertBefore(indicator, body.nextSibling);
       }
-    });
+
+      cleanup();
+      if (uiModule) uiModule.showToast('Message edited');
+    } catch (err) {
+      console.error('Edit failed:', err);
+      if (uiModule) uiModule.showError('Edit failed: ' + err.message);
+    }
+  });
+}
+
+/**
+ * Rewrite the AI's last response with a specific instruction.
+ * Uses the lightweight /api/rewrite endpoint — no tools, no agent loop.
+ * Just rewrites the text of the last AI bubble.
+ */
+export async function rewriteWith(aiMsgElement, instruction) {
+  const sessionId = sessionModule.getCurrentSessionId();
+  if (!sessionId) return;
+
+  // Get the original text from the AI bubble
+  const oldRaw =
+    aiMsgElement.dataset.raw ||
+    aiMsgElement.querySelector('.body')?.textContent ||
+    '';
+  const oldHtml = aiMsgElement.querySelector('.body')?.innerHTML || '';
+
+  if (!oldRaw.trim()) {
+    if (uiModule) uiModule.showError('No text to rewrite');
+    return;
   }
 
-  /**
-   * Rewrite the AI's last response with a specific instruction.
-   * Uses the lightweight /api/rewrite endpoint — no tools, no agent loop.
-   * Just rewrites the text of the last AI bubble.
-   */
-  export async function rewriteWith(aiMsgElement, instruction) {
-    const sessionId = sessionModule.getCurrentSessionId();
-    if (!sessionId) return;
+  // Save current response as a variant
+  let variants = [];
+  try {
+    variants = JSON.parse(aiMsgElement.dataset.variants || '[]');
+  } catch (_) {}
+  if (variants.length === 0) {
+    variants.push({ raw: oldRaw, html: oldHtml, label: 'original' });
+  }
 
-    // Get the original text from the AI bubble
-    const oldRaw = aiMsgElement.dataset.raw || aiMsgElement.querySelector('.body')?.textContent || '';
-    const oldHtml = aiMsgElement.querySelector('.body')?.innerHTML || '';
+  // Determine label from instruction
+  let varLabel = 'rewrite';
+  if (instruction.includes('shorter')) varLabel = 'shorter';
+  else if (instruction.includes('simpler')) varLabel = 'simpler';
 
-    if (!oldRaw.trim()) {
-      if (uiModule) uiModule.showError('No text to rewrite');
-      return;
+  // Clear the bubble and show a whirlpool spinner while we wait for the
+  // rewrite (replaces the old "Rewriting..." text).
+  const bodyEl = aiMsgElement.querySelector('.body');
+  let _rwSpin = null;
+  if (bodyEl) {
+    bodyEl.innerHTML = '';
+    _rwSpin = spinnerModule.createWhirlpool(18);
+    _rwSpin.element.style.margin = '4px 0';
+    bodyEl.appendChild(_rwSpin.element);
+  }
+  // Stop + detach the spinner (called once real content starts rendering, and
+  // on the failure path so it never spins forever).
+  const _killRwSpin = () => {
+    if (_rwSpin) {
+      try {
+        _rwSpin.destroy();
+      } catch (_) {}
+      _rwSpin = null;
+    }
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/api/rewrite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        original_text: oldRaw,
+        instruction: instruction,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
     }
 
-    // Save current response as a variant
-    let variants = [];
-    try { variants = JSON.parse(aiMsgElement.dataset.variants || '[]'); } catch(_) {}
-    if (variants.length === 0) {
-      variants.push({ raw: oldRaw, html: oldHtml, label: 'original' });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let newText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const data = JSON.parse(payload);
+          // The endpoint streams `event: error\ndata: {error,status}` on
+          // failure — surface it instead of silently hanging on "Rewriting…".
+          if (data.error) {
+            throw new Error(data.error || 'HTTP ' + (data.status || 500));
+          }
+          // Reasoning tokens (vLLM --reasoning-parser: Qwen3 / DeepSeek-R1)
+          // arrive as separate {delta, thinking:true} chunks. They are NOT
+          // the rewrite — fold them away so they don't pollute the result.
+          if (data.thinking) continue;
+          if (data.delta) {
+            newText += data.delta;
+            _killRwSpin();
+            if (bodyEl) {
+              bodyEl.innerHTML = markdownModule.processWithThinking(
+                markdownModule.squashOutsideCode(newText),
+              );
+            }
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message) throw e; // re-throw real errors
+          /* ignore JSON parse noise */
+        }
+      }
     }
 
-    // Determine label from instruction
-    let varLabel = 'rewrite';
-    if (instruction.includes('shorter')) varLabel = 'shorter';
-    else if (instruction.includes('simpler')) varLabel = 'simpler';
+    // Strip any thinking markup from the answer. A reasoning model may emit
+    // an inline <think>…</think> block, a bare </think> (no opener), or — when
+    // its reasoning came via reasoning_content — a stray leading <think> that
+    // never closes (so it would otherwise hide the whole answer). Peel all of
+    // those off so what's left is just the rewritten text.
+    const _stripThink = (t) => {
+      t = markdownModule.normalizeThinkingMarkup(t || '');
+      t = t.replace(
+        /<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>[\s\S]*?<\/(?:think(?:ing)?|thought)>/gi,
+        '',
+      ); // complete blocks
+      if (/<\/(?:think(?:ing)?|thought)>/i.test(t))
+        t = t.replace(/^[\s\S]*?<\/(?:think(?:ing)?|thought)>/i, ''); // reasoning w/o opener
+      return t
+        .replace(/<\/?(?:think(?:ing)?|thought)(?:\s+[^>]*)?>/gi, '')
+        .trim(); // any orphan tag
+    };
+    newText = _stripThink(newText);
 
-    // Clear the bubble and show a whirlpool spinner while we wait for the
-    // rewrite (replaces the old "Rewriting..." text).
-    const bodyEl = aiMsgElement.querySelector('.body');
-    let _rwSpin = null;
-    if (bodyEl) {
-      bodyEl.innerHTML = '';
-      _rwSpin = spinnerModule.createWhirlpool(18);
-      _rwSpin.element.style.margin = '4px 0';
-      bodyEl.appendChild(_rwSpin.element);
+    // Nothing left after stripping (or an empty stream) → real failure, not a
+    // blank bubble.
+    if (!newText.trim()) {
+      throw new Error('model returned no rewritten text');
     }
-    // Stop + detach the spinner (called once real content starts rendering, and
-    // on the failure path so it never spins forever).
-    const _killRwSpin = () => { if (_rwSpin) { try { _rwSpin.destroy(); } catch (_) {} _rwSpin = null; } };
 
+    // Update the element's raw text
+    if (newText) {
+      aiMsgElement.dataset.raw = newText;
+      // Final render with proper markdown
+      if (bodyEl) {
+        bodyEl.innerHTML = markdownModule.processWithThinking(
+          markdownModule.squashOutsideCode(newText),
+        );
+      }
+
+      // Save the new response as a variant
+      variants.push({
+        raw: newText,
+        html: bodyEl ? bodyEl.innerHTML : '',
+        label: varLabel,
+      });
+      aiMsgElement.dataset.variants = JSON.stringify(variants);
+      aiMsgElement.dataset.variantIndex = String(variants.length - 1);
+
+      // Persist variant metadata to server
+      try {
+        await fetch(`${API_BASE}/api/session/${sessionId}/update-last-meta`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            metadata: { variants: variants, variantIndex: variants.length - 1 },
+          }),
+        });
+      } catch (_) {}
+
+      // Re-render variant navigation
+      _renderVariantNav(aiMsgElement, variants, variants.length - 1);
+    }
+
+    if (uiModule) uiModule.scrollHistory();
+  } catch (err) {
+    console.error('Rewrite failed:', err);
+    _killRwSpin();
+    // Restore original content on failure
+    if (bodyEl) bodyEl.innerHTML = oldHtml;
+    if (uiModule) uiModule.showError('Rewrite failed: ' + err.message);
+  }
+}
+
+/**
+ * Continue the AI's response from where it left off.
+ */
+export async function continueFrom(aiMsgElement) {
+  const sessionId = sessionModule.getCurrentSessionId();
+  if (!sessionId) return;
+
+  const messageInput = uiModule.el('message');
+  if (messageInput) {
+    messageInput.value = 'Continue from where you left off.';
+    const submitBtn = document.querySelector('.send-btn');
+    if (submitBtn) submitBtn.click();
+  }
+}
+
+// Open a chat attachment in the right place: images → Gallery editor; PDFs &
+// text/code/markdown → Documents viewer; anything else → raw file. A given
+// upload's imported document is reused (cached by upload id) so clicking it
+// again re-opens the same doc instead of making duplicates.
+const _attachDocCache = new Map(); // upload id -> doc id
+function _attachLang(name) {
+  const m = (name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  const ext = m ? m[1] : '';
+  const map = {
+    md: 'markdown',
+    markdown: 'markdown',
+    js: 'javascript',
+    ts: 'typescript',
+    jsx: 'javascript',
+    tsx: 'typescript',
+    py: 'python',
+    rb: 'ruby',
+    go: 'go',
+    rs: 'rust',
+    java: 'java',
+    c: 'c',
+    cpp: 'cpp',
+    h: 'c',
+    hpp: 'cpp',
+    cs: 'csharp',
+    php: 'php',
+    html: 'html',
+    htm: 'html',
+    css: 'css',
+    scss: 'scss',
+    json: 'json',
+    yaml: 'yaml',
+    yml: 'yaml',
+    sh: 'bash',
+    bash: 'bash',
+    sql: 'sql',
+    csv: 'csv',
+    xml: 'xml',
+  };
+  return map[ext] || '';
+}
+async function openAttachment(att, isImage) {
+  if (!att || !att.id) return;
+  const id = att.id,
+    name = att.name || '',
+    mime = att.mime || '';
+  const url = `${API_BASE}/api/upload/${id}`;
+
+  // Images → Gallery editor.
+  if (isImage) {
     try {
-      const res = await fetch(`${API_BASE}/api/rewrite`, {
+      const gx = await import('./galleryEditor.js');
+      if (gx.openEditor) {
+        gx.openEditor(url, id, null, name);
+        return;
+      }
+    } catch (e) {
+      console.warn('gallery open failed', e);
+    }
+    window.open(url, '_blank');
+    return;
+  }
+
+  const isPdf = mime === 'application/pdf' || /\.pdf$/i.test(name);
+  const TEXT_EXT =
+    /\.(txt|md|markdown|js|ts|jsx|tsx|py|rb|go|rs|java|c|cpp|h|hpp|cs|php|html?|css|scss|sass|less|json|ya?ml|toml|ini|conf|env|sh|bash|sql|csv|tsv|xml|log|vue|svelte)$/i;
+  const isTextDoc = TEXT_EXT.test(name) || /^text\//.test(mime);
+  if (!isPdf && !isTextDoc) {
+    window.open(url, '_blank');
+    return;
+  } // binary/unknown → raw
+
+  // Reuse the doc we already imported for this upload, if it still loads.
+  const cached = _attachDocCache.get(id);
+  if (cached) {
+    try {
+      documentModule.openPanel && documentModule.openPanel();
+      await documentModule.loadDocument(cached);
+      return;
+    } catch (_) {
+      _attachDocCache.delete(id);
+    }
+  }
+
+  // Need a session to attach the doc to (bare-session fallback, same as compose).
+  let sid = '';
+  try {
+    sid = sessionModule.getCurrentSessionId() || '';
+  } catch (_) {}
+  if (!sid) {
+    try {
+      const _fd = new FormData();
+      _fd.append('name', name || 'Attachment');
+      _fd.append('skip_validation', 'true');
+      const r = await fetch(`${API_BASE}/api/session`, {
+        method: 'POST',
+        body: _fd,
+        credentials: 'same-origin',
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && d.id) {
+          sid = d.id;
+          if (sessionModule.loadSessions) await sessionModule.loadSessions();
+        }
+      }
+    } catch (_) {}
+  }
+
+  try {
+    let doc;
+    if (isPdf) {
+      // import-pdf wants a fresh file upload — re-fetch the stored blob and post it.
+      const blob = await (await fetch(url)).blob();
+      const fd = new FormData();
+      fd.append('file', blob, name || 'document.pdf');
+      if (sid) fd.append('session_id', sid);
+      const res = await fetch(`${API_BASE}/api/documents/import-pdf`, {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+      });
+      if (!res.ok) throw new Error('import-pdf ' + res.status);
+      doc = await res.json();
+    } else {
+      const text = await (await fetch(url)).text();
+      const res = await fetch(`${API_BASE}/api/document`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: sessionId,
-          original_text: oldRaw,
-          instruction: instruction,
+          session_id: sid || null,
+          title: name.replace(/\.[^.]+$/, '') || 'Document',
+          content: text,
+          language: _attachLang(name),
         }),
       });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let newText = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const payload = line.slice(6).trim();
-          if (payload === '[DONE]') continue;
-          try {
-            const data = JSON.parse(payload);
-            // The endpoint streams `event: error\ndata: {error,status}` on
-            // failure — surface it instead of silently hanging on "Rewriting…".
-            if (data.error) {
-              throw new Error(data.error || ('HTTP ' + (data.status || 500)));
-            }
-            // Reasoning tokens (vLLM --reasoning-parser: Qwen3 / DeepSeek-R1)
-            // arrive as separate {delta, thinking:true} chunks. They are NOT
-            // the rewrite — fold them away so they don't pollute the result.
-            if (data.thinking) continue;
-            if (data.delta) {
-              newText += data.delta;
-              _killRwSpin();
-              if (bodyEl) {
-                bodyEl.innerHTML = markdownModule.processWithThinking(
-                  markdownModule.squashOutsideCode(newText)
-                );
-              }
-            }
-          } catch (e) {
-            if (e instanceof Error && e.message) throw e;  // re-throw real errors
-            /* ignore JSON parse noise */
-          }
-        }
-      }
-
-      // Strip any thinking markup from the answer. A reasoning model may emit
-      // an inline <think>…</think> block, a bare </think> (no opener), or — when
-      // its reasoning came via reasoning_content — a stray leading <think> that
-      // never closes (so it would otherwise hide the whole answer). Peel all of
-      // those off so what's left is just the rewritten text.
-      const _stripThink = (t) => {
-        t = markdownModule.normalizeThinkingMarkup(t || '');
-        t = t.replace(/<(?:think(?:ing)?|thought)(?:\s+[^>]*)?>[\s\S]*?<\/(?:think(?:ing)?|thought)>/gi, '');   // complete blocks
-        if (/<\/(?:think(?:ing)?|thought)>/i.test(t)) t = t.replace(/^[\s\S]*?<\/(?:think(?:ing)?|thought)>/i, '');  // reasoning w/o opener
-        return t.replace(/<\/?(?:think(?:ing)?|thought)(?:\s+[^>]*)?>/gi, '').trim();        // any orphan tag
-      };
-      newText = _stripThink(newText);
-
-      // Nothing left after stripping (or an empty stream) → real failure, not a
-      // blank bubble.
-      if (!newText.trim()) {
-        throw new Error('model returned no rewritten text');
-      }
-
-      // Update the element's raw text
-      if (newText) {
-        aiMsgElement.dataset.raw = newText;
-        // Final render with proper markdown
-        if (bodyEl) {
-          bodyEl.innerHTML = markdownModule.processWithThinking(
-            markdownModule.squashOutsideCode(newText)
-          );
-        }
-
-        // Save the new response as a variant
-        variants.push({ raw: newText, html: bodyEl ? bodyEl.innerHTML : '', label: varLabel });
-        aiMsgElement.dataset.variants = JSON.stringify(variants);
-        aiMsgElement.dataset.variantIndex = String(variants.length - 1);
-
-        // Persist variant metadata to server
-        try {
-          await fetch(`${API_BASE}/api/session/${sessionId}/update-last-meta`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ metadata: { variants: variants, variantIndex: variants.length - 1 } }),
-          });
-        } catch (_) {}
-
-        // Re-render variant navigation
-        _renderVariantNav(aiMsgElement, variants, variants.length - 1);
-      }
-
-      if (uiModule) uiModule.scrollHistory();
-
-    } catch (err) {
-      console.error('Rewrite failed:', err);
-      _killRwSpin();
-      // Restore original content on failure
-      if (bodyEl) bodyEl.innerHTML = oldHtml;
-      if (uiModule) uiModule.showError('Rewrite failed: ' + err.message);
+      if (!res.ok) throw new Error('document ' + res.status);
+      doc = await res.json();
     }
+    if (doc && doc.id) {
+      _attachDocCache.set(id, doc.id);
+      documentModule.openPanel && documentModule.openPanel();
+      if (documentModule.injectFreshDoc) documentModule.injectFreshDoc(doc);
+      else await documentModule.loadDocument(doc.id);
+    }
+  } catch (e) {
+    console.error('open attachment as document failed', e);
+    import('./ui.js')
+      .then((m) => m.showError && m.showError('Could not open attachment'))
+      .catch(() => {});
+    window.open(url, '_blank'); // fallback so the file is still reachable
   }
+}
 
-  /**
-   * Continue the AI's response from where it left off.
-   */
-  export async function continueFrom(aiMsgElement) {
-    const sessionId = sessionModule.getCurrentSessionId();
-    if (!sessionId) return;
-
-    const messageInput = uiModule.el('message');
-    if (messageInput) {
-      messageInput.value = 'Continue from where you left off.';
-      const submitBtn = document.querySelector('.send-btn');
-      if (submitBtn) submitBtn.click();
-    }
-  }
-
-  // Open a chat attachment in the right place: images → Gallery editor; PDFs &
-  // text/code/markdown → Documents viewer; anything else → raw file. A given
-  // upload's imported document is reused (cached by upload id) so clicking it
-  // again re-opens the same doc instead of making duplicates.
-  const _attachDocCache = new Map();  // upload id -> doc id
-  function _attachLang(name) {
-    const m = (name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
-    const ext = m ? m[1] : '';
-    const map = { md:'markdown', markdown:'markdown', js:'javascript', ts:'typescript',
-      jsx:'javascript', tsx:'typescript', py:'python', rb:'ruby', go:'go', rs:'rust',
-      java:'java', c:'c', cpp:'cpp', h:'c', hpp:'cpp', cs:'csharp', php:'php', html:'html',
-      htm:'html', css:'css', scss:'scss', json:'json', yaml:'yaml', yml:'yaml', sh:'bash',
-      bash:'bash', sql:'sql', csv:'csv', xml:'xml' };
-    return map[ext] || '';
-  }
-  async function openAttachment(att, isImage) {
-    if (!att || !att.id) return;
-    const id = att.id, name = att.name || '', mime = att.mime || '';
-    const url = `${API_BASE}/api/upload/${id}`;
-
-    // Images → Gallery editor.
-    if (isImage) {
-      try {
-        const gx = await import('./galleryEditor.js');
-        if (gx.openEditor) { gx.openEditor(url, id, null, name); return; }
-      } catch (e) { console.warn('gallery open failed', e); }
-      window.open(url, '_blank');
-      return;
-    }
-
-    const isPdf = mime === 'application/pdf' || /\.pdf$/i.test(name);
-    const TEXT_EXT = /\.(txt|md|markdown|js|ts|jsx|tsx|py|rb|go|rs|java|c|cpp|h|hpp|cs|php|html?|css|scss|sass|less|json|ya?ml|toml|ini|conf|env|sh|bash|sql|csv|tsv|xml|log|vue|svelte)$/i;
-    const isTextDoc = TEXT_EXT.test(name) || /^text\//.test(mime);
-    if (!isPdf && !isTextDoc) { window.open(url, '_blank'); return; }  // binary/unknown → raw
-
-    // Reuse the doc we already imported for this upload, if it still loads.
-    const cached = _attachDocCache.get(id);
-    if (cached) {
-      try {
-        documentModule.openPanel && documentModule.openPanel();
-        await documentModule.loadDocument(cached);
-        return;
-      } catch (_) { _attachDocCache.delete(id); }
-    }
-
-    // Need a session to attach the doc to (bare-session fallback, same as compose).
-    let sid = '';
-    try { sid = sessionModule.getCurrentSessionId() || ''; } catch (_) {}
-    if (!sid) {
-      try {
-        const _fd = new FormData();
-        _fd.append('name', name || 'Attachment');
-        _fd.append('skip_validation', 'true');
-        const r = await fetch(`${API_BASE}/api/session`, { method: 'POST', body: _fd, credentials: 'same-origin' });
-        if (r.ok) { const d = await r.json(); if (d && d.id) { sid = d.id; if (sessionModule.loadSessions) await sessionModule.loadSessions(); } }
-      } catch (_) {}
-    }
-
-    try {
-      let doc;
-      if (isPdf) {
-        // import-pdf wants a fresh file upload — re-fetch the stored blob and post it.
-        const blob = await (await fetch(url)).blob();
-        const fd = new FormData();
-        fd.append('file', blob, name || 'document.pdf');
-        if (sid) fd.append('session_id', sid);
-        const res = await fetch(`${API_BASE}/api/documents/import-pdf`, { method: 'POST', body: fd, credentials: 'same-origin' });
-        if (!res.ok) throw new Error('import-pdf ' + res.status);
-        doc = await res.json();
-      } else {
-        const text = await (await fetch(url)).text();
-        const res = await fetch(`${API_BASE}/api/document`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sid || null, title: name.replace(/\.[^.]+$/, '') || 'Document', content: text, language: _attachLang(name) }),
-        });
-        if (!res.ok) throw new Error('document ' + res.status);
-        doc = await res.json();
-      }
-      if (doc && doc.id) {
-        _attachDocCache.set(id, doc.id);
-        documentModule.openPanel && documentModule.openPanel();
-        if (documentModule.injectFreshDoc) documentModule.injectFreshDoc(doc);
-        else await documentModule.loadDocument(doc.id);
-      }
-    } catch (e) {
-      console.error('open attachment as document failed', e);
-      import('./ui.js').then(m => m.showError && m.showError('Could not open attachment')).catch(() => {});
-      window.open(url, '_blank');  // fallback so the file is still reachable
-    }
-  }
-
-  // Public API
-  const chatModule = {
-    init,
-    initListeners,
-    openAttachment,
-    addMessage: chatRenderer.addMessage,
-    displayMetrics: chatRenderer.displayMetrics,
-    handleChatSubmit,
-    abortCurrentRequest,
-    detachCurrentStream,
-    checkBackgroundStream,
-    resumeStream,
-    hideWelcomeScreen: chatRenderer.hideWelcomeScreen,
-    showWelcomeScreen: chatRenderer.showWelcomeScreen,
-    checkPendingResearch,
-    getImageCost: chatRenderer.getImageCost,
-    setDisplayOverride,
-    setHideUserBubble,
-    setPendingContinue,
-    regenerateFrom,
-    forkFrom,
-    editUserMessage,
-    editAIMessage,
-    resendUserMessage,
-    deleteMessage,
-    rewriteWith,
-    continueFrom,
-    _appendViewReportLink,
-    hasActiveStream,
-  };
+// Public API
+const chatModule = {
+  init,
+  initListeners,
+  openAttachment,
+  addMessage: chatRenderer.addMessage,
+  displayMetrics: chatRenderer.displayMetrics,
+  handleChatSubmit,
+  abortCurrentRequest,
+  detachCurrentStream,
+  checkBackgroundStream,
+  resumeStream,
+  hideWelcomeScreen: chatRenderer.hideWelcomeScreen,
+  showWelcomeScreen: chatRenderer.showWelcomeScreen,
+  checkPendingResearch,
+  getImageCost,
+  setDisplayOverride,
+  setHideUserBubble,
+  setPendingContinue,
+  regenerateFrom,
+  forkFrom,
+  editUserMessage,
+  editAIMessage,
+  resendUserMessage,
+  deleteMessage,
+  rewriteWith,
+  continueFrom,
+  _appendViewReportLink,
+  hasActiveStream,
+};
 
   // Single delegated handler for tool-call fold/expand. One listener on
   // document.body covers every .agent-thread-node — running, completed,
@@ -5204,5 +6039,8 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     window.__odysseus_thread_click_bound = true;
   }
 
-  export default chatModule;
-  window.chatModule = chatModule;
+export default chatModule;
+window.chatModule = chatModule;
+
+
+
