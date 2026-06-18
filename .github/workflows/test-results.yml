@@ -2,7 +2,7 @@ name: Update Test Summary
 
 on:
   push:
-    branches: [dev-latest]
+    branches: [dev]
   pull_request:
 
 permissions:
