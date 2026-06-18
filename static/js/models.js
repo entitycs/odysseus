@@ -4,14 +4,14 @@
  * Model and provider management
  */
 
+import dragSortModule from './dragSort.js';
+import { modelColor } from './model/models.js';
+import { sortModelIds } from './modelSort.js';
+import { providerLogo } from './providers.js';
+import sessionModule from './sessions.js';
+import spinnerModule from './spinner.js';
 import Storage from './storage.js';
 import uiModule from './ui.js';
-import sessionModule from './sessions.js';
-import dragSortModule from './dragSort.js';
-import spinnerModule from './spinner.js';
-import { modelColor } from './chatRenderer.js';
-import { providerLogo } from './providers.js';
-import { sortModelIds } from './modelSort.js';
 
 let API_BASE = '';
 let _cachedItems = []; // cached /api/models items for model-switch dropdown
@@ -103,7 +103,8 @@ function _buildModelRow(mid, url, displayName, endpointId, offline, modelType) {
   const _favColor = modelColor(mid);
   const _logo = providerLogo(mid);
   if (_logo) {
-    fav.className = 'model-fav-btn provider-logo' + (_isFavorite(mid) ? ' active' : '');
+    fav.className =
+      'model-fav-btn provider-logo' + (_isFavorite(mid) ? ' active' : '');
     fav.innerHTML = _logo;
     fav.style.opacity = '0.4';
   } else {
@@ -125,13 +126,18 @@ function _buildModelRow(mid, url, displayName, endpointId, offline, modelType) {
     badge.className = 'model-type-badge';
     badge.textContent = 'IMG';
     badge.title = 'Image generation model';
-    badge.style.cssText = 'font-size:0.65em;padding:1px 4px;border-radius:3px;background:var(--accent,#7c3aed);color:#fff;margin-left:6px;vertical-align:middle;';
+    badge.style.cssText =
+      'font-size:0.65em;padding:1px 4px;border-radius:3px;background:var(--accent,#7c3aed);color:#fff;margin-left:6px;vertical-align:middle;';
     span.appendChild(badge);
   }
 
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.textContent = offline ? 'Offline' : (modelType === 'image' ? '+ Image' : '+ Chat');
+  btn.textContent = offline
+    ? 'Offline'
+    : modelType === 'image'
+      ? '+ Image'
+      : '+ Chat';
   btn.className = 'model-chat-btn';
   btn.style.transition = 'all 0.2s ease';
   if (offline) {
@@ -148,11 +154,30 @@ function _buildModelRow(mid, url, displayName, endpointId, offline, modelType) {
   // Clicking anywhere on the row (except drag handle and fav) starts a chat
   if (!offline) {
     let _touchMoved = false;
-    row.addEventListener('touchstart', () => { _touchMoved = false; }, { passive: true });
-    row.addEventListener('touchmove', () => { _touchMoved = true; }, { passive: true });
+    row.addEventListener(
+      'touchstart',
+      () => {
+        _touchMoved = false;
+      },
+      { passive: true },
+    );
+    row.addEventListener(
+      'touchmove',
+      () => {
+        _touchMoved = true;
+      },
+      { passive: true },
+    );
     row.addEventListener('click', (e) => {
-      if (e.target.closest('.item-drag-handle') || e.target.closest('.model-fav-btn')) return;
-      if (_touchMoved) { _touchMoved = false; return; }
+      if (
+        e.target.closest('.item-drag-handle') ||
+        e.target.closest('.model-fav-btn')
+      )
+        return;
+      if (_touchMoved) {
+        _touchMoved = false;
+        return;
+      }
       _startChat(url, mid, endpointId);
     });
   }
@@ -169,7 +194,10 @@ export async function refreshModels(force = false) {
 
   // Skip network fetch if cache is fresh and not forced — still re-render UI
   const now = Date.now();
-  const needsFetch = force || _cachedItems.length === 0 || (now - _lastFetchTime) >= _FETCH_CACHE_TTL;
+  const needsFetch =
+    force ||
+    _cachedItems.length === 0 ||
+    now - _lastFetchTime >= _FETCH_CACHE_TTL;
 
   box.innerHTML = '';
   if (needsFetch) {
@@ -190,7 +218,9 @@ export async function refreshModels(force = false) {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return res.json();
           })
-          .finally(() => { _fetchInflight = null; });
+          .finally(() => {
+            _fetchInflight = null;
+          });
       }
       const data = await _fetchInflight;
       _lastFetchTime = Date.now();
@@ -204,7 +234,6 @@ export async function refreshModels(force = false) {
     }
   }
   try {
-
     const collapseState = _loadCollapsed();
     let groupIdx = 0; // unique ID counter for drag-sort containers
 
@@ -213,7 +242,7 @@ export async function refreshModels(force = false) {
     // Also track extra (non-curated) models per endpoint
     const extraGroups = { local: {}, api: {} };
     if (_cachedItems && _cachedItems.length > 0) {
-      _cachedItems.forEach(item => {
+      _cachedItems.forEach((item) => {
         const cat = item.category === 'local' ? 'local' : 'api';
         const epName = item.endpoint_name || 'Unknown';
         const isOffline = !!item.offline;
@@ -223,7 +252,8 @@ export async function refreshModels(force = false) {
         const epModelType = item.model_type || 'llm';
         (item.models || []).forEach((mid, i) => {
           groups[cat][epName].push({
-            mid, url: item.url,
+            mid,
+            url: item.url,
             displayName: displayNames[i] || mid,
             endpointId: item.endpoint_id || null,
             offline: isOffline,
@@ -231,10 +261,12 @@ export async function refreshModels(force = false) {
           });
         });
         // Extra (non-curated) models from server
-        const extraDisplayNames = item.models_extra_display || item.models_extra || [];
+        const extraDisplayNames =
+          item.models_extra_display || item.models_extra || [];
         (item.models_extra || []).forEach((mid, i) => {
           extraGroups[cat][epName].push({
-            mid, url: item.url,
+            mid,
+            url: item.url,
             displayName: extraDisplayNames[i] || mid,
             endpointId: item.endpoint_id || null,
             offline: isOffline,
@@ -261,13 +293,25 @@ export async function refreshModels(force = false) {
       // Sort favorites by active sort mode, or by favorited order as default
       const favSort = _getSortMode();
       if (favSort === 'alpha') {
-        favModels.sort((a, b) => a.displayName.split('/').pop().localeCompare(b.displayName.split('/').pop()));
+        favModels.sort((a, b) =>
+          a.displayName
+            .split('/')
+            .pop()
+            .localeCompare(b.displayName.split('/').pop()),
+        );
       } else if (favSort === 'last-used') {
         const usage = _loadUsage();
-        favModels.sort((a, b) => ((usage[b.mid] || {}).last || 0) - ((usage[a.mid] || {}).last || 0));
+        favModels.sort(
+          (a, b) =>
+            ((usage[b.mid] || {}).last || 0) - ((usage[a.mid] || {}).last || 0),
+        );
       } else if (favSort === 'most-used') {
         const usage = _loadUsage();
-        favModels.sort((a, b) => ((usage[b.mid] || {}).count || 0) - ((usage[a.mid] || {}).count || 0));
+        favModels.sort(
+          (a, b) =>
+            ((usage[b.mid] || {}).count || 0) -
+            ((usage[a.mid] || {}).count || 0),
+        );
       } else {
         favModels.sort((a, b) => favs.indexOf(a.mid) - favs.indexOf(b.mid));
       }
@@ -298,20 +342,39 @@ export async function refreshModels(force = false) {
         if (!favCollapsed) {
           const favContainer = document.createElement('div');
           favContainer.className = 'models-group-content';
-          favContainer.id = 'models-group-' + (groupIdx++);
-          favModels.forEach(({ mid, url, displayName, endpointId, offline, modelType }) => {
-            favContainer.appendChild(_buildModelRow(mid, url, displayName, endpointId, offline, modelType));
-          });
+          favContainer.id = 'models-group-' + groupIdx++;
+          favModels.forEach(
+            ({ mid, url, displayName, endpointId, offline, modelType }) => {
+              favContainer.appendChild(
+                _buildModelRow(
+                  mid,
+                  url,
+                  displayName,
+                  endpointId,
+                  offline,
+                  modelType,
+                ),
+              );
+            },
+          );
           box.appendChild(favContainer);
         }
       }
     }
 
-    const localCount = Object.values(groups.local).reduce((s, a) => s + a.length, 0);
-    const apiCount = Object.values(groups.api).reduce((s, a) => s + a.length, 0);
+    const localCount = Object.values(groups.local).reduce(
+      (s, a) => s + a.length,
+      0,
+    );
+    const apiCount = Object.values(groups.api).reduce(
+      (s, a) => s + a.length,
+      0,
+    );
     const hasMultipleCategories = localCount > 0 && apiCount > 0;
-    const needsGrouping = hasMultipleCategories ||
-      Object.keys(groups.local).length > 1 || Object.keys(groups.api).length > 1;
+    const needsGrouping =
+      hasMultipleCategories ||
+      Object.keys(groups.local).length > 1 ||
+      Object.keys(groups.api).length > 1;
 
     const categoryOrder = [
       { key: 'local', label: 'Local' },
@@ -410,7 +473,7 @@ export async function refreshModels(force = false) {
         if (needsGrouping) {
           target = document.createElement('div');
           target.className = 'models-group-content';
-          target.id = 'models-group-' + (groupIdx++);
+          target.id = 'models-group-' + groupIdx++;
           if (multiEndpoints) target.classList.add('indented');
         } else {
           target = box;
@@ -419,13 +482,26 @@ export async function refreshModels(force = false) {
         // Apply sort mode
         const sortMode = _getSortMode();
         if (sortMode === 'alpha') {
-          epModels.sort((a, b) => a.displayName.split('/').pop().localeCompare(b.displayName.split('/').pop()));
+          epModels.sort((a, b) =>
+            a.displayName
+              .split('/')
+              .pop()
+              .localeCompare(b.displayName.split('/').pop()),
+          );
         } else if (sortMode === 'last-used') {
           const usage = _loadUsage();
-          epModels.sort((a, b) => ((usage[b.mid] || {}).last || 0) - ((usage[a.mid] || {}).last || 0));
+          epModels.sort(
+            (a, b) =>
+              ((usage[b.mid] || {}).last || 0) -
+              ((usage[a.mid] || {}).last || 0),
+          );
         } else if (sortMode === 'most-used') {
           const usage = _loadUsage();
-          epModels.sort((a, b) => ((usage[b.mid] || {}).count || 0) - ((usage[a.mid] || {}).count || 0));
+          epModels.sort(
+            (a, b) =>
+              ((usage[b.mid] || {}).count || 0) -
+              ((usage[a.mid] || {}).count || 0),
+          );
         }
 
         // Show up to MAX_VISIBLE models, rest behind "show more"
@@ -434,21 +510,44 @@ export async function refreshModels(force = false) {
         const overflow = epModels.slice(MAX_VISIBLE);
         const allHidden = [...overflow, ...epExtra];
 
-        visible.forEach(({ mid, url, displayName, endpointId, offline, modelType }) => {
-          target.appendChild(_buildModelRow(mid, url, displayName, endpointId, offline, modelType));
-        });
+        visible.forEach(
+          ({ mid, url, displayName, endpointId, offline, modelType }) => {
+            target.appendChild(
+              _buildModelRow(
+                mid,
+                url,
+                displayName,
+                endpointId,
+                offline,
+                modelType,
+              ),
+            );
+          },
+        );
 
         if (allHidden.length > 0) {
           const showMoreBtn = document.createElement('div');
           showMoreBtn.className = 'models-show-all-btn';
-          showMoreBtn.style.cssText = 'text-align:center;padding:6px;opacity:0.5;cursor:pointer;font-size:0.82em;';
+          showMoreBtn.style.cssText =
+            'text-align:center;padding:6px;opacity:0.5;cursor:pointer;font-size:0.82em;';
           showMoreBtn.textContent = `Show ${allHidden.length} more model${allHidden.length === 1 ? '' : 's'}`;
           showMoreBtn._target = target;
           showMoreBtn.addEventListener('click', () => {
             showMoreBtn.remove();
-            allHidden.forEach(({ mid, url, displayName, endpointId, offline, modelType }) => {
-              target.appendChild(_buildModelRow(mid, url, displayName, endpointId, offline, modelType));
-            });
+            allHidden.forEach(
+              ({ mid, url, displayName, endpointId, offline, modelType }) => {
+                target.appendChild(
+                  _buildModelRow(
+                    mid,
+                    url,
+                    displayName,
+                    endpointId,
+                    offline,
+                    modelType,
+                  ),
+                );
+              },
+            );
           });
           target.appendChild(showMoreBtn);
         }
@@ -462,20 +561,20 @@ export async function refreshModels(force = false) {
       const savedModelOrder = Storage.getJSON('models-order', []);
       if (savedModelOrder.length) {
         const rowMap = new Map();
-        box.querySelectorAll('.models-row').forEach(r => {
+        box.querySelectorAll('.models-row').forEach((r) => {
           const mid = r.dataset.modelId;
           if (mid) rowMap.set(mid, r);
         });
         const ordered = [];
-        savedModelOrder.forEach(mid => {
+        savedModelOrder.forEach((mid) => {
           if (rowMap.has(mid)) {
             ordered.push(rowMap.get(mid));
             rowMap.delete(mid);
           }
         });
         // Append remaining rows not in saved order
-        rowMap.forEach(r => ordered.push(r));
-        ordered.forEach(r => box.appendChild(r));
+        rowMap.forEach((r) => ordered.push(r));
+        ordered.forEach((r) => box.appendChild(r));
       }
     }
 
@@ -489,7 +588,7 @@ export async function refreshModels(force = false) {
         });
       } else {
         // Grouped — enable sort within each group container
-        box.querySelectorAll('.models-group-content').forEach(gc => {
+        box.querySelectorAll('.models-group-content').forEach((gc) => {
           dragSortModule.enable(gc.id, '.models-row', {
             handleSelector: '.item-drag-handle',
           });
@@ -528,27 +627,42 @@ export async function refreshModels(force = false) {
         }
         // Hide all normal groups/headers, show flat search results
         for (const ch of box.children) {
-          if (ch !== searchBox && ch !== searchResults) ch.style.display = 'none';
+          if (ch !== searchBox && ch !== searchResults)
+            ch.style.display = 'none';
         }
         searchResults.innerHTML = '';
         searchResults.style.display = '';
         // Build flat results from all cached models
-        (_cachedItems || []).forEach(item => {
+        (_cachedItems || []).forEach((item) => {
           if (item.offline) return;
           const allModels = (item.models || []).concat(item.models_extra || []);
-          const allDisplay = (item.models_display || []).concat(item.models_extra_display || item.models_extra || []);
+          const allDisplay = (item.models_display || []).concat(
+            item.models_extra_display || item.models_extra || [],
+          );
           allModels.forEach((mid, i) => {
             const display = allDisplay[i] || mid;
-            if (!mid.toLowerCase().includes(q) && !display.toLowerCase().includes(q)) return;
+            if (
+              !mid.toLowerCase().includes(q) &&
+              !display.toLowerCase().includes(q)
+            )
+              return;
             searchResults.appendChild(
-              _buildModelRow(mid, item.url, display, item.endpoint_id || null, false, item.model_type || 'llm')
+              _buildModelRow(
+                mid,
+                item.url,
+                display,
+                item.endpoint_id || null,
+                false,
+                item.model_type || 'llm',
+              ),
             );
           });
         });
         if (searchResults.children.length === 0) {
           const empty = document.createElement('div');
           empty.style.cssText = 'text-align:center;padding:12px;opacity:0.4;';
-          empty.textContent = 'No models match "' + searchBox.value.trim() + '"';
+          empty.textContent =
+            'No models match "' + searchBox.value.trim() + '"';
           searchResults.appendChild(empty);
         }
       });
@@ -559,39 +673,46 @@ export async function refreshModels(force = false) {
       const noModels = document.createElement('div');
       noModels.className = 'models-empty-state';
       if (window._isAdmin) {
-        noModels.innerHTML = '<span class="muted">No models found</span><br>'
-          + '<a href="#" onclick="document.getElementById(\'user-bar-admin\')?.click();return false;" class="accent-link">Open Admin to add endpoints</a>'
-          + '<br><span class="muted-sm">Type /setup for Local models or API setup.</span>';
+        noModels.innerHTML =
+          '<span class="muted">No models found</span><br>' +
+          '<a href="#" onclick="document.getElementById(\'user-bar-admin\')?.click();return false;" class="accent-link">Open Admin to add endpoints</a>' +
+          '<br><span class="muted-sm">Type /setup for Local models or API setup.</span>';
       } else {
-        noModels.innerHTML = '<span class="muted">No models available</span><br>'
-          + '<span class="muted-sm">Ask an admin to configure model endpoints</span>';
+        noModels.innerHTML =
+          '<span class="muted">No models available</span><br>' +
+          '<span class="muted-sm">Ask an admin to configure model endpoints</span>';
       }
       box.appendChild(noModels);
       // No endpoints yet: keep the welcome screen focused on first setup.
       const welcomeSub = document.getElementById('welcome-sub');
-      if (welcomeSub) welcomeSub.innerHTML = 'Type <span class="setup-trigger-link" style="color:var(--accent,var(--red));font-weight:600;cursor:pointer;text-decoration:underline;" title="Click to launch setup">/setup</span> to get started.';
+      if (welcomeSub)
+        welcomeSub.innerHTML =
+          'Type <span class="setup-trigger-link" style="color:var(--accent,var(--red));font-weight:600;cursor:pointer;text-decoration:underline;" title="Click to launch setup">/setup</span> to get started.';
       const welcomeTip = document.getElementById('welcome-tip');
-      if (welcomeTip) welcomeTip.textContent = 'Type /setup, then choose Local models or API.';
+      if (welcomeTip)
+        welcomeTip.textContent =
+          'Type /setup, then choose Local models or API.';
     } else {
       // Configured installs should feel ready, not stuck in onboarding.
       const welcomeSub = document.getElementById('welcome-sub');
       if (welcomeSub) welcomeSub.textContent = 'Yours for the voyage.';
       const welcomeTip = document.getElementById('welcome-tip');
       if (welcomeTip) {
-        const tips = window.innerWidth <= 768
-          ? [
-              'Tip: Long-press a session for rename, delete, and memory options.',
-              'Tip: Tap the eye icon for Nobody mode - no history saved.',
-              'Tip: Switch to Agent mode when you want tools.',
-              'Tip: Attach images or files using the + button next to the input.',
-            ]
-          : [
-              'Tip: Press Ctrl+K to search across all your conversations.',
-              'Tip: Press Ctrl+B to quickly toggle the sidebar.',
-              'Tip: Shift-click the sidebar toggle to swap it to the other side.',
-              'Tip: Drag and drop files onto the chat to attach them.',
-              'Tip: Right-click a session for rename, delete, and memory options.',
-            ];
+        const tips =
+          window.innerWidth <= 768
+            ? [
+                'Tip: Long-press a session for rename, delete, and memory options.',
+                'Tip: Tap the eye icon for Nobody mode - no history saved.',
+                'Tip: Switch to Agent mode when you want tools.',
+                'Tip: Attach images or files using the + button next to the input.',
+              ]
+            : [
+                'Tip: Press Ctrl+K to search across all your conversations.',
+                'Tip: Press Ctrl+B to quickly toggle the sidebar.',
+                'Tip: Shift-click the sidebar toggle to swap it to the other side.',
+                'Tip: Drag and drop files onto the chat to attach them.',
+                'Tip: Right-click a session for rename, delete, and memory options.',
+              ];
         welcomeTip.textContent = tips[Math.floor(Math.random() * tips.length)];
       }
     }
@@ -613,13 +734,13 @@ export async function refreshProviders() {
   try {
     const res = await fetch(`${API_BASE}/api/providers`);
     const data = await res.json();
-    const openai = (data.providers || []).find(p => p.provider === 'openai');
+    const openai = (data.providers || []).find((p) => p.provider === 'openai');
 
     sel.innerHTML = '';
 
     if (openai) {
-      const models = (openai.items?.[0]?.models) || [];
-      sortModelIds(models).forEach(m => {
+      const models = openai.items?.[0]?.models || [];
+      sortModelIds(models).forEach((m) => {
         const opt = document.createElement('option');
         opt.value = m;
         opt.textContent = m;
@@ -636,7 +757,9 @@ export async function refreshProviders() {
   }
 }
 
-export function getCachedItems() { return _cachedItems; }
+export function getCachedItems() {
+  return _cachedItems;
+}
 
 const modelsModule = {
   init,
