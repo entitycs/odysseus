@@ -14,14 +14,14 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+        uses: actions/checkout@4ffde65f46336ab88eb53be808477a3936bae11
 
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@d27e3f3b4b7d3f3e2e4c2c8f0f4a1b2c3d4e5f6a
+        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d
 
         with:
           python-version: "3.11"
