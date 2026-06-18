@@ -15,7 +15,7 @@ End-users cloning the repo will land on `dev` by default. To run the curated/sta
 
 ### 🧪 Latest Test Summary
 
-<!--TEST_SUMMARY-->No test results yet<!--END_TEST_SUMMARY-->
+<!--TEST_SUMMARY-->3778 passed, 2 skipped, 8 warnings in 126.16s (0:02:06)<!--END_TEST_SUMMARY-->
 
 ## Before You Start
 
