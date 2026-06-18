@@ -4,6 +4,10 @@
 // command building, preset slots, launch logic
 // ============================================
 
+import uiModule from './ui.js';
+import spinnerModule from './spinner.js';
+import { providerLogo } from './providers.js';
+import { modelColor } from './model/models.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { openCookbookDependencies } from './cookbook-diagnosis.js';
 import { _hwfitCache } from './cookbook-hwfit.js';
@@ -96,8 +100,7 @@ function _toggleServeFavorite(repo) {
 
 function _repoLooksAwqLike(model, repo) {
   const q = String(model?.quant || '').toUpperCase();
-  const n =
-    `${repo || ''} ${model?.repo_id || ''} ${model?.name || ''} ${model?.path || ''}`.toLowerCase();
+  const n = `${repo || ''} ${model?.repo_id || ''} ${model?.name || ''} ${model?.path || ''}`.toLowerCase();
   return /^AWQ|^GPTQ/.test(q) || q === 'FP8' || /\b(awq|gptq|fp8)\b/i.test(n);
 }
 
@@ -140,7 +143,7 @@ function _serveBackendWarning(model, repo, backend, fields = {}) {
 }
 
 function _hasOwn(obj, key) {
-  return  Object.hasOwn(obj || {}, key);
+  return Object.prototype.hasOwnProperty.call(obj || {}, key);
 }
 
 function _allGpuIds(count) {
@@ -501,35 +504,21 @@ function _selectedServeTarget(panel) {
     || document.getElementById('hwfit-dl-server');
   const servers = Array.isArray(_envState.servers) ? _envState.servers : [];
   let host = _envState.remoteHost || '';
-  let server = host
-    ? _serverByVal?.(_envState.remoteServerKey || host) ||
-      servers.find((s) => s.host === host)
-    : null;
+  let server = host ? (_serverByVal?.(_envState.remoteServerKey || host) || servers.find(s => s.host === host)) : null;
   if (select && select.value != null) {
     if (select.value === 'local') {
       host = '';
-      server = servers.find((s) => !s.host || s.host === 'local') || null;
+      server = servers.find(s => !s.host || s.host === 'local') || null;
     } else {
-      const idx = /^\d+$/.test(String(select.value))
-        ? parseInt(select.value, 10)
-        : -1;
-      server =
-        _serverByVal?.(select.value) ||
-        (idx >= 0 ? servers[idx] : null) ||
-        null;
+      const idx = /^\d+$/.test(String(select.value)) ? parseInt(select.value, 10) : -1;
+      server = _serverByVal?.(select.value) || (idx >= 0 ? servers[idx] : null) || null;
       host = server?.host || '';
     }
   }
-  const venv =
-    panel?.querySelector('[data-field="venv"]')?.value?.trim() ||
-    server?.envPath ||
-    _envState.envPath ||
-    '';
+  const venv = panel?.querySelector('[data-field="venv"]')?.value?.trim() || server?.envPath || _envState.envPath || '';
   const label = host
-    ? server?.name
-      ? `${server.name} (${host})`
-      : host
-    : server?.name || 'local server';
+    ? (server?.name ? `${server.name} (${host})` : host)
+    : (server?.name || 'local server');
   return {
     host,
     serverKey: server ? (_serverKey?.(server) || '') : (select?.value || ''),
@@ -572,24 +561,15 @@ async function _fetchServeRuntimePackage(panel, backend) {
     if (target.port) params.set('ssh_port', target.port);
     if (target.venv) params.set('venv', target.venv);
   }
-  const res = await fetch(
-    '/api/cookbook/packages' +
-      (params.toString() ? '?' + params.toString() : ''),
-    { credentials: 'same-origin' },
-  );
+  const res = await fetch('/api/cookbook/packages' + (params.toString() ? '?' + params.toString() : ''), { credentials: 'same-origin' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  const pkg = (data.packages || []).find((p) => p.name === packageName);
+  const pkg = (data.packages || []).find(p => p.name === packageName);
   return { pkg, target };
 }
 
 function _runtimeNoteText(backend, pkg, target) {
-  const labels = {
-    vllm: 'vLLM',
-    sglang: 'SGLang',
-    llamacpp: 'llama.cpp',
-    diffusers: 'Diffusers',
-  };
+  const labels = { vllm: 'vLLM', sglang: 'SGLang', llamacpp: 'llama.cpp', diffusers: 'Diffusers' };
   const label = labels[backend] || backend;
   if (!pkg) return `${label} readiness unavailable for ${target.label}.`;
   const note = pkg.status_note || pkg.update_note || '';
@@ -597,13 +577,9 @@ function _runtimeNoteText(backend, pkg, target) {
     return note ? `${label} readiness unavailable for ${target.label}: ${note}` : `${label} readiness unavailable for ${target.label}.`;
   }
   if (pkg.installed) {
-    return note
-      ? `${label} ready on ${target.label}: ${note}`
-      : `${label} ready on ${target.label}.`;
+    return note ? `${label} ready on ${target.label}: ${note}` : `${label} ready on ${target.label}.`;
   }
-  return note
-    ? `${label} missing on ${target.label}: ${note}`
-    : `${label} missing on ${target.label}.`;
+  return note ? `${label} missing on ${target.label}: ${note}` : `${label} missing on ${target.label}.`;
 }
 
 // ── Filter/sort cached model list ──
@@ -612,23 +588,18 @@ function _filterCachedList() {
   const list = document.getElementById('hwfit-cached-list');
   const tagContainer = document.getElementById('serve-tags');
   if (!list) return;
-  const activeTag =
-    tagContainer?.querySelector('.memory-cat-chip.active')?.dataset.serveTag ||
-    '';
-  const searchVal = (document.getElementById('serve-search')?.value || '')
-    .toLowerCase()
-    .trim();
+  const activeTag = tagContainer?.querySelector('.memory-cat-chip.active')?.dataset.serveTag || '';
+  const searchVal = (document.getElementById('serve-search')?.value || '').toLowerCase().trim();
   const isFamily = activeTag.startsWith('fam:');
   const familyVal = isFamily ? activeTag.slice(4) : '';
 
-  list.querySelectorAll('.memory-item[data-repo]').forEach((item) => {
+  list.querySelectorAll('.memory-item[data-repo]').forEach(item => {
     const repo = (item.dataset.repo || '').toLowerCase();
     const tag = item.dataset.tag || '';
     const family = item.dataset.family || '';
-    const tagMatch =
-      !activeTag || (isFamily ? family === familyVal : tag === activeTag);
+    const tagMatch = !activeTag || (isFamily ? family === familyVal : tag === activeTag);
     const searchMatch = !searchVal || repo.includes(searchVal);
-    item.style.display = tagMatch && searchMatch ? '' : 'none';
+    item.style.display = (tagMatch && searchMatch) ? '' : 'none';
   });
 }
 
@@ -641,18 +612,10 @@ function _isActivelyDownloading(repoId) {
   try {
     const tasks = JSON.parse(localStorage.getItem('cookbook-tasks')) || [];
     const short = (repoId || '').split('/').pop();
-    return tasks.some(
-      (t) =>
-        t.type === 'download' &&
-        t.status === 'running' &&
-        (t.payload?.repo_id === repoId ||
-          t.name === repoId ||
-          t.name === short ||
-          (t.payload?.repo_id || '').split('/').pop() === short),
-    );
-  } catch {
-    return false;
-  }
+    return tasks.some(t => t.type === 'download' && t.status === 'running'
+      && (t.payload?.repo_id === repoId || t.name === repoId || t.name === short
+          || (t.payload?.repo_id || '').split('/').pop() === short));
+  } catch { return false; }
 }
 
 // Same idea for serve: is there a live serve task for this repo? Used to
@@ -661,39 +624,29 @@ function _isActivelyServing(repoId) {
   try {
     const tasks = JSON.parse(localStorage.getItem('cookbook-tasks')) || [];
     const short = (repoId || '').split('/').pop();
-    return tasks.some(
-      (t) =>
-        t.type === 'serve' &&
-        t.status === 'running' &&
-        (t.payload?.repo_id === repoId ||
-          t.name === repoId ||
-          t.name === short ||
-          (t.payload?.repo_id || '').split('/').pop() === short),
-    );
-  } catch {
-    return false;
-  }
+    return tasks.some(t => t.type === 'serve' && t.status === 'running'
+      && (t.payload?.repo_id === repoId || t.name === repoId || t.name === short
+          || (t.payload?.repo_id || '').split('/').pop() === short));
+  } catch { return false; }
 }
 
 function _formatGgufSize(bytes) {
   const n = Number(bytes || 0);
   if (!Number.isFinite(n) || n <= 0) return '';
-  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;
-  if (n >= 1024 ** 2) return `${Math.round(n / 1024 ** 2)} MB`;
+  if (n >= 1024 ** 3) return `${(n / (1024 ** 3)).toFixed(1)} GB`;
+  if (n >= 1024 ** 2) return `${Math.round(n / (1024 ** 2))} MB`;
   return `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
 function _ggufFilesForModel(model) {
   return Array.isArray(model?.gguf_files)
-    ? model.gguf_files.filter(
-        (f) => f && typeof f.rel_path === 'string' && f.rel_path,
-      )
+    ? model.gguf_files.filter(f => f && typeof f.rel_path === 'string' && f.rel_path)
     : [];
 }
 
 function _runnableGgufFiles(model) {
   const files = _ggufFilesForModel(model);
-  const primary = files.filter((f) => (f.role || 'model') === 'model');
+  const primary = files.filter(f => (f.role || 'model') === 'model');
   return primary.length ? primary : files;
 }
 
@@ -853,14 +806,8 @@ function _selectedGgufExpr(model, repo, relPath) {
 }
 
 function _ggufSearchDirExpr(model, repo) {
-  if (model.is_local_dir && model.path)
-    return _shellQuote(
-      `${String(model.path || '').replace(/\/+$/, '')}/${repo}`,
-    );
-  if (model.path)
-    return _shellQuote(
-      `${String(model.path || '').replace(/\/+$/, '')}/models--${repo.replace(/\//g, '--')}/snapshots`,
-    );
+  if (model.is_local_dir && model.path) return _shellQuote(`${String(model.path || '').replace(/\/+$/, '')}/${repo}`);
+  if (model.path) return _shellQuote(`${String(model.path || '').replace(/\/+$/, '')}/models--${repo.replace(/\//g, '--')}/snapshots`);
   return `"$HOME/.cache/huggingface/hub/models--${repo.replace(/\//g, '--')}/snapshots"`;
 }
 
@@ -872,12 +819,8 @@ function _rerenderCachedModels() {
   const allModels = _cachedAllModels;
   const _h = (text) => `<span class="hwfit-hint" title="${text}">?</span>`;
 
-  const activeTag =
-    tagContainer?.querySelector('.memory-cat-chip.active')?.dataset.serveTag ||
-    '';
-  const searchVal = (document.getElementById('serve-search')?.value || '')
-    .toLowerCase()
-    .trim();
+  const activeTag = tagContainer?.querySelector('.memory-cat-chip.active')?.dataset.serveTag || '';
+  const searchVal = (document.getElementById('serve-search')?.value || '').toLowerCase().trim();
 
   const sortVal = document.getElementById('serve-sort')?.value || 'name';
   const _parseSize = (s) => { const m = (s || '').match(/([\d.]+)\s*(GB|MB|KB)/i); if (!m) return 0; const n = parseFloat(m[1]); if (m[2] === 'GB') return n * 1024; if (m[2] === 'MB') return n; return n / 1024; };
@@ -896,13 +839,10 @@ function _rerenderCachedModels() {
   let visibleCount = 0;
   for (const m of allModels) {
     if (activeTag && m._tag !== activeTag) continue;
-    if (searchVal && !(m.repo_id || '').toLowerCase().includes(searchVal))
-      continue;
+    if (searchVal && !(m.repo_id || '').toLowerCase().includes(searchVal)) continue;
     visibleCount++;
     const shortName = m.repo_id.split('/').pop() || m.repo_id;
-    const hfLink = m.repo_id.includes('/')
-      ? `https://huggingface.co/${m.repo_id}`
-      : '';
+    const hfLink = m.repo_id.includes('/') ? `https://huggingface.co/${m.repo_id}` : '';
     const metaParts = [];
     if (m.repo_id.includes('/')) metaParts.push(m.repo_id.split('/')[0]);
     metaParts.push(m.size);
@@ -933,27 +873,21 @@ function _rerenderCachedModels() {
     html += `<div class="memory-item-meta" style="font-size:10px;opacity:0.4;margin-top:2px;">${metaParts.join(' \u00b7 ')}</div>`;
     html += `</div>`;
     const _bk = _detectBackend(m).backend;
-    const _bkIco =
-      _bk === 'llamacpp'
-        ? '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M7 3C5.5 5 5 8 5 11v7c0 1.5 1 3 3 3h1v-4h6v4h1c2 0 3-1.5 3-3v-7c0-3-.5-6-2-8l-1 3c-.5-2-1.5-4-3-5-.5 2-1 3-1.5 3S11 3.5 10.5 2L7 3z" fill="currentColor"/><circle cx="9" cy="11" r="1.5" fill="var(--bg,#1a1a2e)"/><circle cx="15" cy="11" r="1.5" fill="var(--bg,#1a1a2e)"/></svg>'
-        : _bk === 'diffusers'
-          ? '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zM6 9c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm0 6c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm6 4c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm4-8c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" fill="currentColor"/></svg>'
-          : '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 4l8 16 8-16h-4l-4 8-4-8z" fill="currentColor"/></svg>';
+    const _bkIco = _bk === 'llamacpp' ? '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M7 3C5.5 5 5 8 5 11v7c0 1.5 1 3 3 3h1v-4h6v4h1c2 0 3-1.5 3-3v-7c0-3-.5-6-2-8l-1 3c-.5-2-1.5-4-3-5-.5 2-1 3-1.5 3S11 3.5 10.5 2L7 3z" fill="currentColor"/><circle cx="9" cy="11" r="1.5" fill="var(--bg,#1a1a2e)"/><circle cx="15" cy="11" r="1.5" fill="var(--bg,#1a1a2e)"/></svg>'
+      : _bk === 'diffusers' ? '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zM6 9c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm0 6c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm6 4c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm4-8c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" fill="currentColor"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 4l8 16 8-16h-4l-4 8-4-8z" fill="currentColor"/></svg>';
     html += `<span class="cookbook-card-backend" data-detected="${_bk}">${_bkIco}</span>`;
     html += `<div class="memory-item-actions"><button type="button" class="memory-item-btn hwfit-cached-menu-btn" title="Actions" aria-label="Model actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button></div>`;
     html += `</div>`;
   }
-  if (!visibleCount)
-    html += '<div class="hwfit-loading">No matching models</div>';
+  if (!visibleCount) html += '<div class="hwfit-loading">No matching models</div>';
   list.innerHTML = html;
 
   // Wire tag chips
   if (tagContainer) {
-    tagContainer.querySelectorAll('.memory-cat-chip').forEach((chip) => {
+    tagContainer.querySelectorAll('.memory-cat-chip').forEach(chip => {
       chip.addEventListener('click', () => {
-        tagContainer
-          .querySelectorAll('.memory-cat-chip')
-          .forEach((c) => c.classList.remove('active'));
+        tagContainer.querySelectorAll('.memory-cat-chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         _filterCachedList();
       });
@@ -962,49 +896,28 @@ function _rerenderCachedModels() {
 
   // Long-press anywhere on a cached model card → click its ⋮ menu, so
   // mobile users don't have to hit the small 3-dot target precisely.
-  list.querySelectorAll('.memory-item').forEach((item) => {
+  list.querySelectorAll('.memory-item').forEach(item => {
     const menuBtn = item.querySelector('.hwfit-cached-menu-btn');
     if (!menuBtn || item.dataset.lpWired === '1') return;
     item.dataset.lpWired = '1';
     let _t = null;
     let _y = 0;
-    const _cancel = () => {
-      if (_t) {
-        clearTimeout(_t);
-        _t = null;
-      }
-    };
-    item.addEventListener(
-      'touchstart',
-      (e) => {
-        if (
-          e.target.closest('button, a, input, textarea, .hwfit-cached-dropdown')
-        )
-          return;
-        _y = e.touches?.[0]?.clientY ?? 0;
-        _t = setTimeout(() => {
-          _t = null;
-          try {
-            menuBtn.click();
-          } catch {}
-        }, 500);
-      },
-      { passive: true },
-    );
-    item.addEventListener(
-      'touchmove',
-      (e) => {
-        const y = e.touches?.[0]?.clientY ?? 0;
-        if (Math.abs(y - _y) > 8) _cancel();
-      },
-      { passive: true },
-    );
+    const _cancel = () => { if (_t) { clearTimeout(_t); _t = null; } };
+    item.addEventListener('touchstart', (e) => {
+      if (e.target.closest('button, a, input, textarea, .hwfit-cached-dropdown')) return;
+      _y = e.touches?.[0]?.clientY ?? 0;
+      _t = setTimeout(() => { _t = null; try { menuBtn.click(); } catch {} }, 500);
+    }, { passive: true });
+    item.addEventListener('touchmove', (e) => {
+      const y = e.touches?.[0]?.clientY ?? 0;
+      if (Math.abs(y - _y) > 8) _cancel();
+    }, { passive: true });
     item.addEventListener('touchend', _cancel, { passive: true });
     item.addEventListener('touchcancel', _cancel, { passive: true });
   });
 
   // Wire menu on each cached model
-  list.querySelectorAll('.hwfit-cached-menu-btn').forEach((btn) => {
+  list.querySelectorAll('.hwfit-cached-menu-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       // Toggle: if a dropdown for THIS button is already open, close it
@@ -1012,23 +925,19 @@ function _rerenderCachedModels() {
       const existing = document.querySelector('.hwfit-cached-dropdown');
       if (existing && existing._anchor === btn) {
         if (typeof existing._dismiss === 'function') existing._dismiss();
-        else {
-          existing.remove();
-          btn.classList.remove('cookbook-menu-active');
-        }
+        else { existing.remove(); btn.classList.remove('cookbook-menu-active'); }
         return;
       }
       // Otherwise close any other open menu (and clear its anchor's active
       // state) before opening fresh.
-      document.querySelectorAll('.hwfit-cached-dropdown').forEach((d) => {
+      document.querySelectorAll('.hwfit-cached-dropdown').forEach(d => {
         if (d._anchor) d._anchor.classList.remove('cookbook-menu-active');
-        if (typeof d._dismiss === 'function') d._dismiss();
-        else d.remove();
+        if (typeof d._dismiss === 'function') d._dismiss(); else d.remove();
       });
       const item = btn.closest('.memory-item');
       const repo = item?.dataset.repo;
       if (!repo) return;
-      const m = allModels.find((x) => x.repo_id === repo);
+      const m = allModels.find(x => x.repo_id === repo);
 
       const dropdown = document.createElement('div');
       dropdown.className = 'hwfit-cached-dropdown';
@@ -1036,10 +945,7 @@ function _rerenderCachedModels() {
       btn.classList.add('cookbook-menu-active');
       // Shared close — used by every item, the mobile Cancel, outside-click,
       // and the Escape arbiter (reassigned to the registry-aware close below).
-      let closeDropdown = () => {
-        dropdown.remove();
-        btn.classList.remove('cookbook-menu-active');
-      };
+      let closeDropdown = () => { dropdown.remove(); btn.classList.remove('cookbook-menu-active'); };
       const _di = (svg) => `<span class="dropdown-icon">${svg}</span>`;
       const _serveIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
       const _retryIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
@@ -1056,16 +962,10 @@ function _rerenderCachedModels() {
       if (m && m.status === 'downloading') items.push({ label: 'Retry', icon: _retryIco, action: 'retry' });
       if (m && m.status === 'ready') items.push({ label: 'Schedule…', icon: _schedIco, action: 'schedule' });
       items.push({ label: 'Select', icon: _selectIco, action: 'select' });
-      items.push({
-        label: 'Delete',
-        icon: _deleteIco,
-        action: 'delete',
-        danger: true,
-      });
+      items.push({ label: 'Delete', icon: _deleteIco, action: 'delete', danger: true });
       for (const opt of items) {
         const div = document.createElement('div');
-        div.className =
-          'dropdown-item-compact' + (opt.danger ? ' dropdown-item-danger' : '');
+        div.className = 'dropdown-item-compact' + (opt.danger ? ' dropdown-item-danger' : '');
         div.innerHTML = _di(opt.icon) + '<span>' + opt.label + '</span>';
         div.addEventListener('click', () => {
           closeDropdown();
@@ -1086,7 +986,8 @@ function _rerenderCachedModels() {
               const arrow = item.querySelector('.hwfit-serve-schedule-arrow');
               if (arrow) arrow.click();
             }, 120);
-          } else if (opt.action === 'select') {
+          }
+          else if (opt.action === 'select') {
             const selectBtn = document.getElementById('hwfit-cache-select');
             const bulkBar = document.getElementById('serve-bulk-bar');
             if (selectBtn) {
@@ -1094,14 +995,12 @@ function _rerenderCachedModels() {
               selectBtn.textContent = 'Cancel';
             }
             if (bulkBar) bulkBar.classList.remove('hidden');
-            document.querySelectorAll('.serve-select-cb').forEach((dot) => {
+            document.querySelectorAll('.serve-select-cb').forEach(dot => {
               dot.style.display = 'inline-block';
             });
             const dot = item.querySelector('.serve-select-cb');
             if (dot) dot.classList.add('selected');
-            const count = document.querySelectorAll(
-              '.serve-select-cb.selected',
-            ).length;
+            const count = document.querySelectorAll('.serve-select-cb.selected').length;
             const countEl = document.getElementById('serve-bulk-count');
             if (countEl) countEl.textContent = count + ' selected';
             const all = document.getElementById('serve-select-all');
@@ -1113,17 +1012,14 @@ function _rerenderCachedModels() {
       }
       // Mobile-only Cancel — gives an explicit close on touch devices where
       // outside-tap-to-close is fiddly. Hidden on desktop via CSS.
-      const _cancelIco =
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      const _cancelIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
       const cancelDiv = document.createElement('div');
       cancelDiv.className = 'dropdown-item-compact dropdown-cancel-mobile';
       cancelDiv.innerHTML = _di(_cancelIco) + '<span>Cancel</span>';
-      cancelDiv.addEventListener('click', () => {
-        closeDropdown();
-      });
+      cancelDiv.addEventListener('click', () => { closeDropdown(); });
       dropdown.appendChild(cancelDiv);
       const rect = btn.getBoundingClientRect();
-      dropdown.style.cssText = `position:fixed;z-index:10001;visibility:hidden;top:0;right:${window.innerWidth - rect.right}px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,0.3);font-size:12px;`;
+      dropdown.style.cssText = `position:fixed;z-index:10001;visibility:hidden;top:0;right:${window.innerWidth-rect.right}px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,0.3);font-size:12px;`;
       document.body.appendChild(dropdown);
       // Clamp into the VISIBLE area (visualViewport, not innerHeight — they differ
       // on mobile under the dynamic toolbar). Flip above the button if there's no
@@ -1138,43 +1034,23 @@ function _rerenderCachedModels() {
         let top = rect.bottom + 2;
         if (top + dh > viewBottom - mm) {
           const above = rect.top - 2 - dh;
-          top =
-            above >= viewTop + mm
-              ? above
-              : Math.max(viewTop + mm, viewBottom - dh - mm);
+          top = above >= viewTop + mm ? above : Math.max(viewTop + mm, viewBottom - dh - mm);
         }
         dropdown.style.top = top + 'px';
         dropdown.style.visibility = '';
       }
-      closeDropdown = bindMenuDismiss(
-        dropdown,
-        () => {
-          dropdown.remove();
-          btn.classList.remove('cookbook-menu-active');
-        },
-        (ev) => !dropdown.contains(ev.target) && ev.target !== btn,
-      );
+      closeDropdown = bindMenuDismiss(dropdown, () => { dropdown.remove(); btn.classList.remove('cookbook-menu-active'); }, (ev) => !dropdown.contains(ev.target) && ev.target !== btn);
     });
   });
 
   // Wire click on card to expand serve panel
-  list.querySelectorAll('.memory-item[data-repo]').forEach((item) => {
+  list.querySelectorAll('.memory-item[data-repo]').forEach(item => {
     item.addEventListener('click', (e) => {
-      if (
-        e.target.closest(
-          'a, .hwfit-cached-menu-btn, .memory-item-btn, .hwfit-serve-panel',
-        )
-      )
-        return;
-      if (
-        document
-          .getElementById('hwfit-cache-select')
-          ?.classList.contains('active')
-      )
-        return;
+      if (e.target.closest('a, .hwfit-cached-menu-btn, .memory-item-btn, .hwfit-serve-panel')) return;
+      if (document.getElementById('hwfit-cache-select')?.classList.contains('active')) return;
       const repo = item.dataset.repo;
       if (!repo) return;
-      const m = allModels.find((x) => x.repo_id === repo);
+      const m = allModels.find(x => x.repo_id === repo);
       if (!m || m.status !== 'ready') return;
 
       // Toggle — close if already open
@@ -1192,7 +1068,7 @@ function _rerenderCachedModels() {
       }
 
       // Collapse any other expanded
-      list.querySelectorAll('.doclib-card-expanded').forEach((c) => {
+      list.querySelectorAll('.doclib-card-expanded').forEach(c => {
         const openPanel = c.querySelector('.hwfit-serve-panel');
         openPanel?._cleanupRuntimeReadiness?.();
         openPanel?.remove();
@@ -1207,8 +1083,7 @@ function _rerenderCachedModels() {
       // The venv set per-server in Settings (server.envPath). Used as the venv
       // field default when the global active env path isn't carrying it, so a
       // configured server venv shows up without re-typing it.
-      const _selSrv =
-        _serverByVal?.(_es.remoteServerKey || _es.remoteHost || '') || {};
+      const _selSrv = _serverByVal?.(_es.remoteServerKey || _es.remoteHost || '') || {};
       const _srvVenv = _selSrv.envPath || '';
       // Serve state schema: { _byRepo: { <repo>: {...} }, _lastUsed: {...} }.
       // Loading priority: this-repo's saved settings → last-used (from any
@@ -1315,16 +1190,10 @@ function _rerenderCachedModels() {
       // Warn when serving a model whose download hasn't fully completed —
       // the user CAN still hit Launch (vLLM/llama-server will start, then
       // crash trying to read missing shards), but they should know.
-      if (
-        m &&
-        (m.status === 'downloading' ||
-          m.status === 'stalled' ||
-          m.has_incomplete)
-      ) {
-        const _warnText =
-          m.status === 'stalled'
-            ? `This model looks like a stale download shell (${esc(m.size || '0 KB')}). The weights aren't on disk — the serve will fail to load. Re-download first, or pick another model.`
-            : `This model's download isn't complete yet (${esc(m.size || 'partial')}). The serve will start but is likely to crash on a missing shard. Wait for the download to finish, or relaunch after it's done.`;
+      if (m && (m.status === 'downloading' || m.status === 'stalled' || m.has_incomplete)) {
+        const _warnText = m.status === 'stalled'
+          ? `This model looks like a stale download shell (${esc(m.size || '0 KB')}). The weights aren't on disk — the serve will fail to load. Re-download first, or pick another model.`
+          : `This model's download isn't complete yet (${esc(m.size || 'partial')}). The serve will start but is likely to crash on a missing shard. Wait for the download to finish, or relaunch after it's done.`;
         panelHtml += `<div class="hwfit-serve-warn" style="margin:0 0 8px;padding:6px 10px;border-radius:5px;font-size:11px;background:color-mix(in srgb, var(--color-warning, #f0ad4e) 14%, transparent);border:1px solid color-mix(in srgb, var(--color-warning, #f0ad4e) 40%, transparent);color:var(--color-warning, #f0ad4e);display:flex;gap:6px;align-items:flex-start;line-height:1.4;"><span aria-hidden="true">⚠</span><span>${_warnText}</span></div>`;
       }
       panelHtml += `<div class="hwfit-serve-preset-row">${_slotsHtml}</div>`;
@@ -1368,13 +1237,7 @@ function _rerenderCachedModels() {
       panelHtml += `<label>${_l('Port','HTTP port for the API server')}<input type="text" class="hwfit-sf" data-field="port" value="${esc(sv('port', defaultPort))}" /></label>`;
       const _activeGpus = (defaultGpus || '').split(',').map(s => s.trim()).filter(Boolean);
       const detectedGpuCount = Number(_getGpuToggleTotal?.() || 0);
-      const _gpuMax = Math.max(
-        detectedGpuCount || 8,
-        ..._activeGpus
-          .map(Number)
-          .filter((n) => !isNaN(n))
-          .map((n) => n + 1),
-      );
+      const _gpuMax = Math.max(detectedGpuCount || 8, ...(_activeGpus.map(Number).filter(n => !isNaN(n)).map(n => n + 1)));
       let _gpuBtnsHtml = '';
       for (let i = 0; i < _gpuMax; i++) {
         const on = _activeGpus.includes(String(i));
@@ -1396,7 +1259,7 @@ function _rerenderCachedModels() {
         // helper falls back to "first sorted gguf", which may not match what
         // the user picked).
         panelHtml += `<div class="hwfit-serve-row hwfit-backend-llamacpp hwfit-backend-ollama">`;
-        panelHtml += `<label class="hwfit-backend-llamacpp hwfit-backend-ollama">${_l('GGUF File', 'Choose the exact GGUF artifact to serve from this cached model folder.')}<select class="hwfit-sf hwfit-sf-wide" data-field="gguf_file">${_ggufOptions}</select></label>`;
+        panelHtml += `<label class="hwfit-backend-llamacpp hwfit-backend-ollama">${_l('GGUF File','Choose the exact GGUF artifact to serve from this cached model folder.')}<select class="hwfit-sf hwfit-sf-wide" data-field="gguf_file">${_ggufOptions}</select></label>`;
         panelHtml += `</div>`;
       } else if (_defaultGguf) {
         panelHtml += `<input type="hidden" class="hwfit-sf" data-field="gguf_file" value="${esc(_defaultGguf)}" />`;
@@ -1474,18 +1337,8 @@ function _rerenderCachedModels() {
       panelHtml += `<label class="hwfit-backend-vllm hwfit-backend-sglang" style="grid-column:2 / -1;">${_l('Env','Extra KEY=VALUE env-var pairs prepended to the launch (space-separated). The Env Preset above covers the usual MiniMax M3 values; use this for additional overrides.')}<input type="text" class="hwfit-sf" data-field="extra_env" value="${esc(svm('extra_env', sv('extra_env','')))}" placeholder="NCCL_P2P_DISABLE=1" style="width:100%;" /></label>`;
       panelHtml += `</div>`;
       // Row 2b: Diffusers settings
-      const diffDtypeOpts = ['bfloat16', 'float16', 'float32']
-        .map(
-          (d) =>
-            `<option value="${d}"${sv('diff_dtype', 'bfloat16') === d ? ' selected' : ''}>${d}</option>`,
-        )
-        .join('');
-      const deviceMapOpts = ['balanced', 'auto', 'sequential']
-        .map(
-          (d) =>
-            `<option value="${d}"${sv('diff_device_map', 'balanced') === d ? ' selected' : ''}>${d}</option>`,
-        )
-        .join('');
+      const diffDtypeOpts = ['bfloat16','float16','float32'].map(d => `<option value="${d}"${sv('diff_dtype','bfloat16')===d?' selected':''}>${d}</option>`).join('');
+      const deviceMapOpts = ['balanced','auto','sequential'].map(d => `<option value="${d}"${sv('diff_device_map','balanced')===d?' selected':''}>${d}</option>`).join('');
       panelHtml += `<div class="hwfit-serve-row hwfit-backend-diffusers">`;
       panelHtml += `<label>Dtype${_h('Precision. bfloat16 recommended for Flux, float16 for SD')} <select class="hwfit-sf" data-field="diff_dtype">${diffDtypeOpts}</select></label>`;
       panelHtml += `<label>Device Map${_h('How to place model on GPUs. balanced = split evenly')} <select class="hwfit-sf" data-field="diff_device_map">${deviceMapOpts}</select></label>`;
@@ -1592,9 +1445,9 @@ function _rerenderCachedModels() {
       panelHtml += `</div>`;
       // Row 3b: Checkboxes (diffusers)
       panelHtml += `<div class="hwfit-serve-checks hwfit-backend-diffusers">`;
-      panelHtml += `<label class="hwfit-sf-cb"><input type="checkbox" class="hwfit-sf" data-field="diff_offload"${sv('diff_offload', false) ? ' checked' : ''} /> CPU Offload${_h('Offload parts of model to CPU RAM to save VRAM. Slower but fits larger models')}</label>`;
-      panelHtml += `<label class="hwfit-sf-cb"><input type="checkbox" class="hwfit-sf" data-field="diff_attention_slicing"${sv('diff_attention_slicing', false) ? ' checked' : ''} /> Attention Slicing${_h('Slice attention computation to reduce peak VRAM. Slower')}</label>`;
-      panelHtml += `<label class="hwfit-sf-cb"><input type="checkbox" class="hwfit-sf" data-field="diff_vae_slicing"${sv('diff_vae_slicing', false) ? ' checked' : ''} /> VAE Slicing${_h('Process VAE in slices. Reduces VRAM for high-res images')}</label>`;
+      panelHtml += `<label class="hwfit-sf-cb"><input type="checkbox" class="hwfit-sf" data-field="diff_offload"${sv('diff_offload',false)?' checked':''} /> CPU Offload${_h('Offload parts of model to CPU RAM to save VRAM. Slower but fits larger models')}</label>`;
+      panelHtml += `<label class="hwfit-sf-cb"><input type="checkbox" class="hwfit-sf" data-field="diff_attention_slicing"${sv('diff_attention_slicing',false)?' checked':''} /> Attention Slicing${_h('Slice attention computation to reduce peak VRAM. Slower')}</label>`;
+      panelHtml += `<label class="hwfit-sf-cb"><input type="checkbox" class="hwfit-sf" data-field="diff_vae_slicing"${sv('diff_vae_slicing',false)?' checked':''} /> VAE Slicing${_h('Process VAE in slices. Reduces VRAM for high-res images')}</label>`;
       panelHtml += `</div><div class="hwfit-serve-row hwfit-backend-diffusers">`;
       panelHtml += `<label>Harmonize GPU${_h('Separate GPU for img2img/harmonize. Leave empty to use same GPU')}<input type="text" class="hwfit-sf" data-field="diff_harmonize_gpu" value="${esc(sv('diff_harmonize_gpu', ''))}" placeholder="auto" style="width:50px;" /></label>`;
       panelHtml += `</div>`;
@@ -1666,7 +1519,7 @@ function _rerenderCachedModels() {
       // Build command preview
       function updateCmd() {
         const f = {};
-        panel.querySelectorAll('.hwfit-sf').forEach((el) => {
+        panel.querySelectorAll('.hwfit-sf').forEach(el => {
           if (el.type === 'checkbox') f[el.dataset.field] = el.checked;
           else f[el.dataset.field] = el.value;
         });
@@ -1674,9 +1527,7 @@ function _rerenderCachedModels() {
         const serveModel = (f.model_path || '').trim() || (m.is_local_dir && m.path ? `${m.path}/${repo}` : repo);
         if (backend === 'llamacpp') {
           const ggufChoices = _runnableGgufFiles(m);
-          const selectedGguf = ggufChoices.find(
-            (file) => file.rel_path === f.gguf_file,
-          );
+          const selectedGguf = ggufChoices.find(file => file.rel_path === f.gguf_file);
           // For multi-part GGUFs, llama.cpp requires the first split
           // (-00001-of-NNNNN.gguf). Prefer it (sorted, so UD-IQ4_XS/001 comes
           // before Q4_K_M/001 etc); fall back to any single GGUF sorted.
@@ -1689,12 +1540,12 @@ function _rerenderCachedModels() {
           f._gguf_path = selectedGguf
             ? _selectedGgufExpr(m, repo, selectedGguf.rel_path)
             : m.is_local_dir && m.path
-              ? `$({ find ${_ldir} -name '*-00001-of-*.gguf' 2>/dev/null | sort; find ${_ldir} -name '*.gguf' 2>/dev/null | sort; } | head -1)`
-              : `$({ find ${dir} -name '*-00001-of-*.gguf' 2>/dev/null | sort; find ${dir} -name '*.gguf' 2>/dev/null | sort; } | head -1)`;
+            ? `$({ find ${_ldir} -name '*-00001-of-*.gguf' 2>/dev/null | sort; find ${_ldir} -name '*.gguf' 2>/dev/null | sort; } | head -1)`
+            : `$({ find ${dir} -name '*-00001-of-*.gguf' 2>/dev/null | sort; find ${dir} -name '*.gguf' 2>/dev/null | sort; } | head -1)`;
           // Vision: auto-find the mmproj (CLIP/projector) file in the same dir.
           // Resolved at runtime so the toggle just works if an mmproj-*.gguf is
           // present (downloaded alongside the model). Empty if none → cmd omits it.
-          const _vsearchdir = m.is_local_dir && m.path ? _ldir : dir;
+          const _vsearchdir = (m.is_local_dir && m.path) ? _ldir : dir;
           f._mmproj_path = `$(find ${_vsearchdir} -iname 'mmproj*.gguf' 2>/dev/null | sort | head -1)`;
         }
         if (f.reasoning_parser) {
@@ -1816,12 +1667,11 @@ function _rerenderCachedModels() {
       }
       function _clampCtx(announce) {
         if (!_ctxEl0) return;
-        const cap =
-          panel._modelCtxMax > 0 ? panel._modelCtxMax : ABSOLUTE_CTX_MAX;
+        const cap = panel._modelCtxMax > 0 ? panel._modelCtxMax : ABSOLUTE_CTX_MAX;
         const v = parseInt(_ctxEl0.value, 10);
         if (Number.isFinite(v) && v > cap) {
           _ctxEl0.value = String(cap);
-          _ctxEl0.title = `Capped to ${panel._modelCtxMax > 0 ? "this model's trained limit" : 'the maximum sane context'} (${cap}).`;
+          _ctxEl0.title = `Capped to ${panel._modelCtxMax > 0 ? "this model's trained limit" : "the maximum sane context"} (${cap}).`;
           if (announce) uiModule.showToast(`Context capped to ${cap}`);
           updateCmd();
         }
@@ -1899,33 +1749,26 @@ function _rerenderCachedModels() {
       // system RAM over PCIe (slow). AMD sysfs reports gtt_used_mb for spillover.
       async function _refreshVramMonitor() {
         const el = panel.querySelector('.hwfit-vram-readout');
-        if (!el || !document.body.contains(el)) return false; // panel closed → stop
+        if (!el || !document.body.contains(el)) return false;  // panel closed → stop
         try {
           const host = (_es.remoteHost || '').trim();
           const params = new URLSearchParams();
           if (host) {
             params.set('host', host);
-            const _sp = (_es.servers || []).find((s) => s.host === host)?.port;
+            const _sp = (_es.servers || []).find(s => s.host === host)?.port;
             if (_sp) params.set('ssh_port', _sp);
           }
-          const res = await fetch(
-            '/api/cookbook/gpus' + (params.toString() ? '?' + params : ''),
-          );
+          const res = await fetch('/api/cookbook/gpus' + (params.toString() ? '?' + params : ''));
           const data = await res.json();
-          const gpus = Array.isArray(data) ? data : data.gpus || [];
-          if (!gpus.length) {
-            el.textContent = 'no GPU detected';
-            el.style.color = '';
-            return true;
-          }
+          const gpus = Array.isArray(data) ? data : (data.gpus || []);
+          if (!gpus.length) { el.textContent = 'no GPU detected'; el.style.color = ''; return true; }
           const g = gpus[0];
-          const usedG = g.used_mb / 1024,
-            totG = g.total_mb / 1024;
+          const usedG = (g.used_mb / 1024), totG = (g.total_mb / 1024);
           const pct = totG ? Math.round((usedG / totG) * 100) : 0;
           const freeG = Math.max(0, totG - usedG);
           const spillG = (g.gtt_used_mb || 0) / 1024;
           // Color: green < 85%, amber 85-97%, red > 97% or spilling.
-          const spilling = spillG > 0.5 && !g.unified_memory; // unified APUs always use GTT; not a spill
+          const spilling = spillG > 0.5 && !g.unified_memory;   // unified APUs always use GTT; not a spill
           let color = 'var(--green, #50fa7b)';
           if (pct >= 97 || spilling) color = 'var(--red, #ff5555)';
           else if (pct >= 85) color = 'var(--orange, #ffb86c)';
@@ -2097,10 +1940,7 @@ function _rerenderCachedModels() {
         note.style.borderColor = '';
         note.style.color = 'var(--fg-muted)';
         try {
-          const { pkg, target } = await _fetchServeRuntimePackage(
-            panel,
-            backend,
-          );
+          const { pkg, target } = await _fetchServeRuntimePackage(panel, backend);
           if (panel._runtimeReadinessSeq !== seq) return;
           _writeNote(_runtimeNoteText(backend, pkg, target));
           if (pkg?.installed === null || pkg?.probe_error) {
@@ -2141,20 +1981,11 @@ function _rerenderCachedModels() {
         }
       }
       updateRuntimeReadinessNote();
-      const runtimeServerSelect =
-        document.getElementById('hwfit-server-select') ||
-        document.getElementById('hwfit-dl-server');
+      const runtimeServerSelect = document.getElementById('hwfit-server-select') || document.getElementById('hwfit-dl-server');
       if (runtimeServerSelect) {
         const refreshRuntimeOnServerChange = () => updateRuntimeReadinessNote();
-        runtimeServerSelect.addEventListener(
-          'change',
-          refreshRuntimeOnServerChange,
-        );
-        panel._cleanupRuntimeReadiness = () =>
-          runtimeServerSelect.removeEventListener(
-            'change',
-            refreshRuntimeOnServerChange,
-          );
+        runtimeServerSelect.addEventListener('change', refreshRuntimeOnServerChange);
+        panel._cleanupRuntimeReadiness = () => runtimeServerSelect.removeEventListener('change', refreshRuntimeOnServerChange);
       }
 
       // Wire save slots
@@ -2167,13 +1998,10 @@ function _rerenderCachedModels() {
         // Hoisted so the GPU/venv restore below can use it in BOTH branches —
         // it used to be scoped to the else branch, throwing a ReferenceError when
         // a preset had saved fields (which aborted GPU + env restoration).
-        const _ex = (re) => {
-          const m = cmd.match(re);
-          return m ? m[1] : '';
-        };
+        const _ex = (re) => { const m = cmd.match(re); return m ? m[1] : ''; };
         // Prefer saved field values; fall back to regex parsing of command string
         if (p.fields) {
-          panel.querySelectorAll('.hwfit-sf').forEach((el) => {
+          panel.querySelectorAll('.hwfit-sf').forEach(el => {
             const f = el.dataset.field;
             if (f && p.fields[f] !== undefined) {
               if (el.type === 'checkbox') el.checked = !!p.fields[f];
@@ -2182,23 +2010,10 @@ function _rerenderCachedModels() {
           });
         } else {
           const fields = {
-            backend:
-              cmd.includes('llama_cpp') || cmd.includes('llama-server')
-                ? 'llamacpp'
-                : cmd.includes('diffusion_server')
-                  ? 'diffusers'
-                  : cmd.includes('sglang')
-                    ? 'sglang'
-                    : cmd.includes('ollama')
-                      ? 'ollama'
-                      : 'vllm',
+            backend: cmd.includes('llama_cpp') || cmd.includes('llama-server') ? 'llamacpp' : cmd.includes('diffusion_server') ? 'diffusers' : cmd.includes('sglang') ? 'sglang' : cmd.includes('ollama') ? 'ollama' : 'vllm',
             port: _ex(/--port\s+(\d+)/) || '8000',
             tp: _ex(/--tensor-parallel-size\s+(\d+)/) || '1',
-            ctx:
-              _ex(/--max-model-len\s+(\d+)/) ||
-              _ex(/--n_ctx\s+(\d+)/) ||
-              _ex(/-c\s+(\d+)/) ||
-              '8192',
+            ctx: _ex(/--max-model-len\s+(\d+)/) || _ex(/--n_ctx\s+(\d+)/) || _ex(/-c\s+(\d+)/) || '8192',
             gpu_mem: _ex(/--gpu-memory-utilization\s+([\d.]+)/) || '0.90',
             swap: _ex(/--swap-space\s+(\d+)/) || '',
             dtype: _ex(/--dtype\s+(\w+)/) || 'auto',
@@ -2206,10 +2021,8 @@ function _rerenderCachedModels() {
             max_seqs: _ex(/--max-num-seqs\s+(\d+)/) || '',
             cache_type: _ex(/(?:--cache-type-k|-ctk)\s+(\S+)/) || '',
             llama_fit: _ex(/(?:--fit|-fit)\s+(on|off)/) || '',
-            llama_split_mode:
-              _ex(/(?:--split-mode|-sm)\s+(none|layer|row|tensor)/) || '',
-            llama_tensor_split:
-              _ex(/(?:--tensor-split|-ts)\s+([0-9.,]+)/) || '',
+            llama_split_mode: _ex(/(?:--split-mode|-sm)\s+(none|layer|row|tensor)/) || '',
+            llama_tensor_split: _ex(/(?:--tensor-split|-ts)\s+([0-9.,]+)/) || '',
             llama_main_gpu: _ex(/(?:--main-gpu|-mg)\s+(\d+)/) || '',
             llama_parallel: _ex(/(?:--parallel|-np)\s+(\d+)/) || '',
             llama_batch_size: _ex(/(?:--batch-size|-b)\s+(\d+)/) || '',
@@ -2229,21 +2042,15 @@ function _rerenderCachedModels() {
             llama_speculative_mtp: /--spec-type\s+\S*draft-mtp/.test(cmd),
             speculative: cmd.includes('--speculative-config'),
           };
-          const _specMatch = cmd.match(
-            /--speculative-config\s+'?\{[^}]*"method"\s*:\s*"([^"]+)"[^}]*"num_speculative_tokens"\s*:\s*(\d+)/,
-          );
+          const _specMatch = cmd.match(/--speculative-config\s+'?\{[^}]*"method"\s*:\s*"([^"]+)"[^}]*"num_speculative_tokens"\s*:\s*(\d+)/);
           if (_specMatch) {
             fields.spec_method = _specMatch[1];
             fields.spec_tokens = _specMatch[2];
           }
-          panel.querySelectorAll('.hwfit-sf').forEach((el) => {
+          panel.querySelectorAll('.hwfit-sf').forEach(el => {
             const f = el.dataset.field;
-            if (f && fields[f] !== undefined) {
-              el.value = fields[f];
-            }
-            if (f && checks[f] !== undefined && el.type === 'checkbox') {
-              el.checked = checks[f];
-            }
+            if (f && fields[f] !== undefined) { el.value = fields[f]; }
+            if (f && checks[f] !== undefined && el.type === 'checkbox') { el.checked = checks[f]; }
           });
         }
         // Restore the venv path from the saved config — OVERRIDE whatever's in the
@@ -2256,13 +2063,9 @@ function _rerenderCachedModels() {
         // Restore the activated GPUs: saved field → command's CUDA_VISIBLE_DEVICES
         // → the preset's top-level gpus. Reflect them on both the hidden field
         // and the GPU buttons so the rebuilt command pins the same devices.
-        const gpuVal =
-          (p.fields && p.fields.gpus) ||
-          _ex(/CUDA_VISIBLE_DEVICES=(\S+)/) ||
-          p.gpus ||
-          '';
+        const gpuVal = (p.fields && p.fields.gpus) || _ex(/CUDA_VISIBLE_DEVICES=(\S+)/) || p.gpus || '';
         const activeGpus = String(gpuVal).split(',').filter(Boolean);
-        panel.querySelectorAll('.cookbook-gpu-btn').forEach((btn) => {
+        panel.querySelectorAll('.cookbook-gpu-btn').forEach(btn => {
           btn.classList.toggle('active', activeGpus.includes(btn.dataset.gpu));
         });
         const _gf = panel.querySelector('[data-field="gpus"]');
@@ -2295,12 +2098,8 @@ function _rerenderCachedModels() {
         updateBackendVisibility();
         updateRuntimeReadinessNote();
         updateCmd();
-        panel
-          .querySelectorAll('.cookbook-slot-btn')
-          .forEach((b) => b.classList.remove('active'));
-        panel
-          .querySelector(`.cookbook-slot-btn[data-slot="${slotIdx}"]`)
-          ?.classList.add('active');
+        panel.querySelectorAll('.cookbook-slot-btn').forEach(b => b.classList.remove('active'));
+        panel.querySelector(`.cookbook-slot-btn[data-slot="${slotIdx}"]`)?.classList.add('active');
       }
 
       // Keep the arrow button's count + tooltip in sync with stored presets.
@@ -2309,10 +2108,9 @@ function _rerenderCachedModels() {
         const t = panel.querySelector('.cookbook-saved-arrow');
         if (!t) return;
         t.textContent = n > 0 ? `${n} ▾` : '▾';
-        t.title =
-          n > 0
-            ? `${n} saved launch config${n === 1 ? '' : 's'} for ${_repoShort} — click ▾ to load or delete`
-            : `No saved launch configs for ${_repoShort} yet — click Save to add one`;
+        t.title = n > 0
+          ? `${n} saved launch config${n === 1 ? '' : 's'} for ${_repoShort} — click ▾ to load or delete`
+          : `No saved launch configs for ${_repoShort} yet — click Save to add one`;
       }
 
       // Save the current panel fields as a new named preset (shared by the menu's
@@ -2325,34 +2123,20 @@ function _rerenderCachedModels() {
         const cmd = panel._cmd;
         // Already saved? If an existing preset for this model has the identical
         // launch command, don't make a duplicate — tell the user via a popup.
-        const _norm = (s) =>
-          String(s || '')
-            .replace(/\s+/g, ' ')
-            .trim();
-        const _existing = modelSlots.find((p) => _norm(p.cmd) === _norm(cmd));
+        const _norm = s => String(s || '').replace(/\s+/g, ' ').trim();
+        const _existing = modelSlots.find(p => _norm(p.cmd) === _norm(cmd));
         if (_existing) {
-          await window.styledConfirm(
-            `This config is already saved as "${_existing.label || 'Unnamed'}".`,
-            { confirmText: 'OK', cancelText: 'Close' },
-          );
+          await window.styledConfirm(`This config is already saved as "${_existing.label || 'Unnamed'}".`, { confirmText: 'OK', cancelText: 'Close' });
           return false;
         }
-        if (modelSlots.length >= 5) {
-          uiModule.showToast('Max 5 saves per model');
-          return false;
-        }
-        const label = await uiModule.styledPrompt(
-          'Name this config so you can recall it later.',
-          {
-            title: 'Save Config',
-            placeholder: 'e.g. LoRA, 8-bit, fast',
-            confirmText: 'Save',
-          },
-        );
+        if (modelSlots.length >= 5) { uiModule.showToast('Max 5 saves per model'); return false; }
+        const label = await uiModule.styledPrompt('Name this config so you can recall it later.', {
+          title: 'Save Config', placeholder: 'e.g. LoRA, 8-bit, fast', confirmText: 'Save',
+        });
         if (!label) return false;
         const host = panel._host || '';
         const fields = {};
-        panel.querySelectorAll('.hwfit-sf').forEach((el) => {
+        panel.querySelectorAll('.hwfit-sf').forEach(el => {
           if (el.type === 'checkbox') fields[el.dataset.field] = el.checked;
           else fields[el.dataset.field] = el.value;
         });
@@ -2376,10 +2160,7 @@ function _rerenderCachedModels() {
           });
         const dropdown = document.createElement('div');
         dropdown.className = 'dropdown cookbook-saved-menu';
-        let closeMenu = () => {
-          dropdown.remove();
-          anchor.classList.remove('cookbook-menu-active');
-        };
+        let closeMenu = () => { dropdown.remove(); anchor.classList.remove('cookbook-menu-active'); };
         const rect = anchor.getBoundingClientRect();
         const minW = 190;
         // Cap width/height to the viewport and start hidden — we clamp the final
@@ -2389,8 +2170,7 @@ function _rerenderCachedModels() {
 
         if (!modelSlots.length) {
           const empty = document.createElement('div');
-          empty.style.cssText =
-            'padding:6px 8px;opacity:0.5;position:relative;top:1px;';
+          empty.style.cssText = 'padding:6px 8px;opacity:0.5;position:relative;top:1px;';
           empty.textContent = 'No saved configs yet';
           dropdown.appendChild(empty);
         }
@@ -2410,14 +2190,9 @@ function _rerenderCachedModels() {
           del.type = 'button';
           del.innerHTML = '×';
           del.title = 'Delete';
-          del.style.cssText =
-            'background:none;border:none;color:var(--fg-muted);cursor:pointer;font-size:15px;line-height:1;padding:0 2px;flex-shrink:0;';
-          del.addEventListener('mouseenter', () => {
-            del.style.color = '#f44';
-          });
-          del.addEventListener('mouseleave', () => {
-            del.style.color = 'var(--fg-muted)';
-          });
+          del.style.cssText = 'background:none;border:none;color:var(--fg-muted);cursor:pointer;font-size:15px;line-height:1;padding:0 2px;flex-shrink:0;';
+          del.addEventListener('mouseenter', () => { del.style.color = '#f44'; });
+          del.addEventListener('mouseleave', () => { del.style.color = 'var(--fg-muted)'; });
           it.appendChild(lbl);
           if (p.favorite) {
             const badge = document.createElement('span');
@@ -2428,10 +2203,8 @@ function _rerenderCachedModels() {
           if (p.confirmedWorking) {
             const badge = document.createElement('span');
             badge.className = 'cookbook-saved-confirmed';
-            badge.title =
-              'Confirmed working — this config launched and registered an endpoint';
-            badge.innerHTML =
-              '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#50fa7b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+            badge.title = 'Confirmed working — this config launched and registered an endpoint';
+            badge.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#50fa7b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
             it.appendChild(badge);
           }
           it.appendChild(fav);
@@ -2466,13 +2239,7 @@ function _rerenderCachedModels() {
           del.addEventListener('click', async (e) => {
             e.stopPropagation();
             const label = p.label || `Config ${idx + 1}`;
-            if (
-              !(await window.styledConfirm(`Delete saved config "${label}"?`, {
-                confirmText: 'Delete',
-                danger: true,
-              }))
-            )
-              return;
+            if (!await window.styledConfirm(`Delete saved config "${label}"?`, { confirmText: 'Delete', danger: true })) return;
             const cur = _loadPresets();
             const toRemove = _presetsForModel(cur, repo)[slotIdx];
             if (toRemove) {
@@ -2482,7 +2249,7 @@ function _rerenderCachedModels() {
             }
             uiModule.showToast(`Deleted "${label}"`);
             _updateSavedToggleLabel();
-            _showSavedConfigMenu(anchor); // rebuild in place
+            _showSavedConfigMenu(anchor);   // rebuild in place
           });
           dropdown.appendChild(it);
         });
@@ -2490,27 +2257,15 @@ function _rerenderCachedModels() {
         document.body.appendChild(dropdown);
         // Clamp into the viewport using the menu's real size (both axes); flip
         // above the toggle if there isn't room below. Right-align to the anchor.
-        const w = dropdown.offsetWidth,
-          h = dropdown.offsetHeight;
+        const w = dropdown.offsetWidth, h = dropdown.offsetHeight;
         let left = Math.min(rect.right - w, window.innerWidth - w - 8);
         left = Math.max(8, left);
         let top = rect.bottom + 6;
-        if (top + h > window.innerHeight - 8)
-          top = Math.max(8, rect.top - 6 - h);
+        if (top + h > window.innerHeight - 8) top = Math.max(8, rect.top - 6 - h);
         dropdown.style.left = `${left}px`;
         dropdown.style.top = `${top}px`;
         dropdown.style.visibility = '';
-        closeMenu = bindMenuDismiss(
-          dropdown,
-          () => {
-            dropdown.remove();
-            anchor.classList.remove('cookbook-menu-active');
-          },
-          (ev) =>
-            !dropdown.contains(ev.target) &&
-            ev.target !== anchor &&
-            !anchor.contains(ev.target),
-        );
+        closeMenu = bindMenuDismiss(dropdown, () => { dropdown.remove(); anchor.classList.remove('cookbook-menu-active'); }, (ev) => !dropdown.contains(ev.target) && ev.target !== anchor && !anchor.contains(ev.target));
       }
 
       // "Save" segment — save the current config directly.
@@ -2518,9 +2273,7 @@ function _rerenderCachedModels() {
       if (savedSaveBtn) {
         savedSaveBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          document
-            .querySelectorAll('.cookbook-saved-menu')
-            .forEach(dismissOrRemove);
+          document.querySelectorAll('.cookbook-saved-menu').forEach(dismissOrRemove);
           await _saveCurrentConfig();
         });
       }
@@ -2532,10 +2285,7 @@ function _rerenderCachedModels() {
           const openSaved = document.querySelector('.cookbook-saved-menu');
           if (openSaved) {
             if (typeof openSaved._dismiss === 'function') openSaved._dismiss();
-            else {
-              openSaved.remove();
-              savedArrowBtn.classList.remove('cookbook-menu-active');
-            }
+            else { openSaved.remove(); savedArrowBtn.classList.remove('cookbook-menu-active'); }
             return;
           }
           savedArrowBtn.classList.add('cookbook-menu-active');
@@ -2544,33 +2294,26 @@ function _rerenderCachedModels() {
       }
 
       // Wire GPU toggle buttons
-      panel.querySelectorAll('.cookbook-gpu-btn').forEach((btn) => {
+      panel.querySelectorAll('.cookbook-gpu-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           btn.classList.toggle('active');
-          const activeBtns = [
-            ...panel.querySelectorAll('.cookbook-gpu-btn.active'),
-          ];
-          const active = activeBtns.map((b) => b.dataset.gpu).join(',');
+          const activeBtns = [...panel.querySelectorAll('.cookbook-gpu-btn.active')];
+          const active = activeBtns.map(b => b.dataset.gpu).join(',');
           panel.querySelector('[data-field="gpus"]').value = active;
           // Guard: vLLM/SGLang tensor-parallel only works across IDENTICAL GPUs.
           // If the probe knows the per-GPU models and the selection mixes types,
           // warn — serving across a mixed set will fail or run badly.
           const byIdx = panel._gpuProbe && panel._gpuProbe.byIdx;
           if (byIdx && activeBtns.length > 1) {
-            const names = new Set(
-              activeBtns
-                .map((b) => byIdx.get(parseInt(b.dataset.gpu)))
-                .filter(Boolean)
-                .map((g) => g.name),
-            );
+            const names = new Set(activeBtns
+              .map(b => byIdx.get(parseInt(b.dataset.gpu)))
+              .filter(Boolean)
+              .map(g => g.name));
             if (names.size > 1 && !panel._mixedGpuWarned) {
-              panel._mixedGpuWarned = true; // once per panel, don't nag
-              uiModule.showToast(
-                'Mixed GPU types selected — tensor-parallel needs identical GPUs. Pick one pool (e.g. all the same card).',
-                7000,
-              );
+              panel._mixedGpuWarned = true;   // once per panel, don't nag
+              uiModule.showToast('Mixed GPU types selected — tensor-parallel needs identical GPUs. Pick one pool (e.g. all the same card).', 7000);
             } else if (names.size <= 1) {
-              panel._mixedGpuWarned = false; // reset once they're back to one pool
+              panel._mixedGpuWarned = false;  // reset once they're back to one pool
             }
           }
           updateCmd();
@@ -2647,10 +2390,7 @@ function _rerenderCachedModels() {
       if (_splitArrow) {
         _splitArrow.addEventListener('click', (ev) => {
           ev.stopPropagation();
-          document.querySelectorAll('.cookbook-gpu-split-menu').forEach((m) => {
-            if (typeof m._dismiss === 'function') m._dismiss();
-            else m.remove();
-          });
+          document.querySelectorAll('.cookbook-gpu-split-menu').forEach(m => { if (typeof m._dismiss === 'function') m._dismiss(); else m.remove(); });
           const menu = document.createElement('div');
           menu.className = 'cookbook-task-dropdown cookbook-gpu-split-menu';
           let closeMenu = () => menu.remove();
@@ -2670,7 +2410,7 @@ function _rerenderCachedModels() {
           menu.appendChild(mk('Cancel', 'dropdown-cancel-mobile', () => {}));
           const r = _splitArrow.getBoundingClientRect();
           menu.style.position = 'fixed';
-          menu.style.right = window.innerWidth - r.right + 'px';
+          menu.style.right = (window.innerWidth - r.right) + 'px';
           document.body.appendChild(menu);
           // Default open BELOW, but if there's no room (esp. on mobile where
           // the arrow sits near the bottom of the modal) flip ABOVE so the
@@ -2678,32 +2418,20 @@ function _rerenderCachedModels() {
           {
             const vv = window.visualViewport;
             const viewTop = vv ? vv.offsetTop : 0;
-            const viewBottom = vv
-              ? vv.offsetTop + vv.height
-              : window.innerHeight;
+            const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
             const mh = menu.offsetHeight;
             const m = 8;
             let top = r.bottom + 4;
             if (top + mh > viewBottom - m) {
               const above = r.top - 4 - mh;
-              top =
-                above >= viewTop + m
-                  ? above
-                  : Math.max(viewTop + m, viewBottom - mh - m);
+              top = above >= viewTop + m ? above : Math.max(viewTop + m, viewBottom - mh - m);
             }
             menu.style.top = top + 'px';
           }
           // Close on outside click or Escape (via the registry); also dismiss
           // on scroll since the popup is fixed-positioned to the arrow.
           const _scrollClose = () => closeMenu();
-          closeMenu = bindMenuDismiss(
-            menu,
-            () => {
-              menu.remove();
-              window.removeEventListener('scroll', _scrollClose, true);
-            },
-            (e) => !menu.contains(e.target) && e.target !== _splitArrow,
-          );
+          closeMenu = bindMenuDismiss(menu, () => { menu.remove(); window.removeEventListener('scroll', _scrollClose, true); }, (e) => !menu.contains(e.target) && e.target !== _splitArrow);
           window.addEventListener('scroll', _scrollClose, true);
         });
       }
@@ -2711,17 +2439,15 @@ function _rerenderCachedModels() {
         const origHtml = btn.innerHTML;
         btn.disabled = true;
         const wp = spinnerModule.createWhirlpool(14);
-        wp.element.style.cssText =
-          'display:inline-block;vertical-align:middle;position:relative;top:-1px;margin:0 4px 0 0;width:14px;height:14px;';
+        wp.element.style.cssText = 'display:inline-block;vertical-align:middle;position:relative;top:-1px;margin:0 4px 0 0;width:14px;height:14px;';
         btn.innerHTML = '';
         btn.appendChild(wp.element);
         const lbl = document.createElement('span');
         lbl.textContent = origHtml.replace(/<[^>]*>/g, '').trim() || '…';
         lbl.style.cssText = 'vertical-align:middle;';
         btn.appendChild(lbl);
-        try {
-          return await fn();
-        } finally {
+        try { return await fn(); }
+        finally {
           wp.destroy();
           btn.innerHTML = origHtml;
           btn.disabled = false;
@@ -2740,20 +2466,14 @@ function _rerenderCachedModels() {
 
         const _doKill = async (pid, sig, hostVal) => {
           const res = await fetch('/api/cookbook/kill-pid', {
-            method: 'POST',
-            credentials: 'same-origin',
+            method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ pid, signal: sig, host: hostVal || null }),
           });
           let data;
-          try {
-            data = await res.json();
-          } catch (_) {
-            data = {};
-          }
+          try { data = await res.json(); } catch (_) { data = {}; }
           if (!res.ok || !data.ok) {
-            const err =
-              data.error || data.detail || res.statusText || 'unknown';
+            const err = data.error || data.detail || res.statusText || 'unknown';
             uiModule.showToast(`Kill PID ${pid} failed: ${err}`, 6000);
             return false;
           }
@@ -2766,29 +2486,25 @@ function _rerenderCachedModels() {
           const popup = document.createElement('div');
           popup.className = 'cookbook-gpu-popup';
           const procs = gpu.processes || [];
-          const procHtml =
-            procs.length === 0
-              ? '<div class="cookbook-gpu-popup-empty">No GPU processes reported. VRAM may be held by a zombie or another tenant.</div>'
-              : procs
-                  .map(
-                    (p) =>
-                      `<div class="cookbook-gpu-proc" data-pid="${p.pid}">
+          const procHtml = procs.length === 0
+            ? '<div class="cookbook-gpu-popup-empty">No GPU processes reported. VRAM may be held by a zombie or another tenant.</div>'
+            : procs.map(p =>
+                `<div class="cookbook-gpu-proc" data-pid="${p.pid}">
                    <span class="cookbook-gpu-proc-info">
                      <span class="cookbook-gpu-proc-pid">${p.pid}</span>
                      <span class="cookbook-gpu-proc-name" title="${esc(p.name)}">${esc(p.name)}</span>
-                     <span class="cookbook-gpu-proc-mem">${(p.used_mb / 1024).toFixed(1)}G</span>
+                     <span class="cookbook-gpu-proc-mem">${(p.used_mb/1024).toFixed(1)}G</span>
                    </span>
                    <span class="cookbook-gpu-proc-actions">
                      <button type="button" class="cookbook-gpu-kill" data-sig="TERM" title="Graceful (SIGTERM)">Kill</button>
                      <button type="button" class="cookbook-gpu-kill" data-sig="KILL" title="Force (SIGKILL)">!</button>
                    </span>
-                 </div>`,
-                  )
-                  .join('');
+                 </div>`
+              ).join('');
           popup.innerHTML = `
             <div class="cookbook-gpu-popup-head">
               GPU ${gpu.index} · ${esc(gpu.name)}
-              <span class="cookbook-gpu-popup-stats">${(gpu.free_mb / 1024).toFixed(1)} / ${(gpu.total_mb / 1024).toFixed(1)} GB free · util ${gpu.util_pct}%</span>
+              <span class="cookbook-gpu-popup-stats">${(gpu.free_mb/1024).toFixed(1)} / ${(gpu.total_mb/1024).toFixed(1)} GB free · util ${gpu.util_pct}%</span>
               <button type="button" class="cookbook-gpu-popup-close" title="Close">×</button>
             </div>
             <div class="cookbook-gpu-popup-body">${procHtml}</div>`;
@@ -2801,37 +2517,27 @@ function _rerenderCachedModels() {
           // popup stays fully visible — GPU buttons near the right edge
           // of the modal previously anchored the popup mostly off-screen.
           const r = anchorBtn.getBoundingClientRect();
-          const vw = window.innerWidth || document.documentElement.clientWidth;
-          const vh =
-            window.innerHeight || document.documentElement.clientHeight;
-          const pw = popup.offsetWidth || 320;
+          const vw = window.innerWidth  || document.documentElement.clientWidth;
+          const vh = window.innerHeight || document.documentElement.clientHeight;
+          const pw = popup.offsetWidth  || 320;
           const ph = popup.offsetHeight || 200;
           let left = r.left;
-          let top = r.bottom + 4;
+          let top  = r.bottom + 4;
           // Push left so the popup doesn't overflow the right edge.
           if (left + pw > vw - 8) left = Math.max(8, vw - pw - 8);
           // If there isn't room below, render above the button instead.
           if (top + ph > vh - 8) top = Math.max(8, r.top - ph - 4);
           popup.style.left = `${left}px`;
-          popup.style.top = `${top}px`;
+          popup.style.top  = `${top}px`;
 
-          popup
-            .querySelector('.cookbook-gpu-popup-close')
-            ?.addEventListener('click', _closeProbePopup);
-          popup.querySelectorAll('.cookbook-gpu-kill').forEach((btn) => {
+          popup.querySelector('.cookbook-gpu-popup-close')?.addEventListener('click', _closeProbePopup);
+          popup.querySelectorAll('.cookbook-gpu-kill').forEach(btn => {
             btn.addEventListener('click', async (ev) => {
               ev.stopPropagation();
               const row = btn.closest('.cookbook-gpu-proc');
               const pid = parseInt(row.dataset.pid);
               const sig = btn.dataset.sig;
-              if (
-                sig === 'KILL' &&
-                !(await window.styledConfirm(
-                  `SIGKILL PID ${pid}? This force-terminates without cleanup.`,
-                  { confirmText: 'SIGKILL', danger: true },
-                ))
-              )
-                return;
+              if (sig === 'KILL' && !await window.styledConfirm(`SIGKILL PID ${pid}? This force-terminates without cleanup.`, { confirmText: 'SIGKILL', danger: true })) return;
               btn.disabled = true;
               btn.textContent = '…';
               const ok = await _doKill(pid, sig, hostVal);
@@ -2862,42 +2568,24 @@ function _rerenderCachedModels() {
         const _runProbe = async (silent = false) => {
           _closeProbePopup();
           const hostEl = panel.querySelector('[data-field="host"]');
-          const remoteHost = ((hostEl && hostEl.value) || '').trim();
+          const remoteHost = (hostEl && hostEl.value || '').trim();
           const params = new URLSearchParams();
           if (remoteHost) params.set('host', remoteHost);
-          const url =
-            '/api/cookbook/gpus' +
-            (params.toString() ? '?' + params.toString() : '');
+          const url = '/api/cookbook/gpus' + (params.toString() ? '?' + params.toString() : '');
           const res = await fetch(url, { credentials: 'same-origin' });
           let data;
-          try {
-            data = await res.json();
-          } catch (_) {
-            data = {};
-          }
+          try { data = await res.json(); } catch (_) { data = {}; }
           if (!res.ok) {
-            const err =
-              data.detail ||
-              data.error ||
-              res.statusText ||
-              `HTTP ${res.status}`;
-            const hint =
-              res.status === 404
-                ? ' — server may need a restart to pick up new endpoint'
-                : '';
-            if (!silent)
-              uiModule.showToast('GPU probe failed: ' + err + hint, 8000);
+            const err = data.detail || data.error || res.statusText || `HTTP ${res.status}`;
+            const hint = res.status === 404 ? ' — server may need a restart to pick up new endpoint' : '';
+            if (!silent) uiModule.showToast('GPU probe failed: ' + err + hint, 8000);
             return null;
           }
           if (!data.ok) {
-            if (!silent)
-              uiModule.showToast(
-                'GPU probe failed: ' + (data.error || 'unknown'),
-                6000,
-              );
+            if (!silent) uiModule.showToast('GPU probe failed: ' + (data.error || 'unknown'), 6000);
             return null;
           }
-          panel._gpuProbe.byIdx = new Map(data.gpus.map((g) => [g.index, g]));
+          panel._gpuProbe.byIdx = new Map(data.gpus.map(g => [g.index, g]));
           panel._gpuProbe.host = remoteHost;
           // If the probe found more GPUs than the panel originally
           // rendered (e.g. host switched from a 1-iGPU local box to an
@@ -2905,26 +2593,16 @@ function _rerenderCachedModels() {
           // user can actually toggle them. Reuse the parent <div> from
           // the first existing button as the insertion target.
           try {
-            const _existing = Array.from(
-              panel.querySelectorAll('.cookbook-gpu-btn'),
-            );
+            const _existing = Array.from(panel.querySelectorAll('.cookbook-gpu-btn'));
             const _grp = _existing[0] && _existing[0].parentElement;
             if (_grp) {
-              const _have = new Set(
-                _existing.map((b) => parseInt(b.dataset.gpu, 10)),
-              );
-              const _activeStr = (
-                panel.querySelector('[data-field="gpus"]')?.value || ''
-              )
-                .split(',')
-                .map((s) => s.trim());
-              data.gpus.forEach((g) => {
+              const _have = new Set(_existing.map(b => parseInt(b.dataset.gpu, 10)));
+              const _activeStr = (panel.querySelector('[data-field="gpus"]')?.value || '').split(',').map(s => s.trim());
+              data.gpus.forEach(g => {
                 if (_have.has(g.index)) return;
                 const _b = document.createElement('button');
                 _b.type = 'button';
-                _b.className =
-                  'cookbook-gpu-btn' +
-                  (_activeStr.includes(String(g.index)) ? ' active' : '');
+                _b.className = 'cookbook-gpu-btn' + (_activeStr.includes(String(g.index)) ? ' active' : '');
                 _b.dataset.gpu = String(g.index);
                 _b.textContent = String(g.index);
                 _grp.appendChild(_b);
@@ -2933,25 +2611,15 @@ function _rerenderCachedModels() {
                 // gpus input from the live set of active buttons.
                 _b.addEventListener('click', () => {
                   _b.classList.toggle('active');
-                  const activeBtns = [
-                    ...panel.querySelectorAll('.cookbook-gpu-btn.active'),
-                  ];
-                  const ids = activeBtns
-                    .map((x) => x.dataset.gpu)
-                    .sort((a, b) => +a - +b)
-                    .join(',');
+                  const activeBtns = [...panel.querySelectorAll('.cookbook-gpu-btn.active')];
+                  const ids = activeBtns.map(x => x.dataset.gpu).sort((a, b) => +a - +b).join(',');
                   const hidden = panel.querySelector('[data-field="gpus"]');
-                  if (hidden) {
-                    hidden.value = ids;
-                    hidden.dispatchEvent(
-                      new Event('change', { bubbles: true }),
-                    );
-                  }
+                  if (hidden) { hidden.value = ids; hidden.dispatchEvent(new Event('change', { bubbles: true })); }
                 });
               });
             }
           } catch (_) {}
-          panel.querySelectorAll('.cookbook-gpu-btn').forEach((b) => {
+          panel.querySelectorAll('.cookbook-gpu-btn').forEach(b => {
             const idx = parseInt(b.dataset.gpu);
             const g = panel._gpuProbe.byIdx.get(idx);
             b.classList.remove('gpu-free', 'gpu-busy', 'gpu-missing');
@@ -2970,10 +2638,7 @@ function _rerenderCachedModels() {
             const procLine = procCount
               ? `\n${procCount} process(es) — click to view/kill`
               : '';
-            const backendLine =
-              g.backend || data.backend
-                ? `\nprobe: ${g.source || data.source || g.backend || data.backend}`
-                : '';
+            const backendLine = g.backend || data.backend ? `\nprobe: ${g.source || data.source || g.backend || data.backend}` : '';
             b.title = `GPU ${idx} ${g.name}\n${freeGb} / ${totalGb} GB free · util ${g.util_pct}%${procLine}${backendLine}`;
             // Treat any GPU with attached compute processes OR <85% free as busy.
             const isBusy = procCount > 0 || g.busy;
@@ -2983,30 +2648,19 @@ function _rerenderCachedModels() {
             if (data.gpus.length === 0) {
               uiModule.showToast('No GPU memory probe data available', 4000);
             } else {
-              const summary = data.gpus
-                .map((g) => {
-                  const procs = (g.processes && g.processes.length) || 0;
-                  return (
-                    `GPU${g.index}: ${(g.free_mb / 1024).toFixed(1)}G free` +
-                    (procs ? ` (${procs}p)` : '')
-                  );
-                })
-                .join(' · ');
-              uiModule.showToast(
-                summary + ' · dbl-click a GPU button to view/kill processes',
-                7000,
-              );
+              const summary = data.gpus.map(g => {
+                const procs = (g.processes && g.processes.length) || 0;
+                return `GPU${g.index}: ${(g.free_mb/1024).toFixed(1)}G free` + (procs ? ` (${procs}p)` : '');
+              }).join(' · ');
+              uiModule.showToast(summary + ' · dbl-click a GPU button to view/kill processes', 7000);
             }
           }
           return data;
         };
 
         _probeBtn.addEventListener('click', async () => {
-          try {
-            await _withSpinner(_probeBtn, () => _runProbe(false));
-          } catch (e) {
-            uiModule.showToast('GPU probe error: ' + e.message, 6000);
-          }
+          try { await _withSpinner(_probeBtn, () => _runProbe(false)); }
+          catch (e) { uiModule.showToast('GPU probe error: ' + e.message, 6000); }
         });
 
         // Auto-probe (silent) on open so the GPU buttons reflect the real count
@@ -3023,93 +2677,50 @@ function _rerenderCachedModels() {
                 if (!data) return;
                 const pids = [];
                 for (const g of data.gpus) {
-                  for (const p of g.processes || [])
-                    pids.push({ pid: p.pid, name: p.name });
+                  for (const p of (g.processes || [])) pids.push({ pid: p.pid, name: p.name });
                 }
                 if (pids.length === 0) {
                   uiModule.showToast('No GPU processes to clear', 3000);
                   return;
                 }
-                const summary = pids
-                  .map((p) => `${p.pid} (${p.name})`)
-                  .join(', ');
-                if (
-                  !(await window.styledConfirm(
-                    `Clear server GPU memory by sending SIGTERM to ${pids.length} process(es)?\n\n${summary}\n\nIf any survive, the next prompt can force-kill them with SIGKILL.`,
-                    { confirmText: 'SIGTERM', danger: true },
-                  ))
-                )
-                  return;
+                const summary = pids.map(p => `${p.pid} (${p.name})`).join(', ');
+                if (!await window.styledConfirm(`Clear server GPU memory by sending SIGTERM to ${pids.length} process(es)?\n\n${summary}\n\nIf any survive, the next prompt can force-kill them with SIGKILL.`, { confirmText: 'SIGTERM', danger: true })) return;
                 // First pass: SIGTERM
                 const hostVal = panel._gpuProbe.host;
-                const results = await Promise.all(
-                  pids.map((p) =>
-                    fetch('/api/cookbook/kill-pid', {
-                      method: 'POST',
-                      credentials: 'same-origin',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        pid: p.pid,
-                        signal: 'TERM',
-                        host: hostVal || null,
-                      }),
-                    })
-                      .then((r) => r.json())
-                      .catch((e) => ({ ok: false, error: e.message })),
-                  ),
-                );
-                const okCount = results.filter((r) => r.ok).length;
-                uiModule.showToast(
-                  `SIGTERM → ${okCount}/${pids.length} processes`,
-                  5000,
-                );
+                const results = await Promise.all(pids.map(p =>
+                  fetch('/api/cookbook/kill-pid', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pid: p.pid, signal: 'TERM', host: hostVal || null }),
+                  }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }))
+                ));
+                const okCount = results.filter(r => r.ok).length;
+                uiModule.showToast(`SIGTERM → ${okCount}/${pids.length} processes`, 5000);
                 // Wait, then re-probe; if survivors, offer SIGKILL
-                await new Promise((r) => setTimeout(r, 1500));
+                await new Promise(r => setTimeout(r, 1500));
                 const after = await _runProbe();
                 if (!after) return;
                 const survivors = [];
                 for (const g of after.gpus) {
-                  for (const p of g.processes || []) {
-                    if (pids.some((orig) => orig.pid === p.pid))
-                      survivors.push(p);
+                  for (const p of (g.processes || [])) {
+                    if (pids.some(orig => orig.pid === p.pid)) survivors.push(p);
                   }
                 }
                 if (survivors.length === 0) {
-                  uiModule.showToast(
-                    `Cleared ${pids.length} GPU process(es)`,
-                    4000,
-                  );
+                  uiModule.showToast(`Cleared ${pids.length} GPU process(es)`, 4000);
                   return;
                 }
-                if (
-                  !(await window.styledConfirm(
-                    `${survivors.length} process(es) survived SIGTERM:\n\n${survivors.map((p) => p.pid + ' (' + p.name + ')').join(', ')}\n\nForce-kill with SIGKILL?`,
-                    { confirmText: 'SIGKILL', danger: true },
-                  ))
-                )
-                  return;
-                const killResults = await Promise.all(
-                  survivors.map((p) =>
-                    fetch('/api/cookbook/kill-pid', {
-                      method: 'POST',
-                      credentials: 'same-origin',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        pid: p.pid,
-                        signal: 'KILL',
-                        host: hostVal || null,
-                      }),
-                    })
-                      .then((r) => r.json())
-                      .catch((e) => ({ ok: false, error: e.message })),
-                  ),
-                );
-                const killOk = killResults.filter((r) => r.ok).length;
-                uiModule.showToast(
-                  `SIGKILL → ${killOk}/${survivors.length} processes`,
-                  5000,
-                );
-                await new Promise((r) => setTimeout(r, 800));
+                if (!await window.styledConfirm(`${survivors.length} process(es) survived SIGTERM:\n\n${survivors.map(p => p.pid + ' (' + p.name + ')').join(', ')}\n\nForce-kill with SIGKILL?`, { confirmText: 'SIGKILL', danger: true })) return;
+                const killResults = await Promise.all(survivors.map(p =>
+                  fetch('/api/cookbook/kill-pid', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pid: p.pid, signal: 'KILL', host: hostVal || null }),
+                  }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }))
+                ));
+                const killOk = killResults.filter(r => r.ok).length;
+                uiModule.showToast(`SIGKILL → ${killOk}/${survivors.length} processes`, 5000);
+                await new Promise(r => setTimeout(r, 800));
                 await _runProbe();
               });
             } catch (e) {
@@ -3119,7 +2730,7 @@ function _rerenderCachedModels() {
         }
 
         // After probe, clicking a GPU button opens kill popup (Shift-click also toggles select)
-        panel.querySelectorAll('.cookbook-gpu-btn').forEach((btn) => {
+        panel.querySelectorAll('.cookbook-gpu-btn').forEach(btn => {
           btn.addEventListener('contextmenu', (ev) => {
             if (!panel._gpuProbe.byIdx) return;
             const g = panel._gpuProbe.byIdx.get(parseInt(btn.dataset.gpu));
@@ -3138,7 +2749,7 @@ function _rerenderCachedModels() {
       }
 
       // Update preview on input change
-      panel.querySelectorAll('.hwfit-sf').forEach((el) => {
+      panel.querySelectorAll('.hwfit-sf').forEach(el => {
         el.addEventListener('input', updateCmd);
         el.addEventListener('change', (e) => {
           if (e.target.dataset.field === 'backend') {
@@ -3215,21 +2826,16 @@ function _rerenderCachedModels() {
         }
       }
       // Themed +/- buttons next to spec_tokens — step the adjacent number input.
-      panel.querySelectorAll('.hwfit-numstep-btn').forEach((btn) => {
+      panel.querySelectorAll('.hwfit-numstep-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const input = btn.parentElement?.querySelector(
-            'input[type="number"]',
-          );
+          const input = btn.parentElement?.querySelector('input[type="number"]');
           if (!input) return;
           const step = parseInt(btn.dataset.step, 10) || 0;
           const min = input.min !== '' ? Number(input.min) : -Infinity;
           const max = input.max !== '' ? Number(input.max) : Infinity;
-          const next = Math.min(
-            max,
-            Math.max(min, (Number(input.value) || 0) + step),
-          );
+          const next = Math.min(max, Math.max(min, (Number(input.value) || 0) + step));
           input.value = String(next);
           input.dispatchEvent(new Event('input', { bubbles: true }));
           input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -3239,10 +2845,7 @@ function _rerenderCachedModels() {
       // Track manual edits
       let _cmdManuallyEdited = false;
       const _cmdTextarea = panel.querySelector('.hwfit-serve-cmd');
-      if (_cmdTextarea)
-        _cmdTextarea.addEventListener('input', () => {
-          _cmdManuallyEdited = true;
-        });
+      if (_cmdTextarea) _cmdTextarea.addEventListener('input', () => { _cmdManuallyEdited = true; });
 
       // Cancel button — collapses the serve config panel (same effect as
       // tapping the row to toggle it shut). Mobile users wanted an explicit
@@ -3723,11 +3326,10 @@ function _resolveCacheHost() {
 
   function _serverByCacheValue(val) {
     if (val === 'local') return null;
-    const found =
-      _serverByVal?.(val) ||
-      (/^\d+$/.test(String(val)) ? _envState.servers[parseInt(val)] : null) ||
-      _envState.servers.find((x) => x.name === val) ||
-      null;
+    const found = _serverByVal?.(val)
+      || (/^\d+$/.test(String(val)) ? _envState.servers[parseInt(val)] : null)
+      || _envState.servers.find(x => x.name === val)
+      || null;
     return found || null;
   }
 
@@ -3808,26 +3410,22 @@ async function _deleteCachedModel(repo, itemEl, skipConfirm = false, model = nul
   }
   // Deleting a large model (tens/hundreds of GB) can take a while, especially
   // over SSH — show a whirlpool spinner on the row so it doesn't look frozen.
-  let _wp = null,
-    _prevPos = '';
+  let _wp = null, _prevPos = '';
   if (itemEl) {
     _wp = spinnerModule.createWhirlpool(18);
     const ov = document.createElement('div');
     ov.className = 'cookbook-delete-overlay';
     // Just the whirlpool, centered — no "Deleting…" text.
-    ov.style.cssText =
-      'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb, var(--panel, var(--bg)) 82%, transparent);z-index:5;border-radius:inherit;';
+    ov.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb, var(--panel, var(--bg)) 82%, transparent);z-index:5;border-radius:inherit;';
     ov.appendChild(_wp.element);
     _prevPos = itemEl.style.position;
-    if (getComputedStyle(itemEl).position === 'static')
-      itemEl.style.position = 'relative';
+    if (getComputedStyle(itemEl).position === 'static') itemEl.style.position = 'relative';
     itemEl.style.pointerEvents = 'none';
     itemEl.appendChild(ov);
   }
   try {
     const res = await fetch('/api/shell/exec', {
-      method: 'POST',
-      credentials: 'same-origin',
+      method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command: cmd }),
     });
@@ -3840,8 +3438,7 @@ async function _deleteCachedModel(repo, itemEl, skipConfirm = false, model = nul
       await _fetchCachedModels(false);
     } else if (itemEl) {
       itemEl.querySelector('.cookbook-delete-overlay')?.remove();
-      itemEl.style.transition =
-        'opacity 0.24s ease, transform 0.24s ease, max-height 0.28s ease, padding 0.28s ease, margin 0.28s ease';
+      itemEl.style.transition = 'opacity 0.24s ease, transform 0.24s ease, max-height 0.28s ease, padding 0.28s ease, margin 0.28s ease';
       itemEl.style.maxHeight = `${Math.max(itemEl.getBoundingClientRect().height, itemEl.scrollHeight)}px`;
       itemEl.style.overflow = 'hidden';
       itemEl.style.opacity = '0';
@@ -3850,10 +3447,8 @@ async function _deleteCachedModel(repo, itemEl, skipConfirm = false, model = nul
       itemEl.style.paddingBottom = '0';
       itemEl.style.marginTop = '0';
       itemEl.style.marginBottom = '0';
-      requestAnimationFrame(() => {
-        itemEl.style.maxHeight = '0';
-      });
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      requestAnimationFrame(() => { itemEl.style.maxHeight = '0'; });
+      await new Promise(resolve => setTimeout(resolve, 300));
       if (itemEl.parentElement) itemEl.remove();
       // Drop from the in-memory list so a re-render/filter doesn't resurrect it.
       _cachedAllModels = _cachedAllModels.filter(x => x.repo_id !== repo);
@@ -3863,11 +3458,7 @@ async function _deleteCachedModel(repo, itemEl, skipConfirm = false, model = nul
   } finally {
     // Tear down the spinner. On success the row is already gone; on error the
     // row survives, so restore it (remove overlay, re-enable interaction).
-    if (_wp) {
-      try {
-        _wp.destroy();
-      } catch {}
-    }
+    if (_wp) { try { _wp.destroy(); } catch {} }
     if (itemEl && itemEl.isConnected) {
       itemEl.querySelector('.cookbook-delete-overlay')?.remove();
       itemEl.style.pointerEvents = '';
@@ -3879,9 +3470,7 @@ async function _deleteCachedModel(repo, itemEl, skipConfirm = false, model = nul
 function _retryCachedModel(repo, m) {
   const payload = { repo_id: repo };
   if (_envState.hfToken) payload.hf_token = _envState.hfToken;
-  const _target = _selectedServeTarget(
-    document.getElementById('cookbook-modal') || document,
-  );
+  const _target = _selectedServeTarget(document.getElementById('cookbook-modal') || document);
   if (_target.host) {
     payload.remote_host = _target.host;
     if (_target.port) payload.ssh_port = _target.port;
@@ -3889,26 +3478,16 @@ function _retryCachedModel(repo, m) {
   if (_target.platform) payload.platform = _target.platform;
   if (_isWindows()) {
     if (_envState.env === 'venv' && _envState.envPath) {
-      payload.env_prefix =
-        '& ' +
-        _psQuote(
-          _envState.envPath.endsWith('\\Scripts\\Activate.ps1')
-            ? _envState.envPath
-            : _envState.envPath + '\\Scripts\\Activate.ps1',
-        );
+      payload.env_prefix = '& ' + _psQuote(_envState.envPath.endsWith('\\Scripts\\Activate.ps1') ? _envState.envPath : _envState.envPath + '\\Scripts\\Activate.ps1');
     } else if (_envState.env === 'conda' && _envState.envPath) {
       payload.env_prefix = 'conda activate ' + _psQuote(_envState.envPath);
     }
   } else {
     if (_envState.env === 'venv' && _envState.envPath) {
       const p = _envState.envPath;
-      payload.env_prefix =
-        'source ' +
-        _shellQuote(p.endsWith('/bin/activate') ? p : p + '/bin/activate');
+      payload.env_prefix = 'source ' + _shellQuote(p.endsWith('/bin/activate') ? p : p + '/bin/activate');
     } else if (_envState.env === 'conda' && _envState.envPath) {
-      payload.env_prefix =
-        'eval "$(conda shell.bash hook)" && conda activate ' +
-        _shellQuote(_envState.envPath);
+      payload.env_prefix = 'eval "$(conda shell.bash hook)" && conda activate ' + _shellQuote(_envState.envPath);
     }
   }
   _retryDownload((m?.name || repo).split('/').pop(), payload);
@@ -3927,13 +3506,8 @@ export async function openServePanelForRepo(repo, fields) {
   if (fields && typeof fields === 'object') {
     try {
       let cur = {};
-      try {
-        cur = JSON.parse(localStorage.getItem(SERVE_STATE_KEY)) || {};
-      } catch {}
-      const byRepo =
-        cur && cur._byRepo && typeof cur._byRepo === 'object'
-          ? cur._byRepo
-          : {};
+      try { cur = JSON.parse(localStorage.getItem(SERVE_STATE_KEY)) || {}; } catch {}
+      const byRepo = (cur && cur._byRepo && typeof cur._byRepo === 'object') ? cur._byRepo : {};
       // Mirror the launch-time save: stamp _forceBackend so the panel's
       // sv() helper treats these seeded fields as authoritative, not as
       // overridable defaults.
@@ -3943,16 +3517,12 @@ export async function openServePanelForRepo(repo, fields) {
     } catch {}
   }
   // Switch to the Serve tab (its click handler triggers _fetchCachedModels).
-  const serveTab = document.querySelector(
-    '.cookbook-tab[data-backend="Serve"]',
-  );
+  const serveTab = document.querySelector('.cookbook-tab[data-backend="Serve"]');
   if (serveTab && !serveTab.classList.contains('active')) {
     serveTab.click();
   } else {
     // Already on the Serve tab — refresh the list so the card is present.
-    try {
-      await _fetchCachedModels();
-    } catch {}
+    try { await _fetchCachedModels(); } catch {}
   }
   // Poll for the model's card to render, then expand it. Cached-model
   // fetch is async and we don't get a direct completion hook from the
@@ -3961,17 +3531,13 @@ export async function openServePanelForRepo(repo, fields) {
   // name), while the download task carries the full HF repo id — so match by the
   // exact repo OR by the short (last-segment) name, else the card is never found.
   const _short = repo.split('/').pop();
-  const _esc = (v) => (window.CSS && CSS.escape ? CSS.escape(v) : v);
+  const _esc = (v) => (window.CSS && CSS.escape) ? CSS.escape(v) : v;
   for (let i = 0; i < 50; i++) {
-    let card = document.querySelector(
-      `.memory-item[data-repo="${_esc(repo)}"]`,
-    );
+    let card = document.querySelector(`.memory-item[data-repo="${_esc(repo)}"]`);
     if (!card && _short && _short !== repo) {
-      card =
-        document.querySelector(`.memory-item[data-repo="${_esc(_short)}"]`) ||
-        [...document.querySelectorAll('.memory-item[data-repo]')].find(
-          (el) => (el.dataset.repo || '').split('/').pop() === _short,
-        );
+      card = document.querySelector(`.memory-item[data-repo="${_esc(_short)}"]`)
+        || [...document.querySelectorAll('.memory-item[data-repo]')]
+             .find(el => (el.dataset.repo || '').split('/').pop() === _short);
     }
     if (card) {
       // If we were given fields to restore, force a fresh render of the
@@ -3981,21 +3547,17 @@ export async function openServePanelForRepo(repo, fields) {
       // trip looked broken from the user's side.
       if (fields && card.classList.contains('doclib-card-expanded')) {
         card.click();
-        await new Promise((r) => setTimeout(r, 40));
+        await new Promise(r => setTimeout(r, 40));
         card.click();
       } else if (!card.classList.contains('doclib-card-expanded')) {
         card.click();
       }
-      try {
-        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch {}
+      try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
       return true;
     }
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 100));
   }
-  uiModule.showToast(
-    'Model not found in cache — switch to the Serve tab manually',
-  );
+  uiModule.showToast('Model not found in cache — switch to the Serve tab manually');
   return false;
 }
 
@@ -4022,12 +3584,10 @@ export async function _fetchCachedModels() {
     let selectedServer = null;
     const _serverByCacheValue = (val) => {
       if (val === 'local') return null;
-      return (
-        _serverByVal?.(val) ||
-        (/^\d+$/.test(String(val)) ? _envState.servers[parseInt(val)] : null) ||
-        _envState.servers.find((x) => x.name === val) ||
-        null
-      );
+      return _serverByVal?.(val)
+        || (/^\d+$/.test(String(val)) ? _envState.servers[parseInt(val)] : null)
+        || _envState.servers.find(x => x.name === val)
+        || null;
     };
 
     const cacheSrv = document.getElementById('hwfit-cache-server');
@@ -4035,19 +3595,13 @@ export async function _fetchCachedModels() {
       const val = cacheSrv.value;
       if (val === 'local') {
         host = '';
-        selectedServer =
-          _envState.servers.find((s) => !s.host || s.host === 'local') ||
-          _envState.servers[0];
+        selectedServer = _envState.servers.find(s => !s.host || s.host === 'local') || _envState.servers[0];
       } else {
         const s = _serverByCacheValue(val);
-        if (s) {
-          host = s.host;
-          selectedServer = s;
-        }
+        if (s) { host = s.host; selectedServer = s; }
       }
     } else {
-      selectedServer =
-        _envState.servers.find((s) => s.host === host) || _envState.servers[0];
+      selectedServer = _envState.servers.find(s => s.host === host) || _envState.servers[0];
     }
     // Read extra model dirs from the SELECTED server's modelDirs (canonical source)
     const modelDirs = [];
@@ -4062,37 +3616,18 @@ export async function _fetchCachedModels() {
     // models from a custom model directory. Keep them in lock-step with the actual scan host.
     const _dirsEl = document.querySelector('.cookbook-serve-dirs');
     if (_dirsEl && selectedServer) {
-      const _allDirs = (
-        Array.isArray(selectedServer.modelDirs) &&
-        selectedServer.modelDirs.length
-          ? selectedServer.modelDirs
-          : [selectedServer.modelDir || '~/.cache/huggingface/hub']
-      )
-        .map((d) => (d || '').replaceAll('✕', '').replaceAll('✖', '').trim())
-        .filter(Boolean);
-      _dirsEl.innerHTML =
-        _allDirs
-          .map((d) => `<span class="cookbook-serve-dir-pill">${esc(d)}</span>`)
-          .join('') +
-        '<span class="cookbook-serve-dir-edit" title="Edit in Settings">edit</span>';
-      _dirsEl
-        .querySelector('.cookbook-serve-dir-edit')
-        ?.addEventListener('click', () => {
-          document
-            .querySelector(
-              '#cookbook-modal .cookbook-tab[data-backend="Settings"]',
-            )
-            ?.click();
-        });
+      const _allDirs = (Array.isArray(selectedServer.modelDirs) && selectedServer.modelDirs.length
+        ? selectedServer.modelDirs
+        : [selectedServer.modelDir || '~/.cache/huggingface/hub'])
+        .map(d => (d || '').replaceAll('✕', '').replaceAll('✖', '').trim()).filter(Boolean);
+      _dirsEl.innerHTML = _allDirs.map(d => `<span class="cookbook-serve-dir-pill">${esc(d)}</span>`).join('')
+        + '<span class="cookbook-serve-dir-edit" title="Edit in Settings">edit</span>';
+      _dirsEl.querySelector('.cookbook-serve-dir-edit')?.addEventListener('click', () => {
+        document.querySelector('#cookbook-modal .cookbook-tab[data-backend="Settings"]')?.click();
+      });
     }
     const qp = new URLSearchParams();
-    if (host) {
-      qp.set('host', host);
-      const _sp4 = _getPort(host);
-      if (_sp4) qp.set('ssh_port', _sp4);
-      const _plat = _getPlatform(host);
-      if (_plat) qp.set('platform', _plat);
-    }
+    if (host) { qp.set('host', host); const _sp4 = _getPort(host); if (_sp4) qp.set('ssh_port', _sp4); const _plat = _getPlatform(host); if (_plat) qp.set('platform', _plat); }
     if (modelDirs.length) qp.set('model_dir', modelDirs.join(','));
     const params = qp.toString() ? `?${qp}` : '';
     const res = await fetch(`/api/model/cached${params}`);
@@ -4106,28 +3641,24 @@ export async function _fetchCachedModels() {
         msg = body;
       }
       msg = typeof msg === 'string' ? msg.trim() : '';
-      throw new Error(
-        `HTTP ${res.status} ${res.statusText}${msg ? `: ${msg}` : ''}`,
-      );
+      throw new Error(`HTTP ${res.status} ${res.statusText}${msg ? `: ${msg}` : ''}`);
     }
     const data = await res.json();
     _dlWp.destroy();
 
-    // CHANGELOG: 'ready' already excludes partial downloads;
+    // CHANGELOG: 'ready' already excludes partial downloads; 
     // show every complete model regardless of size/backend.
-    const ready = data.models.filter((m) => m.status === 'ready');
+    const ready = data.models.filter(m => m.status === 'ready');
 
-    const downloading = data.models.filter((m) => m.status === 'downloading');
+    const downloading = data.models.filter(m => m.status === 'downloading');
     const allModels = [...ready, ...downloading];
     _cachedAllModels = allModels;
 
     if (!allModels.length) {
       if (!host) {
-        list.innerHTML =
-          '<div class="hwfit-loading" style="flex-direction:column;gap:6px;text-align:center;"><div>No cached models found</div><div style="font-size:11px;opacity:0.55;max-width:420px;line-height:1.4;">Docker Local uses Odysseus’s cache in <code>data/huggingface</code>. Download a model here, or copy an existing host HuggingFace cache into that folder once.</div></div>';
+        list.innerHTML = '<div class="hwfit-loading" style="flex-direction:column;gap:6px;text-align:center;"><div>No cached models found</div><div style="font-size:11px;opacity:0.55;max-width:420px;line-height:1.4;">Docker Local uses Odysseus’s cache in <code>data/huggingface</code>. Download a model here, or copy an existing host HuggingFace cache into that folder once.</div></div>';
       } else {
-        list.innerHTML =
-          '<div class="hwfit-loading">No cached models found</div>';
+        list.innerHTML = '<div class="hwfit-loading">No cached models found</div>';
       }
       document.getElementById('serve-tags').innerHTML = '';
       return;
@@ -4137,34 +3668,18 @@ export async function _fetchCachedModels() {
     const _tagMap = {};
     const _familyMap = {};
     const _families = [
-      [/qwen/i, 'qwen'],
-      [/llama/i, 'llama'],
-      [/mistral|mixtral/i, 'mistral'],
-      [/deepseek/i, 'deepseek'],
-      [/gemma/i, 'gemma'],
-      [/phi/i, 'phi'],
-      [/minimax/i, 'minimax'],
-      [/glm/i, 'glm'],
-      [/flux/i, 'flux'],
-      [/stable.?diffusion|sdxl/i, 'sd'],
-      [/z-image/i, 'z-image'],
-      [/whisper/i, 'whisper'],
-      [/command|cohere/i, 'cohere'],
-      [/yi-/i, 'yi'],
-      [/intern/i, 'intern'],
-      [/falcon/i, 'falcon'],
+      [/qwen/i, 'qwen'], [/llama/i, 'llama'], [/mistral|mixtral/i, 'mistral'],
+      [/deepseek/i, 'deepseek'], [/gemma/i, 'gemma'], [/phi/i, 'phi'],
+      [/minimax/i, 'minimax'], [/glm/i, 'glm'], [/flux/i, 'flux'],
+      [/stable.?diffusion|sdxl/i, 'sd'], [/z-image/i, 'z-image'],
+      [/whisper/i, 'whisper'], [/command|cohere/i, 'cohere'],
+      [/yi-/i, 'yi'], [/intern/i, 'intern'], [/falcon/i, 'falcon'],
     ];
     for (const m of allModels) {
       const n = (m.repo_id || '').toLowerCase();
       let tag = 'other';
       if (m.backend === 'ollama' || m.is_ollama) tag = 'llm';
-      else if (
-        m.is_diffusion ||
-        /flux|sdxl|stable-diffusion|z-image|qwen-image|diffusion|dreamshar/i.test(
-          n,
-        )
-      )
-        tag = 'image';
+      else if (m.is_diffusion || /flux|sdxl|stable-diffusion|z-image|qwen-image|diffusion|dreamshar/i.test(n)) tag = 'image';
       else if (/whisper|stt|asr/i.test(n)) tag = 'stt';
       else if (/tts|cosyvoice|parler/i.test(n)) tag = 'tts';
       else if (/embed|bge|minilm|e5-/i.test(n)) tag = 'embedding';
@@ -4174,11 +3689,7 @@ export async function _fetchCachedModels() {
       _tagMap[tag] = (_tagMap[tag] || 0) + 1;
       m._family = '';
       for (const [re, fam] of _families) {
-        if (re.test(n)) {
-          m._family = fam;
-          _familyMap[fam] = (_familyMap[fam] || 0) + 1;
-          break;
-        }
+        if (re.test(n)) { m._family = fam; _familyMap[fam] = (_familyMap[fam] || 0) + 1; break; }
       }
       if ((m.backend === 'ollama' || m.is_ollama) && !m._family) {
         m._family = 'ollama';
@@ -4189,29 +3700,17 @@ export async function _fetchCachedModels() {
     // Render tag chips
     const tagContainer = document.getElementById('serve-tags');
     if (tagContainer) {
-      const tagOrder = [
-        'llm',
-        'image',
-        'lora',
-        'embedding',
-        'tts',
-        'stt',
-        'other',
-      ];
+      const tagOrder = ['llm', 'image', 'lora', 'embedding', 'tts', 'stt', 'other'];
       let tagHtml = `<button class="memory-cat-chip active" data-serve-tag="">All (${allModels.length})</button>`;
       for (const t of tagOrder) {
         if (!_tagMap[t]) continue;
         tagHtml += `<button class="memory-cat-chip" data-serve-tag="${t}">${t} (${_tagMap[t]})</button>`;
       }
-      const sortedFamilies = Object.entries(_familyMap).sort(
-        (a, b) => b[1] - a[1],
-      );
+      const sortedFamilies = Object.entries(_familyMap).sort((a, b) => b[1] - a[1]);
       if (sortedFamilies.length) {
         for (const [fam, count] of sortedFamilies) {
           const logo = providerLogo(fam);
-          const logoHtml = logo
-            ? `<span style="width:12px;height:12px;display:inline-flex;align-items:center;vertical-align:-2px;margin-right:2px;opacity:0.6;">${logo}</span>`
-            : '';
+          const logoHtml = logo ? `<span style="width:12px;height:12px;display:inline-flex;align-items:center;vertical-align:-2px;margin-right:2px;opacity:0.6;">${logo}</span>` : '';
           tagHtml += `<button class="memory-cat-chip" data-serve-tag="fam:${fam}">${logoHtml}${fam} (${count})</button>`;
         }
       }
@@ -4228,15 +3727,9 @@ export async function _fetchCachedModels() {
 /** Filter presets matching a model repo */
 function _presetsForModel(presets, repo) {
   const short = repo.split('/').pop();
-  return presets.filter((p) => {
-    const pm = p.model || '';
-    const pn = p.name || '';
-    return (
-      pm === repo ||
-      pn === repo ||
-      pm.split('/').pop() === short ||
-      pn === short
-    );
+  return presets.filter(p => {
+    const pm = p.model || ''; const pn = p.name || '';
+    return pm === repo || pn === repo || pm.split('/').pop() === short || pn === short;
   });
 }
 
@@ -4271,12 +3764,7 @@ export function initServe(shared) {
   _nextAvailablePort = shared._nextAvailablePort;
 }
 
-export {
-  _cachedAllModels,
-  _deleteCachedModel,
-  _filterCachedList,
-  _rerenderCachedModels,
-};
+export { _cachedAllModels, _filterCachedList, _rerenderCachedModels, _deleteCachedModel };
 
 // Click the "running" pill on a serve-card → switch to Cookbook → Running
 // tab and scroll the matching task into view, with a brief flash so the
@@ -4291,33 +3779,25 @@ function _openRunningTabForRepo(repo) {
   // task cards inside it.
   setTimeout(() => {
     const candidates = Array.from(body.querySelectorAll('.cookbook-task'));
-    const match = candidates.find((c) => {
+    const match = candidates.find(c => {
       // task cards expose modelId or name via dataset / inner title
       const dsRepo = c.dataset?.modelId || c.dataset?.repoId || '';
       if (dsRepo === repo) return true;
-      const title =
-        c
-          .querySelector('.cookbook-task-title, .memory-item-title')
-          ?.textContent?.trim() || '';
+      const title = c.querySelector('.cookbook-task-title, .memory-item-title')?.textContent?.trim() || '';
       return title === repo || title === (repo.split('/').pop() || '');
     });
     if (match) {
-      try {
-        match.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch (_) {}
+      try { match.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
       match.classList.add('cookbook-task-flash');
       setTimeout(() => match.classList.remove('cookbook-task-flash'), 1600);
     }
   }, 180);
 }
 document.addEventListener('click', (e) => {
-  const pill =
-    e.target.closest &&
-    e.target.closest('.cookbook-serve-running-pill.is-clickable');
+  const pill = e.target.closest && e.target.closest('.cookbook-serve-running-pill.is-clickable');
   if (!pill) return;
   e.preventDefault();
   e.stopPropagation();
   const repo = pill.dataset.repo || '';
   if (repo) _openRunningTabForRepo(repo);
 });
-
