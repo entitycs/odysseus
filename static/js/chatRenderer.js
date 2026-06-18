@@ -1,28 +1,37 @@
 // static/js/chatRenderer.js
 // Extracted from chat.js — message rendering, sources, images, metrics
 
-import uiModule from './ui.js';
+import { bindMenuDismiss } from './escMenuStack.js';
 import markdownModule from './markdown.js';
-import { addAITTSButton } from './tts-ai.js';
-import { providerLogo, providerLabel } from './providers.js';
+import { matchModelKey } from './model/matchKey.js';
+import { providerLabel, providerLogo } from './providers.js';
 import settingsModule from './settings.js';
 import spinnerModule from './spinner.js';
-import { bindMenuDismiss } from './escMenuStack.js';
-import { matchModelKey } from './model/matchKey.js';
+import { addAITTSButton } from './tts-ai.js';
+import uiModule from './ui.js';
 
-const SEARCH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
-const REPORT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
-const CHAT_ABOUT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-const COPY_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-const CHECK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const SEARCH_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
+const REPORT_ICON =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+const CHAT_ABOUT_ICON =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+const COPY_ICON =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const CHECK_ICON =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
 /** Sanitize a URL for use in href — only allow http(s) and protocol-relative. */
 function _safeHref(url) {
   if (!url) return '#';
   try {
     var parsed = new URL(url, window.location.origin);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return uiModule.esc(url);
-  } catch(e) { /* invalid URL */ }
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      return uiModule.esc(url);
+  } catch {
+    /* invalid URL */
+    /*Silent Fail*/
+  }
   return '#';
 }
 
@@ -45,7 +54,9 @@ export function safeDisplayImageSrc(raw) {
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
       return parsed.href;
     }
-  } catch (_) {}
+  } catch {
+    /* Silent Fail*/
+  }
   return '';
 }
 
@@ -84,7 +95,9 @@ function buildAttachCards(attachments) {
   const attachWrap = document.createElement('div');
   attachWrap.className = 'attach-cards';
   for (const att of attachments) {
-    const isImage = (att.mime || '').startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(att.name || '');
+    const isImage =
+      (att.mime || '').startsWith('image/') ||
+      /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(att.name || '');
     if (isImage) {
       // Image preview. Shown for both uploaded (att.id present) and still-
       // uploading attachments. A shimmering skeleton + whirlpool fills the
@@ -130,15 +143,25 @@ function buildAttachCards(attachments) {
         // full-resolution photo. Click still opens the full image.
         img.alt = att.name || 'Image';
         img.loading = 'lazy';
-        img.style.cssText = 'max-width:300px;max-height:200px;border-radius:6px;display:' + (att.previewUrl ? 'block' : 'none') + ';';
+        img.style.cssText =
+          'max-width:300px;max-height:200px;border-radius:6px;display:' +
+          (att.previewUrl ? 'block' : 'none') +
+          ';';
         let _revealed = false;
         let _revealTimer = null;
         const _reveal = () => {
           if (_revealed) return;
           _revealed = true;
-          if (_revealTimer) { clearTimeout(_revealTimer); _revealTimer = null; }
+          if (_revealTimer) {
+            clearTimeout(_revealTimer);
+            _revealTimer = null;
+          }
           img.style.display = 'block';
-          try { sp && sp.stop(); } catch {}
+          try {
+            sp && sp.stop();
+          } catch {
+            /*Silent Fail*/
+          }
           if (skel) skel.remove();
         };
         img.addEventListener('load', _reveal);
@@ -162,7 +185,8 @@ function buildAttachCards(attachments) {
           ocrBtn.type = 'button';
           ocrBtn.className = 'attach-ocr-btn';
           ocrBtn.title = 'View / edit OCR text';
-          ocrBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg><span class="attach-ocr-label">Caption</span>';
+          ocrBtn.innerHTML =
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg><span class="attach-ocr-label">Caption</span>';
           ocrBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             _openVisionEditor(att, ocrBtn.closest('.msg'));
@@ -174,7 +198,8 @@ function buildAttachCards(attachments) {
       if (att.vision_model) {
         const visionLabel = document.createElement('div');
         visionLabel.className = 'attach-vision-model';
-        visionLabel.textContent = 'Vision: ' + String(att.vision_model).split('/').pop();
+        visionLabel.textContent =
+          'Vision: ' + String(att.vision_model).split('/').pop();
         imgWrap.appendChild(visionLabel);
       }
       if (att.name) {
@@ -195,7 +220,8 @@ function buildAttachCards(attachments) {
         card.addEventListener('click', () => {
           // PDFs & text/code/markdown → open in the Documents viewer
           // (others fall back to the raw file).
-          if (window.chatModule?.openAttachment) window.chatModule.openAttachment(att, false);
+          if (window.chatModule?.openAttachment)
+            window.chatModule.openAttachment(att, false);
           else window.open(`/api/upload/${att.id}`, '_blank');
         });
       }
@@ -245,7 +271,9 @@ function _openImageLightbox(att) {
   img.src = `/api/upload/${att.id}?thumb=1`;
   overlay.appendChild(img);
   const full = new Image();
-  full.addEventListener('load', () => { img.src = full.src; });
+  full.addEventListener('load', () => {
+    img.src = full.src;
+  });
   full.addEventListener('error', () => {
     const err = document.createElement('div');
     err.className = 'attach-lightbox-err';
@@ -254,10 +282,16 @@ function _openImageLightbox(att) {
   });
   full.src = `/api/upload/${att.id}`;
 
-  const _onKey = (e) => { if (e.key === 'Escape') _close(); };
+  const _onKey = (e) => {
+    if (e.key === 'Escape') _close();
+  };
   const _close = () => {
     document.removeEventListener('keydown', _onKey);
-    if (_overlayObs) { try { _overlayObs.disconnect(); } catch {} }
+    if (_overlayObs) {
+      try {
+        _overlayObs.disconnect();
+      } catch {/*Silent Fail*/}
+    }
     overlay.remove();
   };
   // If the overlay is removed via any path other than our close handler
@@ -272,7 +306,7 @@ function _openImageLightbox(att) {
       }
     });
     _overlayObs.observe(document.body, { childList: true, subtree: false });
-  } catch {}
+  } catch {/*Silent Fail*/}
   overlay.addEventListener('click', _close);
   document.addEventListener('keydown', _onKey);
   document.body.appendChild(overlay);
@@ -286,26 +320,36 @@ function _openImageLightbox(att) {
 let _visionEditorEl = null;
 let _visionEditorEsc = null;
 function _closeVisionEditor() {
-  if (_visionEditorEsc) { document.removeEventListener('keydown', _visionEditorEsc); _visionEditorEsc = null; }
-  if (_visionEditorEl) { _visionEditorEl.remove(); _visionEditorEl = null; }
+  if (_visionEditorEsc) {
+    document.removeEventListener('keydown', _visionEditorEsc);
+    _visionEditorEsc = null;
+  }
+  if (_visionEditorEl) {
+    _visionEditorEl.remove();
+    _visionEditorEl = null;
+  }
 }
 function _openVisionEditor(att, userMsgEl) {
   if (!att?.id) return;
   _closeVisionEditor();
   const overlay = document.createElement('div');
   overlay.className = 'vision-editor-overlay';
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeVisionEditor(); });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) _closeVisionEditor();
+  });
   const panel = document.createElement('div');
   panel.className = 'vision-editor-panel';
   const title = document.createElement('div');
   title.className = 'vision-editor-title';
   // Eye icon matches the one in Settings → Vision so users recognise where
   // this text originates.
-  title.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.7;flex-shrink:0"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>Vision text</span>';
+  title.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.7;flex-shrink:0"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>Vision text</span>';
   panel.appendChild(title);
   const desc = document.createElement('div');
   desc.className = 'vision-editor-desc';
-  desc.textContent = 'Edit text and save, new chats will have the new context. Regenerate or continue from there.';
+  desc.textContent =
+    'Edit text and save, new chats will have the new context. Regenerate or continue from there.';
   panel.appendChild(desc);
   const ta = document.createElement('textarea');
   ta.className = 'vision-editor-text';
@@ -341,7 +385,7 @@ function _openVisionEditor(att, userMsgEl) {
       await _saveVisionText();
       if (uiModule?.showToast) uiModule.showToast('Saved');
       _closeVisionEditor();
-    } catch (e) {
+    } catch {
       saveBtn.disabled = false;
       saveBtn.innerHTML = '<span class="vision-btn-label">Save</span>';
       if (uiModule?.showError) uiModule.showError('Failed to save OCR text');
@@ -353,7 +397,8 @@ function _openVisionEditor(att, userMsgEl) {
   regenBtn.type = 'button';
   regenBtn.className = 'vision-editor-btn vision-editor-btn-primary';
   regenBtn.title = 'Save and regenerate the message';
-  regenBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.74 9.74 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg><span class="vision-btn-label">Regenerate message</span>';
+  regenBtn.innerHTML =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.74 9.74 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg><span class="vision-btn-label">Regenerate message</span>';
   regenBtn.disabled = true;
   regenBtn.addEventListener('click', async () => {
     regenBtn.disabled = true;
@@ -362,11 +407,13 @@ function _openVisionEditor(att, userMsgEl) {
       await _saveVisionText();
       _closeVisionEditor();
       if (userMsgEl && window.chatModule?.resendUserMessage) {
-        window.chatModule.resendUserMessage(userMsgEl, { replaceFromHere: true });
+        window.chatModule.resendUserMessage(userMsgEl, {
+          replaceFromHere: true,
+        });
       } else if (uiModule?.showToast) {
         uiModule.showToast('Saved');
       }
-    } catch (e) {
+    } catch {
       regenBtn.disabled = false;
       saveBtn.disabled = false;
       if (uiModule?.showError) uiModule.showError('Failed to save OCR text');
@@ -382,12 +429,14 @@ function _openVisionEditor(att, userMsgEl) {
 
   // ESC closes the popup. Registered on document so it works regardless of
   // focus (the textarea swallows the event otherwise).
-  _visionEditorEsc = (e) => { if (e.key === 'Escape') _closeVisionEditor(); };
+  _visionEditorEsc = (e) => {
+    if (e.key === 'Escape') _closeVisionEditor();
+  };
   document.addEventListener('keydown', _visionEditorEsc);
 
   fetch(`/api/upload/${att.id}/vision`, { credentials: 'same-origin' })
-    .then(r => r.ok ? r.json() : Promise.reject(r))
-    .then(data => {
+    .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+    .then((data) => {
       ta.value = data.text || '';
       ta.placeholder = '';
       ta.disabled = false;
@@ -397,7 +446,8 @@ function _openVisionEditor(att, userMsgEl) {
     })
     .catch(() => {
       ta.value = '';
-      ta.placeholder = 'Could not load OCR text — type your correction and save.';
+      ta.placeholder =
+        'Could not load OCR text — type your correction and save.';
       ta.disabled = false;
       saveBtn.disabled = false;
       regenBtn.disabled = !userMsgEl;
@@ -407,105 +457,108 @@ function _openVisionEditor(att, userMsgEl) {
 // Tool call syntax patterns to strip from displayed text
 const TOOL_CALL_RE = /\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/gi;
 // Only strip fenced tool-call blocks that look like structured invocations, not regular code examples
-const EXEC_FENCE_RE = /```(?:web_search|read_file|write_file|create_document|edit_document|update_document)\s*\n[\s\S]*?```/gi;
+const EXEC_FENCE_RE =
+  /```(?:web_search|read_file|write_file|create_document|edit_document|update_document)\s*\n[\s\S]*?```/gi;
 // XML-style tool calls: <minimax:tool_call>, <tool_call>, <function_call>, bare <invoke>
-const XML_TOOL_CALL_RE = /<(?:[\w]+:)?(?:tool_call|function_call)>[\s\S]*?<\/(?:[\w]+:)?(?:tool_call|function_call)>/gi;
+const XML_TOOL_CALL_RE =
+  /<(?:[\w]+:)?(?:tool_call|function_call)>[\s\S]*?<\/(?:[\w]+:)?(?:tool_call|function_call)>/gi;
 const XML_INVOKE_RE = /<invoke\s+name=['"][^'"]*['"]>[\s\S]*?<\/invoke>/gi;
 // DeepSeek "DSML" tool-call markup (fullwidth-pipe ｜ or ascii | delimited) that
 // leaks into content when the model emits a text tool call instead of a native
 // one. Strip the whole block; the second pattern catches stray/partial tags
 // (e.g. mid-stream before the closing tag arrives).
-const DSML_TOOL_RE = /<\s*[｜|]+\s*DSML\s*[｜|]+\s*tool_calls\s*>[\s\S]*?(?:<\s*\/\s*[｜|]+\s*DSML\s*[｜|]+\s*tool_calls\s*>|$)/gi;
+const DSML_TOOL_RE =
+  /<\s*[｜|]+\s*DSML\s*[｜|]+\s*tool_calls\s*>[\s\S]*?(?:<\s*\/\s*[｜|]+\s*DSML\s*[｜|]+\s*tool_calls\s*>|$)/gi;
 const DSML_STRAY_RE = /<\s*\/?\s*[｜|]+\s*DSML\s*[｜|]+[^>]*>/gi;
 // Self-narration about tool results (model echoing stdout/exit_code)
-const TOOL_NARRATION_RE = /(?:The (?:result|output) shows?:?\s*)?-?\s*(?:stdout|stderr|exit_code):\s*.+/gi;
-
+const TOOL_NARRATION_RE =
+  /(?:The (?:result|output) shows?:?\s*)?-?\s*(?:stdout|stderr|exit_code):\s*.+/gi;
 
 // Model pricing table — per million tokens
 // Model info: pricing (per 1M tokens) + context window length
 const MODEL_INFO = {
   // --- Anthropic ---
-  'claude-sonnet-4-5':    { input: 3.00,  output: 15.00, ctx: 200000 },
-  'claude-sonnet-4-6':    { input: 3.00,  output: 15.00, ctx: 200000 },
-  'claude-sonnet-4':      { input: 3.00,  output: 15.00, ctx: 200000 },
-  'claude-opus-4':        { input: 15.00, output: 75.00, ctx: 200000 },
-  'claude-opus-4-6':      { input: 15.00, output: 75.00, ctx: 200000 },
-  'claude-haiku-4':       { input: 0.80,  output: 4.00,  ctx: 200000 },
-  'claude-haiku-3-5':     { input: 0.80,  output: 4.00,  ctx: 200000 },
-  'claude-3-5-sonnet':    { input: 3.00,  output: 15.00, ctx: 200000 },
-  'claude-3-5-haiku':     { input: 0.80,  output: 4.00,  ctx: 200000 },
-  'claude-3-opus':        { input: 15.00, output: 75.00, ctx: 200000 },
-  'claude-3-sonnet':      { input: 3.00,  output: 15.00, ctx: 200000 },
-  'claude-3-haiku':       { input: 0.25,  output: 1.25,  ctx: 200000 },
+  'claude-sonnet-4-5': { input: 3.0, output: 15.0, ctx: 200000 },
+  'claude-sonnet-4-6': { input: 3.0, output: 15.0, ctx: 200000 },
+  'claude-sonnet-4': { input: 3.0, output: 15.0, ctx: 200000 },
+  'claude-opus-4': { input: 15.0, output: 75.0, ctx: 200000 },
+  'claude-opus-4-6': { input: 15.0, output: 75.0, ctx: 200000 },
+  'claude-haiku-4': { input: 0.8, output: 4.0, ctx: 200000 },
+  'claude-haiku-3-5': { input: 0.8, output: 4.0, ctx: 200000 },
+  'claude-3-5-sonnet': { input: 3.0, output: 15.0, ctx: 200000 },
+  'claude-3-5-haiku': { input: 0.8, output: 4.0, ctx: 200000 },
+  'claude-3-opus': { input: 15.0, output: 75.0, ctx: 200000 },
+  'claude-3-sonnet': { input: 3.0, output: 15.0, ctx: 200000 },
+  'claude-3-haiku': { input: 0.25, output: 1.25, ctx: 200000 },
   // --- OpenAI ---
-  'gpt-5':                { input: 2.00,  output: 8.00,  ctx: 400000 },
-  'gpt-4.1':              { input: 2.00,  output: 8.00,  ctx: 1047576 },
-  'gpt-4.1-mini':         { input: 0.40,  output: 1.60,  ctx: 1047576 },
-  'gpt-4.1-nano':         { input: 0.10,  output: 0.40,  ctx: 1047576 },
-  'gpt-4o':               { input: 2.50,  output: 10.00, ctx: 128000 },
-  'gpt-4o-mini':          { input: 0.15,  output: 0.60,  ctx: 128000 },
-  'gpt-4-turbo':          { input: 10.00, output: 30.00, ctx: 128000 },
-  'o1':                   { input: 15.00, output: 60.00, ctx: 200000 },
-  'o1-mini':              { input: 3.00,  output: 12.00, ctx: 128000 },
-  'o1-pro':               { input: 150.0, output: 600.0, ctx: 200000 },
-  'o3':                   { input: 2.00,  output: 8.00,  ctx: 200000 },
-  'o3-mini':              { input: 1.10,  output: 4.40,  ctx: 200000 },
-  'o4-mini':              { input: 1.10,  output: 4.40,  ctx: 200000 },
+  'gpt-5': { input: 2.0, output: 8.0, ctx: 400000 },
+  'gpt-4.1': { input: 2.0, output: 8.0, ctx: 1047576 },
+  'gpt-4.1-mini': { input: 0.4, output: 1.6, ctx: 1047576 },
+  'gpt-4.1-nano': { input: 0.1, output: 0.4, ctx: 1047576 },
+  'gpt-4o': { input: 2.5, output: 10.0, ctx: 128000 },
+  'gpt-4o-mini': { input: 0.15, output: 0.6, ctx: 128000 },
+  'gpt-4-turbo': { input: 10.0, output: 30.0, ctx: 128000 },
+  o1: { input: 15.0, output: 60.0, ctx: 200000 },
+  'o1-mini': { input: 3.0, output: 12.0, ctx: 128000 },
+  'o1-pro': { input: 150.0, output: 600.0, ctx: 200000 },
+  o3: { input: 2.0, output: 8.0, ctx: 200000 },
+  'o3-mini': { input: 1.1, output: 4.4, ctx: 200000 },
+  'o4-mini': { input: 1.1, output: 4.4, ctx: 200000 },
   // --- DeepSeek ---
-  'deepseek-chat':        { input: 0.27,  output: 1.10,  ctx: 64000 },
-  'deepseek-coder':       { input: 0.27,  output: 1.10,  ctx: 64000 },
-  'deepseek-reasoner':    { input: 0.55,  output: 2.19,  ctx: 64000 },
-  'deepseek-r1':          { input: 0.55,  output: 2.19,  ctx: 64000 },
-  'deepseek-v3':          { input: 0.27,  output: 1.10,  ctx: 64000 },
-  'deepseek-v2':          { input: 0.14,  output: 0.28,  ctx: 64000 },
+  'deepseek-chat': { input: 0.27, output: 1.1, ctx: 64000 },
+  'deepseek-coder': { input: 0.27, output: 1.1, ctx: 64000 },
+  'deepseek-reasoner': { input: 0.55, output: 2.19, ctx: 64000 },
+  'deepseek-r1': { input: 0.55, output: 2.19, ctx: 64000 },
+  'deepseek-v3': { input: 0.27, output: 1.1, ctx: 64000 },
+  'deepseek-v2': { input: 0.14, output: 0.28, ctx: 64000 },
   // --- Google ---
-  'gemini-2.5-pro':       { input: 1.25,  output: 10.00, ctx: 1048576 },
-  'gemini-2.5-flash':     { input: 0.15,  output: 0.60,  ctx: 1048576 },
-  'gemini-2.0-flash':     { input: 0.10,  output: 0.40,  ctx: 1048576 },
-  'gemini-1.5-pro':       { input: 1.25,  output: 5.00,  ctx: 1048576 },
-  'gemini-1.5-flash':     { input: 0.075, output: 0.30,  ctx: 1048576 },
-  'gemma-3':              { input: 0.10,  output: 0.10,  ctx: 128000 },
+  'gemini-2.5-pro': { input: 1.25, output: 10.0, ctx: 1048576 },
+  'gemini-2.5-flash': { input: 0.15, output: 0.6, ctx: 1048576 },
+  'gemini-2.0-flash': { input: 0.1, output: 0.4, ctx: 1048576 },
+  'gemini-1.5-pro': { input: 1.25, output: 5.0, ctx: 1048576 },
+  'gemini-1.5-flash': { input: 0.075, output: 0.3, ctx: 1048576 },
+  'gemma-3': { input: 0.1, output: 0.1, ctx: 128000 },
   // --- Mistral ---
-  'mistral-large':        { input: 2.00,  output: 6.00,  ctx: 128000 },
-  'mistral-medium':       { input: 2.00,  output: 6.00,  ctx: 32000 },
-  'mistral-small':        { input: 0.20,  output: 0.60,  ctx: 32000 },
-  'mistral-nemo':         { input: 0.15,  output: 0.15,  ctx: 128000 },
-  'mixtral':              { input: 0.24,  output: 0.24,  ctx: 32000 },
-  'codestral':            { input: 0.30,  output: 0.90,  ctx: 32000 },
-  'pixtral':              { input: 2.00,  output: 6.00,  ctx: 128000 },
+  'mistral-large': { input: 2.0, output: 6.0, ctx: 128000 },
+  'mistral-medium': { input: 2.0, output: 6.0, ctx: 32000 },
+  'mistral-small': { input: 0.2, output: 0.6, ctx: 32000 },
+  'mistral-nemo': { input: 0.15, output: 0.15, ctx: 128000 },
+  mixtral: { input: 0.24, output: 0.24, ctx: 32000 },
+  codestral: { input: 0.3, output: 0.9, ctx: 32000 },
+  pixtral: { input: 2.0, output: 6.0, ctx: 128000 },
   // --- xAI ---
-  'grok-4':               { input: 3.00,  output: 15.00, ctx: 131072 },
-  'grok-3':               { input: 3.00,  output: 15.00, ctx: 131072 },
-  'grok-2':               { input: 2.00,  output: 10.00, ctx: 131072 },
+  'grok-4': { input: 3.0, output: 15.0, ctx: 131072 },
+  'grok-3': { input: 3.0, output: 15.0, ctx: 131072 },
+  'grok-2': { input: 2.0, output: 10.0, ctx: 131072 },
   // --- Meta ---
-  'llama-4':              { input: 0.20,  output: 0.20,  ctx: 1048576 },
-  'llama-3.3':            { input: 0.20,  output: 0.20,  ctx: 131072 },
-  'llama-3.2':            { input: 0.20,  output: 0.20,  ctx: 131072 },
-  'llama-3.1':            { input: 0.20,  output: 0.20,  ctx: 131072 },
-  'llama-3':              { input: 0.20,  output: 0.20,  ctx: 131072 },
+  'llama-4': { input: 0.2, output: 0.2, ctx: 1048576 },
+  'llama-3.3': { input: 0.2, output: 0.2, ctx: 131072 },
+  'llama-3.2': { input: 0.2, output: 0.2, ctx: 131072 },
+  'llama-3.1': { input: 0.2, output: 0.2, ctx: 131072 },
+  'llama-3': { input: 0.2, output: 0.2, ctx: 131072 },
   // --- Qwen ---
-  'qwen3':                { input: 0.30,  output: 1.20,  ctx: 131072 },
-  'qwen2.5':              { input: 0.30,  output: 1.20,  ctx: 131072 },
-  'qwq':                  { input: 0.30,  output: 1.20,  ctx: 32768 },
+  qwen3: { input: 0.3, output: 1.2, ctx: 131072 },
+  'qwen2.5': { input: 0.3, output: 1.2, ctx: 131072 },
+  qwq: { input: 0.3, output: 1.2, ctx: 32768 },
   // --- Cohere ---
-  'command-a':            { input: 2.50,  output: 10.00, ctx: 256000 },
-  'command-r-plus':       { input: 2.50,  output: 10.00, ctx: 128000 },
-  'command-r':            { input: 0.15,  output: 0.60,  ctx: 128000 },
+  'command-a': { input: 2.5, output: 10.0, ctx: 256000 },
+  'command-r-plus': { input: 2.5, output: 10.0, ctx: 128000 },
+  'command-r': { input: 0.15, output: 0.6, ctx: 128000 },
   // --- Perplexity ---
-  'sonar-pro':            { input: 3.00,  output: 15.00, ctx: 200000 },
-  'sonar':                { input: 1.00,  output: 1.00,  ctx: 128000 },
+  'sonar-pro': { input: 3.0, output: 15.0, ctx: 200000 },
+  sonar: { input: 1.0, output: 1.0, ctx: 128000 },
   // --- MiniMax ---
-  'minimax':              { input: 0.70,  output: 0.70,  ctx: 1000000 },
+  minimax: { input: 0.7, output: 0.7, ctx: 1000000 },
   // --- Kimi / Moonshot ---
-  'moonshot':             { input: 1.00,  output: 1.00,  ctx: 128000 },
-  'kimi':                 { input: 1.00,  output: 1.00,  ctx: 128000 },
+  moonshot: { input: 1.0, output: 1.0, ctx: 128000 },
+  kimi: { input: 1.0, output: 1.0, ctx: 128000 },
   // --- Microsoft ---
-  'phi-4':                { input: 0.07,  output: 0.14,  ctx: 16000 },
-  'phi-3':                { input: 0.07,  output: 0.14,  ctx: 128000 },
+  'phi-4': { input: 0.07, output: 0.14, ctx: 16000 },
+  'phi-3': { input: 0.07, output: 0.14, ctx: 128000 },
   // --- Nvidia ---
-  'nemotron':             { input: 0.30,  output: 1.20,  ctx: 131072 },
+  nemotron: { input: 0.3, output: 1.2, ctx: 131072 },
   // --- Nous ---
-  'hermes':               { input: 0.20,  output: 0.20,  ctx: 131072 },
+  hermes: { input: 0.2, output: 0.2, ctx: 131072 },
 };
 
 // Compat alias
@@ -513,9 +566,21 @@ const MODEL_PRICING = MODEL_INFO;
 
 // Image generation cost lookup (per-image, by model × quality × size)
 const IMAGE_PRICING = {
-  'gpt-image-1.5': { 'low': { '1024x1024': 0.009, '1024x1536': 0.013, '1536x1024': 0.013 }, 'medium': { '1024x1024': 0.034, '1024x1536': 0.05, '1536x1024': 0.05 }, 'high': { '1024x1024': 0.133, '1024x1536': 0.2, '1536x1024': 0.2 } },
-  'gpt-image-1':   { 'low': { '1024x1024': 0.011, '1024x1536': 0.016, '1536x1024': 0.016 }, 'medium': { '1024x1024': 0.042, '1024x1536': 0.063, '1536x1024': 0.063 }, 'high': { '1024x1024': 0.167, '1024x1536': 0.25, '1536x1024': 0.25 } },
-  'gpt-image-1-mini': { 'low': { '1024x1024': 0.005, '1024x1536': 0.006, '1536x1024': 0.006 }, 'medium': { '1024x1024': 0.011, '1024x1536': 0.015, '1536x1024': 0.015 }, 'high': { '1024x1024': 0.036, '1024x1536': 0.052, '1536x1024': 0.052 } },
+  'gpt-image-1.5': {
+    low: { '1024x1024': 0.009, '1024x1536': 0.013, '1536x1024': 0.013 },
+    medium: { '1024x1024': 0.034, '1024x1536': 0.05, '1536x1024': 0.05 },
+    high: { '1024x1024': 0.133, '1024x1536': 0.2, '1536x1024': 0.2 },
+  },
+  'gpt-image-1': {
+    low: { '1024x1024': 0.011, '1024x1536': 0.016, '1536x1024': 0.016 },
+    medium: { '1024x1024': 0.042, '1024x1536': 0.063, '1536x1024': 0.063 },
+    high: { '1024x1024': 0.167, '1024x1536': 0.25, '1536x1024': 0.25 },
+  },
+  'gpt-image-1-mini': {
+    low: { '1024x1024': 0.005, '1024x1536': 0.006, '1536x1024': 0.006 },
+    medium: { '1024x1024': 0.011, '1024x1536': 0.015, '1536x1024': 0.015 },
+    high: { '1024x1024': 0.036, '1024x1536': 0.052, '1536x1024': 0.052 },
+  },
 };
 
 export function shortModel(name) {
@@ -546,21 +611,26 @@ export function sameModelName(left, right) {
   const a = modelValue(left);
   const b = modelValue(right);
   if (!a || !b) return false;
-  return a.toLowerCase() === b.toLowerCase()
-    || shortModel(a).toLowerCase() === shortModel(b).toLowerCase();
+  return (
+    a.toLowerCase() === b.toLowerCase() ||
+    shortModel(a).toLowerCase() === shortModel(b).toLowerCase()
+  );
 }
 
 export function modelRouteLabel(requestedModel, actualModel) {
   const requested = modelValue(requestedModel);
   const actual = modelValue(actualModel) || requested;
-  if (!requested || sameModelName(requested, actual)) return shortModel(actual || requested);
+  if (!requested || sameModelName(requested, actual))
+    return shortModel(actual || requested);
   return shortModel(requested) + ' -> ' + shortModel(actual);
 }
 
 export function replyModelPair(modelName, metadata) {
   const meta = metadata || {};
   const actualFromMeta = modelValue(meta.model || meta.actual_model);
-  const requestedFromMeta = modelValue(meta.requested_model || meta.selected_model);
+  const requestedFromMeta = modelValue(
+    meta.requested_model || meta.selected_model,
+  );
   if (actualFromMeta || requestedFromMeta) {
     const actual = actualFromMeta || requestedFromMeta || modelValue(modelName);
     const requested = requestedFromMeta || actual;
@@ -627,48 +697,83 @@ export function applyModelColor(roleEl, modelName) {
     roleEl.style.cursor = 'pointer';
     roleEl.addEventListener('click', (e) => {
       e.stopPropagation();
-      document.querySelectorAll('.ctx-popup').forEach(p => { if (typeof p._dismiss === 'function') p._dismiss(); else p.remove(); });
+      document.querySelectorAll('.ctx-popup').forEach((p) => {
+        if (typeof p._dismiss === 'function') p._dismiss();
+        else p.remove();
+      });
       const info = getModelInfo(modelName);
       const short = shortModel(modelName);
       const logoHtml = providerLogo(modelName);
       const popup = document.createElement('div');
       popup.className = 'ctx-popup';
-      let html = '<div style="font-weight:600;margin-bottom:6px;color:var(--fg);display:flex;align-items:center;gap:6px;">';
-      if (logoHtml) html += '<span class="role-provider-logo" style="opacity:0.7">' + logoHtml + '</span>';
+      let html =
+        '<div style="font-weight:600;margin-bottom:6px;color:var(--fg);display:flex;align-items:center;gap:6px;">';
+      if (logoHtml)
+        html +=
+          '<span class="role-provider-logo" style="opacity:0.7">' +
+          logoHtml +
+          '</span>';
       html += short + '</div>';
-      html += '<div><span class="ctx-label">Model</span> ' + modelName.split('/').pop() + '</div>';
+      html +=
+        '<div><span class="ctx-label">Model</span> ' +
+        modelName.split('/').pop() +
+        '</div>';
       // Provider = the serving endpoint, distinct from the model vendor/logo
       // (e.g. the same model via OpenRouter vs Copilot vs Anthropic direct).
-      const _epUrl = (window.sessionModule && window.sessionModule.getCurrentEndpointUrl)
-        ? window.sessionModule.getCurrentEndpointUrl() : null;
+      const _epUrl =
+        window.sessionModule && window.sessionModule.getCurrentEndpointUrl
+          ? window.sessionModule.getCurrentEndpointUrl()
+          : null;
       const _provLabel = providerLabel(_epUrl);
-      if (_provLabel) html += '<div><span class="ctx-label">Provider</span> ' + uiModule.esc(_provLabel) + '</div>';
+      if (_provLabel)
+        html +=
+          '<div><span class="ctx-label">Provider</span> ' +
+          uiModule.esc(_provLabel) +
+          '</div>';
       // Show static context initially, then fetch real from server
-      const _realCtx = window._realContextLengths && window._realContextLengths[modelName];
+      const _realCtx =
+        window._realContextLengths && window._realContextLengths[modelName];
       if (_realCtx) {
-        html += '<div><span class="ctx-label">Context</span> ' + _fmtCtx(_realCtx) + ' tokens';
-        if (info && info.ctx && info.ctx !== _realCtx) html += ' <span style="opacity:0.35">(spec: ' + _fmtCtx(info.ctx) + ')</span>';
+        html +=
+          '<div><span class="ctx-label">Context</span> ' +
+          _fmtCtx(_realCtx) +
+          ' tokens';
+        if (info && info.ctx && info.ctx !== _realCtx)
+          html +=
+            ' <span style="opacity:0.35">(spec: ' +
+            _fmtCtx(info.ctx) +
+            ')</span>';
         html += '</div>';
       } else if (info && info.ctx) {
-        html += '<div><span class="ctx-label">Context</span> <span id="_ctx-val">' + _fmtCtx(info.ctx) + ' tokens</span></div>';
+        html +=
+          '<div><span class="ctx-label">Context</span> <span id="_ctx-val">' +
+          _fmtCtx(info.ctx) +
+          ' tokens</span></div>';
       }
       // Fetch real context from server async
       if (!_realCtx && window.sessionModule) {
         const _sid = window.sessionModule.getCurrentSessionId();
         if (_sid) {
-          fetch('/api/session/' + _sid + '/context_info').then(r => r.ok ? r.json() : null).then(d => {
-            if (d && d.context_length) {
-              if (!window._realContextLengths) window._realContextLengths = {};
-              window._realContextLengths[modelName] = d.context_length;
-              const el = document.getElementById('_ctx-val');
-              if (el) {
-                el.innerHTML = _fmtCtx(d.context_length) + ' tokens';
-                if (info && info.ctx && info.ctx !== d.context_length) {
-                  el.innerHTML += ' <span style="opacity:0.35">(spec: ' + _fmtCtx(info.ctx) + ')</span>';
+          fetch('/api/session/' + _sid + '/context_info')
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => {
+              if (d && d.context_length) {
+                if (!window._realContextLengths)
+                  window._realContextLengths = {};
+                window._realContextLengths[modelName] = d.context_length;
+                const el = document.getElementById('_ctx-val');
+                if (el) {
+                  el.innerHTML = _fmtCtx(d.context_length) + ' tokens';
+                  if (info && info.ctx && info.ctx !== d.context_length) {
+                    el.innerHTML +=
+                      ' <span style="opacity:0.35">(spec: ' +
+                      _fmtCtx(info.ctx) +
+                      ')</span>';
+                  }
                 }
               }
-            }
-          }).catch(() => {});
+            })
+            .catch(() => {/*Silent Fail*/});
         }
       }
       // Show configured max tokens if set
@@ -677,22 +782,37 @@ export function applyModelColor(roleEl, modelName) {
         const _preset = _pid ? window.presetsModule.getPreset(_pid) : null;
         const _mt = _preset?.max_tokens;
         if (_mt && _mt > 0 && _mt <= 8192) {
-          html += '<div><span class="ctx-label">Max tokens</span> ' + _mt.toLocaleString() + ' <span style="opacity:0.4">(configured)</span></div>';
+          html +=
+            '<div><span class="ctx-label">Max tokens</span> ' +
+            _mt.toLocaleString() +
+            ' <span style="opacity:0.4">(configured)</span></div>';
         }
       }
       if (isCostTrackedEndpoint(_epUrl)) {
-        if (info && info.input != null) html += '<div><span class="ctx-label">Input</span> $' + info.input.toFixed(2) + ' / 1M</div>';
-        if (info && info.output != null) html += '<div><span class="ctx-label">Output</span> $' + info.output.toFixed(2) + ' / 1M</div>';
-        if (!info) html += '<div style="opacity:0.4;font-size:0.85em;margin-top:4px;">No pricing data available</div>';
+        if (info && info.input != null)
+          html +=
+            '<div><span class="ctx-label">Input</span> $' +
+            info.input.toFixed(2) +
+            ' / 1M</div>';
+        if (info && info.output != null)
+          html +=
+            '<div><span class="ctx-label">Output</span> $' +
+            info.output.toFixed(2) +
+            ' / 1M</div>';
+        if (!info)
+          html +=
+            '<div style="opacity:0.4;font-size:0.85em;margin-top:4px;">No pricing data available</div>';
       }
       popup.innerHTML = html;
       const rect = roleEl.getBoundingClientRect();
-      popup.style.top = (rect.bottom + 4) + 'px';
+      popup.style.top = rect.bottom + 4 + 'px';
       popup.style.left = rect.left + 'px';
       document.body.appendChild(popup);
       const pr = popup.getBoundingClientRect();
-      if (pr.bottom > window.innerHeight - 8) popup.style.top = (rect.top - pr.height - 4) + 'px';
-      if (pr.right > window.innerWidth - 8) popup.style.left = (window.innerWidth - pr.width - 8) + 'px';
+      if (pr.bottom > window.innerHeight - 8)
+        popup.style.top = rect.top - pr.height - 4 + 'px';
+      if (pr.right > window.innerWidth - 8)
+        popup.style.left = window.innerWidth - pr.width - 8 + 'px';
       bindMenuDismiss(popup, () => popup.remove());
     });
   }
@@ -718,10 +838,25 @@ export function getModelCost(modelName, inputTokens, outputTokens) {
 export function isLocalEndpoint(url) {
   if (!url) return true;
   let host;
-  try { host = new URL(url).hostname; } catch (_e) { return true; }
+  try {
+    host = new URL(url).hostname;
+  } catch (_e) {
+    return true;
+  }
   if (!host) return true;
-  if (host === 'localhost' || host === '0.0.0.0' || host === 'host.docker.internal' || host.endsWith('.local')) return true;
-  if (typeof window !== 'undefined' && window.location && host === window.location.hostname) return true;
+  if (
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    host === 'host.docker.internal' ||
+    host.endsWith('.local')
+  )
+    return true;
+  if (
+    typeof window !== 'undefined' &&
+    window.location &&
+    host === window.location.hostname
+  )
+    return true;
   // A single-label hostname (no dot) is an internal/Docker service name
   // (e.g. "nim-nano", "llamaswap", "nemotron-super-49b") or a LAN shortname —
   // never a public API, which always needs an FQDN. Treat as local → free.
@@ -732,7 +867,7 @@ export function isLocalEndpoint(url) {
   if (/^10\./.test(host)) return true;
   if (/^192\.168\./.test(host)) return true;
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
-  const cg = host.match(/^100\.(\d+)\./);            // Tailscale CGNAT
+  const cg = host.match(/^100\.(\d+)\./); // Tailscale CGNAT
   if (cg && +cg[1] >= 64 && +cg[1] <= 127) return true;
   return false;
 }
@@ -742,16 +877,19 @@ export function isSubscriptionEndpoint(url) {
   try {
     const parsed = new URL(url);
     const path = parsed.pathname.replace(/\/+$/, '');
-    return parsed.hostname === 'chatgpt.com'
-      && (path === '/backend-api/codex' || path.startsWith('/backend-api/codex/'));
+    return (
+      parsed.hostname === 'chatgpt.com' &&
+      (path === '/backend-api/codex' || path.startsWith('/backend-api/codex/'))
+    );
   } catch (_e) {
     return false;
   }
 }
 
 function _currentEndpointUrl() {
-  return (window.sessionModule && window.sessionModule.getCurrentEndpointUrl)
-    ? window.sessionModule.getCurrentEndpointUrl() : null;
+  return window.sessionModule && window.sessionModule.getCurrentEndpointUrl
+    ? window.sessionModule.getCurrentEndpointUrl()
+    : null;
 }
 
 export function isCostTrackedEndpoint(url) {
@@ -771,7 +909,7 @@ export function getImageCost(model, quality, size) {
   for (const [key, quals] of Object.entries(IMAGE_PRICING)) {
     if (m.includes(key)) {
       const q = quals[(quality || 'medium').toLowerCase()] || quals['medium'];
-      return q ? (q[size] || q['1024x1024'] || null) : null;
+      return q ? q[size] || q['1024x1024'] || null : null;
     }
   }
   return null;
@@ -782,23 +920,31 @@ const _COST_KEY = 'ody-session-cost';
 
 /** Return the accumulated cost for the current (or given) session. */
 export function getSessionCost(sessionId) {
-  const sid = sessionId || (window.sessionModule && window.sessionModule.getCurrentSessionId());
+  const sid =
+    sessionId ||
+    (window.sessionModule && window.sessionModule.getCurrentSessionId());
   if (!sid) return 0;
   try {
     const costs = JSON.parse(localStorage.getItem(_COST_KEY) || '{}');
     return costs[sid] || 0;
-  } catch (_e) { return 0; }
+  } catch (_e) {
+    return 0;
+  }
 }
 
 /** Reset session cost for the given session (defaults to current). */
 export function resetSessionCost(sessionId) {
-  const sid = sessionId || (window.sessionModule && window.sessionModule.getCurrentSessionId());
+  const sid =
+    sessionId ||
+    (window.sessionModule && window.sessionModule.getCurrentSessionId());
   if (!sid) return;
   try {
     const costs = JSON.parse(localStorage.getItem(_COST_KEY) || '{}');
     delete costs[sid];
     localStorage.setItem(_COST_KEY, JSON.stringify(costs));
-  } catch (_e) { /* ignore */ }
+  } catch (_e) {
+    /* ignore */
+  }
   updateSessionCostUI();
 }
 
@@ -810,20 +956,29 @@ export function updateSessionCostUI() {
   // cloud-rate calculation may have left in localStorage for this session.
   const _url = _currentEndpointUrl();
   if (!isCostTrackedEndpoint(_url)) {
-    const sid = window.sessionModule && window.sessionModule.getCurrentSessionId();
+    const sid =
+      window.sessionModule && window.sessionModule.getCurrentSessionId();
     if (sid && getSessionCost(sid) > 0) {
       try {
         const costs = JSON.parse(localStorage.getItem(_COST_KEY) || '{}');
         delete costs[sid];
         localStorage.setItem(_COST_KEY, JSON.stringify(costs));
-      } catch (_e) { /* ignore */ }
+      } catch (_e) {
+        /* ignore */
+      }
     }
     el.style.display = 'none';
     return;
   }
   const cost = getSessionCost();
   if (cost > 0) {
-    el.textContent = '$' + (cost < 0.01 ? cost.toFixed(4) : cost < 1 ? cost.toFixed(3) : cost.toFixed(2));
+    el.textContent =
+      '$' +
+      (cost < 0.01
+        ? cost.toFixed(4)
+        : cost < 1
+          ? cost.toFixed(3)
+          : cost.toFixed(2));
     el.style.display = '';
   } else {
     el.style.display = 'none';
@@ -842,7 +997,10 @@ export function roleTimestamp(when) {
   else if (typeof when === 'string' && when) d = new Date(when);
   else d = new Date();
   if (isNaN(d.getTime())) d = new Date();
-  ts.textContent = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  ts.textContent = d.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
   ts.title = d.toLocaleString();
   return ts;
 }
@@ -871,8 +1029,13 @@ export function stripToolBlocks(text) {
  * nothing (e.g. turns interrupted mid-thinking).
  */
 export function copyMessageText(msgElement) {
-  const raw = msgElement.dataset.raw || msgElement.querySelector('.body')?.textContent || '';
-  const { content } = markdownModule.extractThinkingBlocks(stripToolBlocks(raw));
+  const raw =
+    msgElement.dataset.raw ||
+    msgElement.querySelector('.body')?.textContent ||
+    '';
+  const { content } = markdownModule.extractThinkingBlocks(
+    stripToolBlocks(raw),
+  );
   return content || raw;
 }
 
@@ -881,32 +1044,68 @@ export function copyMessageText(msgElement) {
  */
 export function buildSourcesBox(sources, type, expanded) {
   var esc = uiModule.esc;
-  var id = 'sources-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+  var id =
+    'sources-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
   var count = sources.length;
   var label = type === 'research' ? 'Research sources' : 'Web sources';
   var lines = '';
   for (var i = 0; i < count; i++) {
     var s = sources[i];
     var domain = '';
-    try { domain = new URL(s.url).hostname.replace('www.', ''); } catch(e) { domain = s.url; }
+    try {
+      domain = new URL(s.url).hostname.replace('www.', '');
+    } catch {
+      domain = s.url;
+    }
     var title = esc(s.title || domain || '');
     var safeUrl = _safeHref(s.url);
-    lines += '<a href="' + safeUrl + '" target="_blank" rel="noopener noreferrer" class="source-link">'
-      + '<span class="source-num">' + (i + 1) + '</span>'
-      + '<span class="source-title">' + title + '</span>'
-      + '<span class="source-domain">' + esc(domain) + '</span>'
-      + '</a>';
+    lines +=
+      '<a href="' +
+      safeUrl +
+      '" target="_blank" rel="noopener noreferrer" class="source-link">' +
+      '<span class="source-num">' +
+      (i + 1) +
+      '</span>' +
+      '<span class="source-title">' +
+      title +
+      '</span>' +
+      '<span class="source-domain">' +
+      esc(domain) +
+      '</span>' +
+      '</a>';
   }
   var arrow = expanded ? 'down' : 'right';
   var expandedClass = expanded ? ' expanded' : '';
-  return '<div class="sources-section">'
-    + '<div class="sources-header" data-sources-id="' + id + '" onclick="window.toggleSources(\'' + id + '\')">'
-    + '<div class="sources-header-left">' + SEARCH_ICON + '<span>' + count + ' ' + label + '</span></div>'
-    + '<span class="sources-toggle" id="' + id + '-toggle" data-arrow="' + arrow + '"></span>'
-    + '</div>'
-    + '<div class="sources-content' + expandedClass + '" id="' + id + '">'
-    + '<div class="sources-content-inner">' + lines + '</div>'
-    + '</div></div>';
+  return (
+    '<div class="sources-section">' +
+    '<div class="sources-header" data-sources-id="' +
+    id +
+    '" onclick="window.toggleSources(\'' +
+    id +
+    '\')">' +
+    '<div class="sources-header-left">' +
+    SEARCH_ICON +
+    '<span>' +
+    count +
+    ' ' +
+    label +
+    '</span></div>' +
+    '<span class="sources-toggle" id="' +
+    id +
+    '-toggle" data-arrow="' +
+    arrow +
+    '"></span>' +
+    '</div>' +
+    '<div class="sources-content' +
+    expandedClass +
+    '" id="' +
+    id +
+    '">' +
+    '<div class="sources-content-inner">' +
+    lines +
+    '</div>' +
+    '</div></div>'
+  );
 }
 
 /**
@@ -921,12 +1120,26 @@ export function buildRagSourcesBox(sources) {
   var items = '';
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i] || {};
-    var pct = (typeof s.similarity === 'number') ? (s.similarity * 100).toFixed(1) + '%' : '';
-    items += '<div class="rag-source-item"><strong>' + esc(s.filename || '') + '</strong>'
-      + (pct ? ' <span class="rag-similarity">' + pct + '</span>' : '')
-      + '<div class="rag-snippet">' + esc(s.snippet || '') + '</div></div>';
+    var pct =
+      typeof s.similarity === 'number'
+        ? (s.similarity * 100).toFixed(1) + '%'
+        : '';
+    items +=
+      '<div class="rag-source-item"><strong>' +
+      esc(s.filename || '') +
+      '</strong>' +
+      (pct ? ' <span class="rag-similarity">' + pct + '</span>' : '') +
+      '<div class="rag-snippet">' +
+      esc(s.snippet || '') +
+      '</div></div>';
   }
-  return '<details class="rag-sources"><summary>Sources (' + sources.length + ' documents)</summary>' + items + '</details>';
+  return (
+    '<details class="rag-sources"><summary>Sources (' +
+    sources.length +
+    ' documents)</summary>' +
+    items +
+    '</details>'
+  );
 }
 
 /**
@@ -937,36 +1150,73 @@ export function buildRagSourcesBox(sources) {
 export function buildFindingsBox(findings, expanded) {
   if (!findings || !findings.length) return '';
   var esc = uiModule.esc;
-  var id = 'findings-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+  var id =
+    'findings-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
   var count = findings.length;
   var lines = '';
   for (var i = 0; i < count; i++) {
     var f = findings[i];
     var domain = '';
-    try { domain = new URL(f.url).hostname.replace('www.', ''); } catch(e) { domain = f.url; }
+    try {
+      domain = new URL(f.url).hostname.replace('www.', '');
+    } catch {
+      domain = f.url;
+    }
     var title = esc(f.title || domain || '');
     var summary = esc(f.summary || '');
     var safeUrl = _safeHref(f.url);
-    lines += '<div class="finding-item">'
-      + '<a href="' + safeUrl + '" target="_blank" rel="noopener noreferrer" class="source-link">'
-      + '<span class="source-num">' + (i + 1) + '</span>'
-      + '<span class="source-title">' + title + '</span>'
-      + '<span class="source-domain">' + esc(domain) + '</span>'
-      + '</a>'
-      + '<div class="finding-summary">' + summary + '</div>'
-      + '</div>';
+    lines +=
+      '<div class="finding-item">' +
+      '<a href="' +
+      safeUrl +
+      '" target="_blank" rel="noopener noreferrer" class="source-link">' +
+      '<span class="source-num">' +
+      (i + 1) +
+      '</span>' +
+      '<span class="source-title">' +
+      title +
+      '</span>' +
+      '<span class="source-domain">' +
+      esc(domain) +
+      '</span>' +
+      '</a>' +
+      '<div class="finding-summary">' +
+      summary +
+      '</div>' +
+      '</div>';
   }
-  var FINDINGS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+  var FINDINGS_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
   var arrow = expanded ? 'down' : 'right';
   var expandedClass = expanded ? ' expanded' : '';
-  return '<div class="sources-section">'
-    + '<div class="sources-header" data-sources-id="' + id + '" onclick="window.toggleSources(\'' + id + '\')">'
-    + '<div class="sources-header-left">' + FINDINGS_ICON + '<span>' + count + ' Raw collected findings</span></div>'
-    + '<span class="sources-toggle" id="' + id + '-toggle" data-arrow="' + arrow + '"></span>'
-    + '</div>'
-    + '<div class="sources-content' + expandedClass + '" id="' + id + '">'
-    + '<div class="sources-content-inner">' + lines + '</div>'
-    + '</div></div>';
+  return (
+    '<div class="sources-section">' +
+    '<div class="sources-header" data-sources-id="' +
+    id +
+    '" onclick="window.toggleSources(\'' +
+    id +
+    '\')">' +
+    '<div class="sources-header-left">' +
+    FINDINGS_ICON +
+    '<span>' +
+    count +
+    ' Raw collected findings</span></div>' +
+    '<span class="sources-toggle" id="' +
+    id +
+    '-toggle" data-arrow="' +
+    arrow +
+    '"></span>' +
+    '</div>' +
+    '<div class="sources-content' +
+    expandedClass +
+    '" id="' +
+    id +
+    '">' +
+    '<div class="sources-content-inner">' +
+    lines +
+    '</div>' +
+    '</div></div>'
+  );
 }
 
 /** Append report button + continue research prompt. */
@@ -979,10 +1229,10 @@ function _appendContinuePrompt(container) {
   var wrap = document.createElement('div');
   wrap.className = 'continue-research-wrap';
   wrap.innerHTML =
-    '<div class="continue-research-hint">'
-    + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>'
-    + '<span>Dig deeper? Activate Research again and type a follow-up question to continue this research.</span>'
-    + '</div>';
+    '<div class="continue-research-hint">' +
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>' +
+    '<span>Dig deeper? Activate Research again and type a follow-up question to continue this research.</span>' +
+    '</div>';
   container.appendChild(wrap);
 }
 function _appendReportButton(container, sessionId) {
@@ -998,7 +1248,7 @@ function _appendReportButton(container, sessionId) {
   btn.innerHTML = REPORT_ICON + ' Open Visual Report';
 
   var reportUrl = apiBase + '/api/research/report/' + sessionId;
-  btn.addEventListener('click', function() {
+  btn.addEventListener('click', function () {
     window.open(reportUrl, '_blank');
   });
   wrap.appendChild(btn);
@@ -1007,21 +1257,25 @@ function _appendReportButton(container, sessionId) {
   chatBtn.type = 'button';
   chatBtn.className = 'view-report-btn chat-about-btn';
   chatBtn.innerHTML = CHAT_ABOUT_ICON + ' Discuss';
-  chatBtn.addEventListener('click', async function() {
+  chatBtn.addEventListener('click', async function () {
     if (chatBtn.disabled) return;
     var origLabel = chatBtn.innerHTML;
     chatBtn.disabled = true;
     chatBtn.innerHTML = CHAT_ABOUT_ICON + ' Creating…';
     try {
-      var res = await fetch(apiBase + '/api/research/spinoff/' + sessionId, { method: 'POST' });
+      var res = await fetch(apiBase + '/api/research/spinoff/' + sessionId, {
+        method: 'POST',
+      });
       if (!res.ok) {
         var detail = '';
-        try { detail = (await res.json()).detail || ''; } catch {}
-        throw new Error(detail || ('HTTP ' + res.status));
+        try {
+          detail = (await res.json()).detail || '';
+        } catch {/*Silent Fail*/}
+        throw new Error(detail || 'HTTP ' + res.status);
       }
       var payload = await res.json();
       if (window.sessionModule && payload.session_id) {
-        await window.sessionModule.loadSessions().catch(() => {});
+        await window.sessionModule.loadSessions().catch(() => {/*Silent Fail*/});
         await window.sessionModule.selectSession(payload.session_id);
       }
     } catch (e) {
@@ -1039,10 +1293,11 @@ function _appendReportButton(container, sessionId) {
   container.appendChild(wrap);
 }
 
-window.toggleSources = function(id) {
+window.toggleSources = function (id) {
   // Debounce to prevent double-fire from both inline onclick and delegation
   var now = Date.now();
-  if (window._lastSourcesToggle && now - window._lastSourcesToggle < 100) return;
+  if (window._lastSourcesToggle && now - window._lastSourcesToggle < 100)
+    return;
   window._lastSourcesToggle = now;
 
   var content = document.getElementById(id);
@@ -1055,18 +1310,27 @@ window.toggleSources = function(id) {
 };
 
 // Event delegation for sources toggle (capture phase, handles SVG targets)
-document.addEventListener('click', function(e) {
-  // Walk up from target manually to handle SVG elements that may not support closest()
-  var el = e.target;
-  while (el && el !== document) {
-    if (el.classList && el.classList.contains('sources-header') && el.dataset && el.dataset.sourcesId) {
-      e.stopPropagation();
-      window.toggleSources(el.dataset.sourcesId);
-      return;
+document.addEventListener(
+  'click',
+  function (e) {
+    // Walk up from target manually to handle SVG elements that may not support closest()
+    var el = e.target;
+    while (el && el !== document) {
+      if (
+        el.classList &&
+        el.classList.contains('sources-header') &&
+        el.dataset &&
+        el.dataset.sourcesId
+      ) {
+        e.stopPropagation();
+        window.toggleSources(el.dataset.sourcesId);
+        return;
+      }
+      el = el.parentElement || el.parentNode;
     }
-    el = el.parentElement || el.parentNode;
-  }
-}, true);
+  },
+  true,
+);
 
 // Jump-to-entity anchors — the agent emits links like
 //   [New Chat](#session-89effa28)
@@ -1076,7 +1340,7 @@ document.addEventListener('click', function(e) {
 // instead of default in-page anchor jumps. Each prefix routes to the
 // matching module via a dynamic import (avoids circular deps —
 // sessions.js itself imports chatRenderer.js).
-document.addEventListener('click', function(e) {
+document.addEventListener('click', function (e) {
   // Walk past Text nodes — clicking link text yields a Text node target
   // whose .closest is undefined, so preventDefault never fires and the
   // browser performs a default hash-navigation that resets the session.
@@ -1086,67 +1350,103 @@ document.addEventListener('click', function(e) {
   if (!a) return;
   const href = a.getAttribute('href') || '';
   if (!href.startsWith('#')) return;
-  const m = href.match(/^#(session|document|note|image|email|event|task|skill|research)-(.+)$/);
+  const m = href.match(
+    /^#(session|document|note|image|email|event|task|skill|research)-(.+)$/,
+  );
   if (!m) return;
   e.preventDefault();
   e.stopPropagation();
   const [, kind, id] = m;
   if (kind === 'session') {
-    import('./sessions.js').then(mod => {
-      const fn = mod.selectSession || (mod.default && mod.default.selectSession);
+    import('./sessions.js').then((mod) => {
+      const fn =
+        mod.selectSession || (mod.default && mod.default.selectSession);
       if (fn) fn(id);
     });
   } else if (kind === 'document') {
-    import('./document.js').then(mod => {
-      const open = mod.loadDocument
-        || mod.openDocument
-        || (mod.default && (mod.default.loadDocument || mod.default.openDocument));
-      if (open) open(id);
-    }).catch(() => {});
+    import('./document.js')
+      .then((mod) => {
+        const open =
+          mod.loadDocument ||
+          mod.openDocument ||
+          (mod.default &&
+            (mod.default.loadDocument || mod.default.openDocument));
+        if (open) open(id);
+      })
+      .catch(() => {/*Silent Fail*/});
   } else if (kind === 'note') {
-    import('./notes.js').then(mod => {
-      const open = mod.openNote || (mod.default && mod.default.openNote);
-      if (open) open(id);
-    }).catch(() => {});
+    import('./notes.js')
+      .then((mod) => {
+        const open = mod.openNote || (mod.default && mod.default.openNote);
+        if (open) open(id);
+      })
+      .catch(() => {/*Silent Fail*/});
   } else if (kind === 'image') {
-    import('./gallery.js').then(mod => {
-      const open = mod.openGalleryImage || (mod.default && mod.default.openGalleryImage);
-      if (open) open(id);
-    }).catch(() => {});
+    import('./gallery.js')
+      .then((mod) => {
+        const open =
+          mod.openGalleryImage || (mod.default && mod.default.openGalleryImage);
+        if (open) open(id);
+      })
+      .catch(() => {/*Silent Fail*/});
   } else if (kind === 'email') {
-    import('./emailLibrary.js').then(mod => {
-      const open = mod.openEmailLibrary || (mod.default && mod.default.openEmailLibrary);
-      if (open) open({ uid: id });
-    }).catch(() => {});
+    import('./emailLibrary.js')
+      .then((mod) => {
+        const open =
+          mod.openEmailLibrary || (mod.default && mod.default.openEmailLibrary);
+        if (open) open({ uid: id });
+      })
+      .catch(() => {/*Silent Fail*/});
   } else if (kind === 'event') {
-    import('./calendar.js').then(mod => {
-      const open = mod.openCalendarTo || (mod.default && mod.default.openCalendarTo);
-      if (open) open(id);
-    }).catch(() => {});
+    import('./calendar.js')
+      .then((mod) => {
+        const open =
+          mod.openCalendarTo || (mod.default && mod.default.openCalendarTo);
+        if (open) open(id);
+      })
+      .catch(() => {/*Silent Fail*/});
   } else if (kind === 'task') {
-    import('./tasks.js').then(mod => {
-      const open = mod.openTasks || (mod.default && mod.default.openTasks);
-      if (open) open(id);
-      else { const b = document.getElementById('tasks-btn'); if (b) b.click(); }
-    }).catch(() => { const b = document.getElementById('tasks-btn'); if (b) b.click(); });
+    import('./tasks.js')
+      .then((mod) => {
+        const open = mod.openTasks || (mod.default && mod.default.openTasks);
+        if (open) open(id);
+        else {
+          const b = document.getElementById('tasks-btn');
+          if (b) b.click();
+        }
+      })
+      .catch(() => {
+        const b = document.getElementById('tasks-btn');
+        if (b) b.click();
+      });
   } else if (kind === 'skill') {
-    import('./skills.js').then(mod => {
-      const open = mod.openSkill || (mod.default && mod.default.openSkill);
-      if (open) open(id);
-    }).catch(() => {});
+    import('./skills.js')
+      .then((mod) => {
+        const open = mod.openSkill || (mod.default && mod.default.openSkill);
+        if (open) open(id);
+      })
+      .catch(() => {/*Silent Fail*/});
   } else if (kind === 'research') {
-    import('./research/panel.js').then(mod => {
-      const open = mod.openPanel || (mod.default && mod.default.openPanel);
-      if (open) open(id);
-    }).catch(() => {});
+    import('./research/panel.js')
+      .then((mod) => {
+        const open = mod.openPanel || (mod.default && mod.default.openPanel);
+        if (open) open(id);
+      })
+      .catch(() => {/*Silent Fail*/});
   }
 });
 
 /**
  * Build a generated-image bubble element.
  */
-export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId) {
-  var esc = uiModule.esc;
+export function buildImageBubble(
+  imageUrl,
+  prompt,
+  model,
+  size,
+  quality,
+  imageId,
+) {
   const wrap = document.createElement('div');
   wrap.className = 'msg msg-ai generated-image-wrap';
 
@@ -1170,7 +1470,9 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
   img.alt = prompt || 'Generated image';
   img.title = prompt || 'Generated image';
   img.src = safeImageUrl;
-  img.addEventListener('click', () => { window.open(safeImageUrl, '_blank', 'noopener,noreferrer'); });
+  img.addEventListener('click', () => {
+    window.open(safeImageUrl, '_blank', 'noopener,noreferrer');
+  });
   body.appendChild(img);
 
   if (prompt) {
@@ -1197,7 +1499,9 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
     e.stopPropagation();
     uiModule.copyToClipboard(prompt || '');
     copyBtn.innerHTML = CHECK_ICON;
-    setTimeout(() => { copyBtn.innerHTML = COPY_ICON; }, 1500);
+    setTimeout(() => {
+      copyBtn.innerHTML = COPY_ICON;
+    }, 1500);
   });
   actions.appendChild(copyBtn);
 
@@ -1213,14 +1517,22 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
       const blob = await resp.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = (prompt || 'image').slice(0, 40).replace(/[^a-zA-Z0-9 ]/g, '') + '.png';
+      a.download =
+        (prompt || 'image').slice(0, 40).replace(/[^a-zA-Z0-9 ]/g, '') + '.png';
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(a.href);
       dlBtn.textContent = '\u2713';
-      setTimeout(() => { dlBtn.textContent = '\u2913'; }, 1500);
-    } catch { dlBtn.textContent = '\u2717'; setTimeout(() => { dlBtn.textContent = '\u2913'; }, 1500); }
+      setTimeout(() => {
+        dlBtn.textContent = '\u2913';
+      }, 1500);
+    } catch {
+      dlBtn.textContent = '\u2717';
+      setTimeout(() => {
+        dlBtn.textContent = '\u2913';
+      }, 1500);
+    }
   });
   actions.appendChild(dlBtn);
 
@@ -1228,7 +1540,8 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
   editBtn.className = 'footer-copy-btn';
   editBtn.type = 'button';
   editBtn.title = 'Edit in image editor';
-  editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+  editBtn.innerHTML =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
   editBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     try {
@@ -1241,14 +1554,24 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
       galleryMod.default.openGallery();
       const modal = document.getElementById('gallery-modal');
       if (modal) {
-        modal.querySelectorAll('.gallery-tab').forEach(t => t.classList.remove('active'));
-        modal.querySelector('.gallery-tab[data-tab="editor"]')?.classList.add('active');
+        modal
+          .querySelectorAll('.gallery-tab')
+          .forEach((t) => t.classList.remove('active'));
+        modal
+          .querySelector('.gallery-tab[data-tab="editor"]')
+          ?.classList.add('active');
       }
-      const imagesContainer = document.getElementById('gallery-images-container');
-      const albumsContainer = document.getElementById('gallery-albums-container');
+      const imagesContainer = document.getElementById(
+        'gallery-images-container',
+      );
+      const albumsContainer = document.getElementById(
+        'gallery-albums-container',
+      );
       if (imagesContainer) imagesContainer.style.display = 'none';
       if (albumsContainer) albumsContainer.style.display = 'none';
-      const editorContainer = document.getElementById('gallery-editor-container');
+      const editorContainer = document.getElementById(
+        'gallery-editor-container',
+      );
       if (editorContainer) editorContainer.style.display = 'flex';
       const label = (prompt || '').trim().slice(0, 60) || 'Generated image';
       editorMod.openEditor(imageUrl, null, null, label);
@@ -1262,7 +1585,8 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
   delBtn.className = 'footer-copy-btn footer-delete-btn';
   delBtn.type = 'button';
   delBtn.title = 'Delete image';
-  delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>';
+  delBtn.innerHTML =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>';
   delBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     const ok = await uiModule.styledConfirm('Delete this image?', {
@@ -1276,7 +1600,8 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
     if (imageId) {
       try {
         const res = await fetch(`/api/gallery/${encodeURIComponent(imageId)}`, {
-          method: 'DELETE', credentials: 'same-origin',
+          method: 'DELETE',
+          credentials: 'same-origin',
         });
         if (!res.ok && res.status !== 404) {
           uiModule.showToast?.('Delete failed', 4000);
@@ -1301,7 +1626,8 @@ export function buildImageBubble(imageUrl, prompt, model, size, quality, imageId
   if (size) parts.push(size);
   if (quality) parts.push(quality);
   const cost = getImageCost(model, quality, size);
-  if (cost !== null) parts.push('$' + (cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)));
+  if (cost !== null)
+    parts.push('$' + (cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)));
   metrics.textContent = parts.join(' \u00B7 ');
   footer.appendChild(metrics);
 
@@ -1362,10 +1688,14 @@ const _ACTION_RECENTS_KEY = 'odysseus-msg-actions-recent';
 const _MAX_VISIBLE = 2;
 
 function _getRecentActions() {
-  try { return JSON.parse(localStorage.getItem(_ACTION_RECENTS_KEY) || '[]'); } catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(_ACTION_RECENTS_KEY) || '[]');
+  } catch {
+    return [];
+  }
 }
 function _trackAction(id) {
-  let recent = _getRecentActions().filter(x => x !== id);
+  let recent = _getRecentActions().filter((x) => x !== id);
   recent.unshift(id);
   if (recent.length > 10) recent.length = 10;
   localStorage.setItem(_ACTION_RECENTS_KEY, JSON.stringify(recent));
@@ -1383,48 +1713,107 @@ export function createMsgFooter(msgElement) {
 
   // Define all available actions: { id, icon, title, className, handler }
   const allActions = [
-    { id: 'copy', icon: COPY_ICON, title: 'Copy message', cls: 'footer-copy-btn', html: true, handler(e) {
-      e.stopPropagation();
-      const btn = e.currentTarget;
-      uiModule.copyToClipboard(copyMessageText(msgElement));
-      btn.innerHTML = CHECK_ICON;
-      setTimeout(() => { btn.innerHTML = COPY_ICON; }, 1500);
-    }},
-    { id: 'edit', icon: '\u270E', title: 'Edit', cls: 'msg-action-btn', handler(e) {
-      e.stopPropagation();
-      if (window.chatModule?.editAIMessage) window.chatModule.editAIMessage(msgElement);
-    }},
-    { id: 'regen', icon: '\u21BB', title: 'Regenerate from here', cls: 'msg-action-btn', handler(e) {
-      e.stopPropagation();
-      if (window.chatModule?.regenerateFrom) window.chatModule.regenerateFrom(msgElement);
-    }},
-    { id: 'shorten', icon: '\u2702', title: 'Rewrite shorter', cls: 'msg-action-btn', handler(e) {
-      e.stopPropagation();
-      if (window.chatModule?.rewriteWith) window.chatModule.rewriteWith(msgElement, 'Rewrite your last response to be shorter and more concise. Keep the key information but cut the fluff.');
-    }},
-    { id: 'explain', icon: '?', title: 'Explain simpler', cls: 'msg-action-btn', handler(e) {
-      e.stopPropagation();
-      if (window.chatModule?.rewriteWith) window.chatModule.rewriteWith(msgElement, 'Explain your last response in simpler terms. Use plain language and short sentences.');
-    }},
-    { id: 'fork', icon: '\u2ADD', title: 'Fork conversation', cls: 'msg-action-btn', handler(e) {
-      e.stopPropagation();
-      if (window.chatModule?.forkFrom) window.chatModule.forkFrom(msgElement);
-    }},
-    { id: 'delete', icon: '\u2715', title: 'Delete message', cls: 'msg-action-btn msg-delete-btn', handler(e) {
-      e.stopPropagation();
-      if (window.chatModule?.deleteMessage) window.chatModule.deleteMessage(msgElement);
-    }},
+    {
+      id: 'copy',
+      icon: COPY_ICON,
+      title: 'Copy message',
+      cls: 'footer-copy-btn',
+      html: true,
+      handler(e) {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        uiModule.copyToClipboard(copyMessageText(msgElement));
+        btn.innerHTML = CHECK_ICON;
+        setTimeout(() => {
+          btn.innerHTML = COPY_ICON;
+        }, 1500);
+      },
+    },
+    {
+      id: 'edit',
+      icon: '\u270E',
+      title: 'Edit',
+      cls: 'msg-action-btn',
+      handler(e) {
+        e.stopPropagation();
+        if (window.chatModule?.editAIMessage)
+          window.chatModule.editAIMessage(msgElement);
+      },
+    },
+    {
+      id: 'regen',
+      icon: '\u21BB',
+      title: 'Regenerate from here',
+      cls: 'msg-action-btn',
+      handler(e) {
+        e.stopPropagation();
+        if (window.chatModule?.regenerateFrom)
+          window.chatModule.regenerateFrom(msgElement);
+      },
+    },
+    {
+      id: 'shorten',
+      icon: '\u2702',
+      title: 'Rewrite shorter',
+      cls: 'msg-action-btn',
+      handler(e) {
+        e.stopPropagation();
+        if (window.chatModule?.rewriteWith)
+          window.chatModule.rewriteWith(
+            msgElement,
+            'Rewrite your last response to be shorter and more concise. Keep the key information but cut the fluff.',
+          );
+      },
+    },
+    {
+      id: 'explain',
+      icon: '?',
+      title: 'Explain simpler',
+      cls: 'msg-action-btn',
+      handler(e) {
+        e.stopPropagation();
+        if (window.chatModule?.rewriteWith)
+          window.chatModule.rewriteWith(
+            msgElement,
+            'Explain your last response in simpler terms. Use plain language and short sentences.',
+          );
+      },
+    },
+    {
+      id: 'fork',
+      icon: '\u2ADD',
+      title: 'Fork conversation',
+      cls: 'msg-action-btn',
+      handler(e) {
+        e.stopPropagation();
+        if (window.chatModule?.forkFrom) window.chatModule.forkFrom(msgElement);
+      },
+    },
+    {
+      id: 'delete',
+      icon: '\u2715',
+      title: 'Delete message',
+      cls: 'msg-action-btn msg-delete-btn',
+      handler(e) {
+        e.stopPropagation();
+        if (window.chatModule?.deleteMessage)
+          window.chatModule.deleteMessage(msgElement);
+      },
+    },
   ];
 
   // Filter out unavailable actions (e.g. TTS when not enabled)
-  const availableActions = allActions.filter(a => !a.available || a.available());
+  const availableActions = allActions.filter(
+    (a) => !a.available || a.available(),
+  );
 
   // Determine which 3 to show: use recent order, fallback to defaults
   const recent = _getRecentActions();
   const defaults = ['copy', 'delete', 'fork'];
   const order = recent.length > 0 ? recent : defaults;
   const sorted = [...availableActions].sort((a, b) => {
-    const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+    const ai = order.indexOf(a.id),
+      bi = order.indexOf(b.id);
     if (ai >= 0 && bi >= 0) return ai - bi;
     if (ai >= 0) return -1;
     if (bi >= 0) return 1;
@@ -1435,16 +1824,21 @@ export function createMsgFooter(msgElement) {
 
   // Render visible buttons
   function _addBtn(action, container) {
-    const btn = _makeActionBtn(action.cls, action.title, action.html ? '' : action.icon, (e) => {
-      _trackAction(action.id);
-      action.handler(e);
-    });
+    const btn = _makeActionBtn(
+      action.cls,
+      action.title,
+      action.html ? '' : action.icon,
+      (e) => {
+        _trackAction(action.id);
+        action.handler(e);
+      },
+    );
     if (action.html) btn.innerHTML = action.icon;
     btn.dataset.action = action.id;
     container.appendChild(btn);
   }
 
-  visible.forEach(a => _addBtn(a, actions));
+  visible.forEach((a) => _addBtn(a, actions));
 
   // Overflow "···" button
   if (overflow.length > 0) {
@@ -1459,14 +1853,15 @@ export function createMsgFooter(msgElement) {
       // dismiss so the Escape registry entry goes with it).
       const existing = document.querySelector('.msg-overflow-menu');
       if (existing) {
-        if (typeof existing._dismiss === 'function') existing._dismiss(); else existing.remove();
+        if (typeof existing._dismiss === 'function') existing._dismiss();
+        else existing.remove();
         if (existing._trigger === moreBtn) return;
       }
 
       const menu = document.createElement('div');
       menu.className = 'msg-overflow-menu';
       let closeMenu = () => menu.remove();
-      overflow.forEach(a => {
+      overflow.forEach((a) => {
         const item = document.createElement('button');
         item.className = 'msg-overflow-item';
         item.type = 'button';
@@ -1484,16 +1879,23 @@ export function createMsgFooter(msgElement) {
       document.body.appendChild(menu);
       // Position fixed relative to the ··· button
       const btnRect = moreBtn.getBoundingClientRect();
-      menu.style.top = (btnRect.top - menu.offsetHeight - 4) + 'px';
+      menu.style.top = btnRect.top - menu.offsetHeight - 4 + 'px';
       menu.style.left = btnRect.left + 'px';
       // Flip down if above viewport
-      if (parseFloat(menu.style.top) < 8) menu.style.top = (btnRect.bottom + 4) + 'px';
+      if (parseFloat(menu.style.top) < 8)
+        menu.style.top = btnRect.bottom + 4 + 'px';
       // Keep within right edge
       const mr = menu.getBoundingClientRect();
-      if (mr.right > window.innerWidth - 8) menu.style.left = (window.innerWidth - mr.width - 8) + 'px';
+      if (mr.right > window.innerWidth - 8)
+        menu.style.left = window.innerWidth - mr.width - 8 + 'px';
       // Close on outside click or Escape. The trigger button is treated as
       // "inside" so its own click toggles rather than double-fires.
-      closeMenu = bindMenuDismiss(menu, () => menu.remove(), (ev) => !menu.contains(ev.target) && ev.target !== moreBtn);    });
+      closeMenu = bindMenuDismiss(
+        menu,
+        () => menu.remove(),
+        (ev) => !menu.contains(ev.target) && ev.target !== moreBtn,
+      );
+    });
     actions.appendChild(moreBtn);
   }
 
@@ -1503,32 +1905,40 @@ export function createMsgFooter(msgElement) {
     const pill = document.createElement('button');
     pill.className = 'memory-used-pill';
     pill.type = 'button';
-    const pinnedCount = mems.filter(m => m.type === 'pinned').length;
-    const recalledCount = mems.filter(m => m.type === 'recalled').length;
+    const pinnedCount = mems.filter((m) => m.type === 'pinned').length;
+    const recalledCount = mems.filter((m) => m.type === 'recalled').length;
     const parts = [];
     if (pinnedCount) parts.push(`${pinnedCount} pinned`);
     if (recalledCount) parts.push(`${recalledCount} recalled`);
     pill.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M12 2a7 7 0 0 1 7 7c0 2.5-1.3 4.8-3.5 6-.3.2-.5.5-.5.9V18h-6v-2.1c0-.4-.2-.7-.5-.9C6.3 13.8 5 11.5 5 9a7 7 0 0 1 7-7z"/><path d="M9 18h6v1a3 3 0 0 1-6 0v-1z"/><path d="M12 2v7"/><path d="M8.5 6.5L12 9l3.5-2.5"/></svg><span class="memory-used-pill-text">${parts.join(', ')}</span>`;
-    pill.title = mems.map(m => `[${m.type}] ${m.text}`).join('\n');
+    pill.title = mems.map((m) => `[${m.type}] ${m.text}`).join('\n');
 
     pill.addEventListener('click', (e) => {
       e.stopPropagation();
-      let detail = pill._openDetail || document.querySelector('.memory-used-detail');
+      let detail =
+        pill._openDetail || document.querySelector('.memory-used-detail');
       if (detail) {
         if (typeof detail._dismiss === 'function') detail._dismiss();
-        else { detail.remove(); pill._openDetail = null; }
+        else {
+          detail.remove();
+          pill._openDetail = null;
+        }
         return;
       }
       detail = document.createElement('div');
       detail.className = 'memory-used-detail';
-      let closeDetail = () => { detail.remove(); pill._openDetail = null; };
-      mems.forEach(m => {
+      let closeDetail = () => {
+        detail.remove();
+        pill._openDetail = null;
+      };
+      mems.forEach((m) => {
         const row = document.createElement('div');
         row.className = 'memory-used-row';
         row.style.cursor = 'pointer';
         row.title = 'Click to open memory manager';
         const badge = document.createElement('span');
-        badge.className = 'memory-used-badge ' + (m.type === 'pinned' ? 'pinned' : 'recalled');
+        badge.className =
+          'memory-used-badge ' + (m.type === 'pinned' ? 'pinned' : 'recalled');
         badge.textContent = m.type === 'pinned' ? '\u25CF' : '\u21BB';
         const text = document.createElement('span');
         text.className = 'memory-used-text';
@@ -1550,19 +1960,27 @@ export function createMsgFooter(msgElement) {
       const spaceAbove = pillRect.top;
       const spaceBelow = window.innerHeight - pillRect.bottom;
       if (spaceAbove >= detailRect.height + 8 || spaceAbove > spaceBelow) {
-        detail.style.top = (pillRect.top - detailRect.height - 8) + 'px';
+        detail.style.top = pillRect.top - detailRect.height - 8 + 'px';
       } else {
-        detail.style.top = (pillRect.bottom + 8) + 'px';
+        detail.style.top = pillRect.bottom + 8 + 'px';
       }
       detail.style.left = pillRect.left + 'px';
       if (pillRect.left + detailRect.width > window.innerWidth - 8) {
-        detail.style.left = (window.innerWidth - detailRect.width - 8) + 'px';
+        detail.style.left = window.innerWidth - detailRect.width - 8 + 'px';
       }
       if (parseFloat(detail.style.left) < 8) detail.style.left = '8px';
       detail.style.visibility = '';
       pill._openDetail = detail;
       // Close on outside click or Escape (pill click toggles, so it's inside).
-      closeDetail = bindMenuDismiss(detail, () => { detail.remove(); pill._openDetail = null; }, (ev) => !detail.contains(ev.target) && ev.target !== pill);    });
+      closeDetail = bindMenuDismiss(
+        detail,
+        () => {
+          detail.remove();
+          pill._openDetail = null;
+        },
+        (ev) => !detail.contains(ev.target) && ev.target !== pill,
+      );
+    });
 
     footer.appendChild(pill);
   }
@@ -1577,10 +1995,14 @@ export function createMsgFooter(msgElement) {
 const _USER_ACTION_RECENTS_KEY = 'odysseus-user-actions-recent';
 
 function _getUserRecentActions() {
-  try { return JSON.parse(localStorage.getItem(_USER_ACTION_RECENTS_KEY) || '[]'); } catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(_USER_ACTION_RECENTS_KEY) || '[]');
+  } catch {
+    return [];
+  }
 }
 function _trackUserAction(id) {
-  let recent = _getUserRecentActions().filter(x => x !== id);
+  let recent = _getUserRecentActions().filter((x) => x !== id);
   recent.unshift(id);
   if (recent.length > 10) recent.length = 10;
   localStorage.setItem(_USER_ACTION_RECENTS_KEY, JSON.stringify(recent));
@@ -1594,32 +2016,65 @@ export function createUserMsgFooter(msgElement) {
   actions.className = 'msg-actions';
 
   const allActions = [
-    { id: 'edit', icon: '\u270E', title: 'Edit message', cls: 'msg-action-btn', handler(e) {
-      e.stopPropagation();
-      if (window.chatModule?.editUserMessage) window.chatModule.editUserMessage(msgElement);
-    }},
-    { id: 'delete', icon: '\u2715', title: 'Delete message', cls: 'msg-action-btn msg-delete-btn', handler(e) {
-      e.stopPropagation();
-      if (window.chatModule?.deleteMessage) window.chatModule.deleteMessage(msgElement);
-    }},
-    { id: 'copy', icon: COPY_ICON, title: 'Copy message', cls: 'footer-copy-btn', html: true, handler(e) {
-      e.stopPropagation();
-      const btn = e.currentTarget;
-      uiModule.copyToClipboard(msgElement.querySelector('.body')?.textContent || '');
-      btn.innerHTML = CHECK_ICON;
-      setTimeout(() => { btn.innerHTML = COPY_ICON; }, 1500);
-    }},
-    { id: 'resend', icon: '\u21BB', title: 'Resend message', cls: 'msg-action-btn', handler(e) {
-      e.stopPropagation();
-      if (window.chatModule?.resendUserMessage) window.chatModule.resendUserMessage(msgElement);
-    }},
+    {
+      id: 'edit',
+      icon: '\u270E',
+      title: 'Edit message',
+      cls: 'msg-action-btn',
+      handler(e) {
+        e.stopPropagation();
+        if (window.chatModule?.editUserMessage)
+          window.chatModule.editUserMessage(msgElement);
+      },
+    },
+    {
+      id: 'delete',
+      icon: '\u2715',
+      title: 'Delete message',
+      cls: 'msg-action-btn msg-delete-btn',
+      handler(e) {
+        e.stopPropagation();
+        if (window.chatModule?.deleteMessage)
+          window.chatModule.deleteMessage(msgElement);
+      },
+    },
+    {
+      id: 'copy',
+      icon: COPY_ICON,
+      title: 'Copy message',
+      cls: 'footer-copy-btn',
+      html: true,
+      handler(e) {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        uiModule.copyToClipboard(
+          msgElement.querySelector('.body')?.textContent || '',
+        );
+        btn.innerHTML = CHECK_ICON;
+        setTimeout(() => {
+          btn.innerHTML = COPY_ICON;
+        }, 1500);
+      },
+    },
+    {
+      id: 'resend',
+      icon: '\u21BB',
+      title: 'Resend message',
+      cls: 'msg-action-btn',
+      handler(e) {
+        e.stopPropagation();
+        if (window.chatModule?.resendUserMessage)
+          window.chatModule.resendUserMessage(msgElement);
+      },
+    },
   ];
 
   const recent = _getUserRecentActions();
   const defaults = ['edit', 'delete', 'copy'];
   const order = recent.length > 0 ? recent : defaults;
   const sorted = [...allActions].sort((a, b) => {
-    const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+    const ai = order.indexOf(a.id),
+      bi = order.indexOf(b.id);
     if (ai >= 0 && bi >= 0) return ai - bi;
     if (ai >= 0) return -1;
     if (bi >= 0) return 1;
@@ -1628,7 +2083,7 @@ export function createUserMsgFooter(msgElement) {
   const visible = sorted.slice(0, _MAX_VISIBLE);
   const overflow = sorted.slice(_MAX_VISIBLE);
 
-  visible.forEach(a => {
+  visible.forEach((a) => {
     const btn = _makeActionBtn(a.cls, a.title, a.html ? '' : a.icon, (ev) => {
       _trackUserAction(a.id);
       a.handler(ev);
@@ -1648,14 +2103,15 @@ export function createUserMsgFooter(msgElement) {
       e.stopPropagation();
       const existing = document.querySelector('.msg-overflow-menu');
       if (existing) {
-        if (typeof existing._dismiss === 'function') existing._dismiss(); else existing.remove();
+        if (typeof existing._dismiss === 'function') existing._dismiss();
+        else existing.remove();
         if (existing._trigger === moreBtn) return;
       }
 
       const menu = document.createElement('div');
       menu.className = 'msg-overflow-menu';
       let closeMenu = () => menu.remove();
-      overflow.forEach(a => {
+      overflow.forEach((a) => {
         const item = document.createElement('button');
         item.className = 'msg-overflow-item';
         item.type = 'button';
@@ -1672,12 +2128,19 @@ export function createUserMsgFooter(msgElement) {
       menu._trigger = moreBtn;
       document.body.appendChild(menu);
       const btnRect = moreBtn.getBoundingClientRect();
-      menu.style.top = (btnRect.top - menu.offsetHeight - 4) + 'px';
+      menu.style.top = btnRect.top - menu.offsetHeight - 4 + 'px';
       menu.style.left = btnRect.left + 'px';
-      if (parseFloat(menu.style.top) < 8) menu.style.top = (btnRect.bottom + 4) + 'px';
+      if (parseFloat(menu.style.top) < 8)
+        menu.style.top = btnRect.bottom + 4 + 'px';
       const mr = menu.getBoundingClientRect();
-      if (mr.right > window.innerWidth - 8) menu.style.left = (window.innerWidth - mr.width - 8) + 'px';
-      closeMenu = bindMenuDismiss(menu, () => menu.remove(), (ev) => !menu.contains(ev.target) && ev.target !== moreBtn);    });
+      if (mr.right > window.innerWidth - 8)
+        menu.style.left = window.innerWidth - mr.width - 8 + 'px';
+      closeMenu = bindMenuDismiss(
+        menu,
+        () => menu.remove(),
+        (ev) => !menu.contains(ev.target) && ev.target !== moreBtn,
+      );
+    });
     actions.appendChild(moreBtn);
   }
 
@@ -1709,28 +2172,35 @@ export function displayMetrics(messageElement, metrics) {
 
   // Accumulate session cost (only on fresh metrics, not history reload)
   if (!metrics._fromHistory) {
-    const _sid = window.sessionModule && window.sessionModule.getCurrentSessionId();
+    const _sid =
+      window.sessionModule && window.sessionModule.getCurrentSessionId();
     if (_sid && cost !== null) {
       try {
         const _costs = JSON.parse(localStorage.getItem(_COST_KEY) || '{}');
         _costs[_sid] = (_costs[_sid] || 0) + cost;
         localStorage.setItem(_COST_KEY, JSON.stringify(_costs));
-      } catch (_e) { /* ignore */ }
+      } catch (_e) {
+        /* ignore */
+      }
       updateSessionCostUI();
     }
   }
 
   // Default: show tok/s if available, else fall back to other stats
-  const costStr0 = cost !== null ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}` : null;
-  const metricsLabel = tps != null && tps !== 'undefined'
-    ? `${tps} tok/s`
-    : costStr0
-      ? `${outputTokens} tok · ${costStr0}`
-      : outputTokens
-        ? `${outputTokens} tok · ${responseTime != null ? responseTime + 's' : ''}`
-        : responseTime != null
-          ? `${responseTime}s`
-          : '';
+  const costStr0 =
+    cost !== null
+      ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}`
+      : null;
+  const metricsLabel =
+    tps != null && tps !== 'undefined'
+      ? `${tps} tok/s`
+      : costStr0
+        ? `${outputTokens} tok · ${costStr0}`
+        : outputTokens
+          ? `${outputTokens} tok · ${responseTime != null ? responseTime + 's' : ''}`
+          : responseTime != null
+            ? `${responseTime}s`
+            : '';
   if (!metricsLabel) return;
   metricsContainer.textContent = metricsLabel;
   metricsContainer.style.cursor = 'pointer';
@@ -1741,18 +2211,34 @@ export function displayMetrics(messageElement, metrics) {
   metricsDivider.style.pointerEvents = 'none';
   metricsContainer.addEventListener('click', (e) => {
     e.stopPropagation();
-    document.querySelectorAll('.ctx-popup').forEach(p => { if (typeof p._dismiss === 'function') p._dismiss(); else p.remove(); });
+    document.querySelectorAll('.ctx-popup').forEach((p) => {
+      if (typeof p._dismiss === 'function') p._dismiss();
+      else p.remove();
+    });
 
-    const costStr = cost !== null ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}` : '';
-    const costRows = costStr ? `<div><span class="ctx-label">Cost</span> ${costStr}</div>` : '';
-    const speedStr = tps != null && tps !== 'undefined' ? `${tps} tok/s` : 'n/a';
+    const costStr =
+      cost !== null
+        ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}`
+        : '';
+    const costRows = costStr
+      ? `<div><span class="ctx-label">Cost</span> ${costStr}</div>`
+      : '';
+    const speedStr =
+      tps != null && tps !== 'undefined' ? `${tps} tok/s` : 'n/a';
     const totalTok = inputTokens + outputTokens;
-    const ctxColor = ctxPct >= 85 ? 'var(--red, #e06c75)' : ctxPct >= 70 ? '#ff9900' : 'var(--color-muted-alt, #6b7280)';
+    const ctxColor =
+      ctxPct >= 85
+        ? 'var(--red, #e06c75)'
+        : ctxPct >= 70
+          ? '#ff9900'
+          : 'var(--color-muted-alt, #6b7280)';
     const prepTime = metrics.agent_prep_time;
     const modelWaitTime = metrics.agent_model_wait_time;
     const prepBreakdown = metrics.agent_prep_breakdown || null;
     const prepDetails = prepBreakdown
-      ? Object.entries(prepBreakdown).map(([k, v]) => `${k}: ${v}s`).join('<br>')
+      ? Object.entries(prepBreakdown)
+          .map(([k, v]) => `${k}: ${v}s`)
+          .join('<br>')
       : '';
 
     // Session total cost
@@ -1776,13 +2262,21 @@ export function displayMetrics(messageElement, metrics) {
       ${modelWaitTime != null ? `<div><span class="ctx-label">Model wait</span> ${modelWaitTime}s</div>` : ''}
       ${costRows}
       ${sessionCostStr}
-      ${prepDetails ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:0.85em;opacity:0.8;">
+      ${
+        prepDetails
+          ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:0.85em;opacity:0.8;">
         <div style="font-weight:600;margin-bottom:4px;color:var(--fg);">Agent prep</div>
         ${prepDetails}
-      </div>` : ''}
-      ${ctxPct !== undefined && ctxPct > 0 ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">
+      </div>`
+          : ''
+      }
+      ${
+        ctxPct !== undefined && ctxPct > 0
+          ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">
         <span class="ctx-label">Context</span> <span style="color:${ctxColor};font-weight:600;">${ctxPct}%</span> used
-      </div>` : ''}
+      </div>`
+          : ''
+      }
       ${isReal ? '' : '<div style="margin-top:4px;font-size:0.8em;opacity:0.4;">~ estimated token count</div>'}
     `;
 
@@ -1794,11 +2288,12 @@ export function displayMetrics(messageElement, metrics) {
     const spaceAbove = rect.top;
     const spaceBelow = window.innerHeight - rect.bottom;
     if (spaceAbove >= pr.height + 8 || spaceAbove > spaceBelow) {
-      popup.style.top = (rect.top - pr.height - 8) + 'px';
+      popup.style.top = rect.top - pr.height - 8 + 'px';
     } else {
-      popup.style.top = (rect.bottom + 8) + 'px';
+      popup.style.top = rect.bottom + 8 + 'px';
     }
-    if (pr.right > window.innerWidth - 8) popup.style.left = (window.innerWidth - pr.width - 8) + 'px';
+    if (pr.right > window.innerWidth - 8)
+      popup.style.left = window.innerWidth - pr.width - 8 + 'px';
     if (parseFloat(popup.style.left) < 8) popup.style.left = '8px';
     popup.style.visibility = '';
 
@@ -1815,10 +2310,16 @@ export function displayMetrics(messageElement, metrics) {
   let ctxRing = null;
   const ctxLen = metrics.context_length || 0;
   if (ctxPct !== undefined && ctxPct > 0) {
-    const r = 6, stroke = 1.5;
+    const r = 6,
+      stroke = 1.5;
     const circ = 2 * Math.PI * r;
     const fill = circ * (ctxPct / 100);
-    const ctxColor = ctxPct >= 85 ? 'var(--red, #e06c75)' : ctxPct >= 70 ? '#ff9900' : 'var(--green, #98c379)';
+    const ctxColor =
+      ctxPct >= 85
+        ? 'var(--red, #e06c75)'
+        : ctxPct >= 70
+          ? '#ff9900'
+          : 'var(--green, #98c379)';
     ctxRing = document.createElement('span');
     ctxRing.className = 'ctx-ring';
     ctxRing.title = `${ctxPct}% context used — click for details`;
@@ -1833,12 +2334,15 @@ export function displayMetrics(messageElement, metrics) {
 
     ctxRing.addEventListener('click', (e) => {
       e.stopPropagation();
-      document.querySelectorAll('.ctx-detail-popup').forEach(p => { if (typeof p._dismiss === 'function') p._dismiss(); else p.remove(); });
+      document.querySelectorAll('.ctx-detail-popup').forEach((p) => {
+        if (typeof p._dismiss === 'function') p._dismiss();
+        else p.remove();
+      });
 
       const usedTokens = inputTokens || 0;
       const totalCtx = ctxLen || 0;
       const modelShort = model.split('/').pop();
-      const fmtNum = n => n ? n.toLocaleString() : '?';
+      const fmtNum = (n) => (n ? n.toLocaleString() : '?');
 
       const popup = document.createElement('div');
       popup.className = 'ctx-detail-popup';
@@ -1863,7 +2367,8 @@ export function displayMetrics(messageElement, metrics) {
       if (compactBtn) {
         compactBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          const sid = window.sessionModule && window.sessionModule.getCurrentSessionId();
+          const sid =
+            window.sessionModule && window.sessionModule.getCurrentSessionId();
           if (!sid) return;
           popup.remove();
 
@@ -1877,14 +2382,22 @@ export function displayMetrics(messageElement, metrics) {
           compactRole.textContent = 'Odysseus';
           const compactBody = document.createElement('div');
           compactBody.className = 'body';
-          compactBody.innerHTML = 'Compacting context <span class="compact-wave">▁▂▃▅▂▁</span>';
+          compactBody.innerHTML =
+            'Compacting context <span class="compact-wave">▁▂▃▅▂▁</span>';
           compactMsg.appendChild(compactRole);
           compactMsg.appendChild(compactBody);
           chatBox.appendChild(compactMsg);
           chatBox.scrollTop = chatBox.scrollHeight;
 
           // Animate the wave
-          const waveFrames = ['▁▂▃▅▂▁', '▂▃▅▃▂▁', '▃▅▃▂▁▂', '▅▃▂▁▂▃', '▃▂▁▂▃▅', '▂▁▂▃▅▃'];
+          const waveFrames = [
+            '▁▂▃▅▂▁',
+            '▂▃▅▃▂▁',
+            '▃▅▃▂▁▂',
+            '▅▃▂▁▂▃',
+            '▃▂▁▂▃▅',
+            '▂▁▂▃▅▃',
+          ];
           let frame = 0;
           const waveEl = compactBody.querySelector('.compact-wave');
           const waveInterval = setInterval(() => {
@@ -1893,20 +2406,27 @@ export function displayMetrics(messageElement, metrics) {
           }, 150);
 
           try {
-            const res = await fetch(window.location.origin + '/api/session/' + sid + '/compact', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-            });
+            const res = await fetch(
+              window.location.origin + '/api/session/' + sid + '/compact',
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+              },
+            );
             clearInterval(waveInterval);
             if (res.ok) {
-              const data = await res.json();
               // Reload session — the compacted history will show
-              if (window.sessionModule) await window.sessionModule.selectSession(sid);
+              if (window.sessionModule)
+                await window.sessionModule.selectSession(sid);
               // Scroll to the compacted message (first msg with compacted metadata)
               setTimeout(() => {
                 const msgs = document.querySelectorAll('#chat-history .msg');
                 for (const m of msgs) {
-                  if (m.querySelector('.body')?.textContent.includes('Conversation compacted')) {
+                  if (
+                    m
+                      .querySelector('.body')
+                      ?.textContent.includes('Conversation compacted')
+                  ) {
                     m.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     break;
                   }
@@ -1917,14 +2437,17 @@ export function displayMetrics(messageElement, metrics) {
               try {
                 const err = await res.json();
                 if (err.detail) detail = err.detail;
-              } catch {}
+              } catch {/*Silent Fail*/}
               compactBody.textContent = detail;
               compactBody.style.color = 'var(--red)';
             }
           } catch (err) {
             clearInterval(waveInterval);
             console.warn('compact failed:', err);
-            compactBody.innerHTML = '<span style="color:var(--red);">Compaction failed: ' + err.message + '</span>';
+            compactBody.innerHTML =
+              '<span style="color:var(--red);">Compaction failed: ' +
+              err.message +
+              '</span>';
           }
         });
       }
@@ -1937,13 +2460,20 @@ export function displayMetrics(messageElement, metrics) {
       popup.style.left = Math.max(8, rect.right - pr.width) + 'px';
       const spaceAbove = rect.top;
       if (spaceAbove >= pr.height + 8) {
-        popup.style.top = (rect.top - pr.height - 8) + 'px';
+        popup.style.top = rect.top - pr.height - 8 + 'px';
       } else {
-        popup.style.top = (rect.bottom + 8) + 'px';
+        popup.style.top = rect.bottom + 8 + 'px';
       }
       popup.style.visibility = '';
 
-      bindMenuDismiss(popup, () => popup.remove(), (ev) => !popup.contains(ev.target) && ev.target !== ctxRing && !ctxRing.contains(ev.target));
+      bindMenuDismiss(
+        popup,
+        () => popup.remove(),
+        (ev) =>
+          !popup.contains(ev.target) &&
+          ev.target !== ctxRing &&
+          !ctxRing.contains(ev.target),
+      );
     });
   }
 
@@ -1981,13 +2511,23 @@ export function addMessage(role, content, modelName, metadata) {
   try {
     hideWelcomeScreen();
     const box = document.getElementById('chat-history');
-    if (!box) { console.error('Chat history element not found'); return; }
+    if (!box) {
+      console.error('Chat history element not found');
+      return;
+    }
 
     var esc = uiModule.esc;
-    const textRaw = Array.isArray(content) ? markdownModule.renderContent(content) : content;
+    const textRaw = Array.isArray(content)
+      ? markdownModule.renderContent(content)
+      : content;
 
     // --- Agent multi-bubble reconstruction from saved metadata ---
-    if (role === 'assistant' && metadata && metadata.tool_events && metadata.tool_events.length > 0) {
+    if (
+      role === 'assistant' &&
+      metadata &&
+      metadata.tool_events &&
+      metadata.tool_events.length > 0
+    ) {
       const roundTexts = metadata.round_texts || [];
       const toolEvents = metadata.tool_events;
       let lastWrap = null;
@@ -2001,7 +2541,10 @@ export function addMessage(role, content, modelName, metadata) {
         toolsByRound[r].push(ev);
       }
 
-      const maxRound = Math.max(...Object.keys(toolsByRound).map(Number), roundTexts.length);
+      const maxRound = Math.max(
+        ...Object.keys(toolsByRound).map(Number),
+        roundTexts.length,
+      );
 
       for (let r = 0; r < maxRound; r++) {
         const roundNum = r + 1;
@@ -2015,7 +2558,11 @@ export function addMessage(role, content, modelName, metadata) {
           const pair = replyModelPair(modelName, metadata);
           const contModel = pair.actualModel || pair.requestedModel;
           roleEl.textContent = modelRouteLabel(pair.requestedModel, contModel);
-          if (pair.requestedModel && contModel && !sameModelName(pair.requestedModel, contModel)) {
+          if (
+            pair.requestedModel &&
+            contModel &&
+            !sameModelName(pair.requestedModel, contModel)
+          ) {
             roleEl.title = pair.requestedModel + ' -> ' + contModel;
           }
           applyModelColor(roleEl, contModel);
@@ -2027,13 +2574,19 @@ export function addMessage(role, content, modelName, metadata) {
           var agentSourcesPrefix = '';
           var isLastTextRound = true;
           for (let rr = r + 1; rr < maxRound; rr++) {
-            if ((roundTexts[rr] || '').trim()) { isLastTextRound = false; break; }
+            if ((roundTexts[rr] || '').trim()) {
+              isLastTextRound = false;
+              break;
+            }
           }
           var agentFindingsSuffix = '';
           if (isLastTextRound && metadata?.web_sources?.length) {
             agentSourcesPrefix = buildSourcesBox(metadata.web_sources, 'web');
           } else if (isLastTextRound && metadata?.research_sources?.length) {
-            agentSourcesPrefix = buildSourcesBox(metadata.research_sources, 'research');
+            agentSourcesPrefix = buildSourcesBox(
+              metadata.research_sources,
+              'research',
+            );
           }
           if (isLastTextRound && metadata?.research_findings?.length) {
             agentFindingsSuffix = buildFindingsBox(metadata.research_findings);
@@ -2042,7 +2595,12 @@ export function addMessage(role, content, modelName, metadata) {
           if (isLastTextRound && metadata?.rag_sources?.length) {
             agentFindingsSuffix += buildRagSourcesBox(metadata.rag_sources);
           }
-          body.innerHTML = agentSourcesPrefix + markdownModule.processWithThinking(markdownModule.squashOutsideCode(txt)) + agentFindingsSuffix;
+          body.innerHTML =
+            agentSourcesPrefix +
+            markdownModule.processWithThinking(
+              markdownModule.squashOutsideCode(txt),
+            ) +
+            agentFindingsSuffix;
           wrap.appendChild(body);
           wrap.dataset.raw = txt;
           if (metadata?._db_id) wrap.dataset.dbId = metadata._db_id;
@@ -2066,7 +2624,7 @@ export function addMessage(role, content, modelName, metadata) {
             box.appendChild(threadWrap);
           }
           for (const ev of roundTools) {
-            const ok = (ev.exit_code === 0 || ev.exit_code == null);
+            const ok = ev.exit_code === 0 || ev.exit_code == null;
             let outHtml = '';
             if (ev.output && ev.output.trim()) {
               outHtml = `<details class="agent-tool-output"><summary>Output</summary><pre>${esc(ev.output)}</pre></details>`;
@@ -2083,24 +2641,42 @@ export function addMessage(role, content, modelName, metadata) {
               const stat = [
                 d.new_file ? '<span class="diff-stat-new">new</span>' : '',
                 d.added ? `<span class="diff-stat-add">+${d.added}</span>` : '',
-                d.removed ? `<span class="diff-stat-del">\u2212${d.removed}</span>` : '',
-              ].filter(Boolean).join(' ');
-              const rows = d.text.split('\n').map(line => {
-                let cls = 'diff-ctx', text = line;
-                if (line.startsWith('+++') || line.startsWith('---')) cls = 'diff-meta';
-                else if (line.startsWith('@@')) cls = 'diff-hunk';
-                // Drop the leading diff marker (+/-/space) — colour encodes add/del.
-                else if (line.startsWith('+')) { cls = 'diff-add'; text = line.slice(1); }
-                else if (line.startsWith('-')) { cls = 'diff-del'; text = line.slice(1); }
-                else if (line.startsWith(' ')) { text = line.slice(1); }
-                return `<span class="${cls}">${esc(text) || '&nbsp;'}</span>`;
-              }).join('');  // spans are display:block \u2014 a literal \n would double-space
+                d.removed
+                  ? `<span class="diff-stat-del">\u2212${d.removed}</span>`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              const rows = d.text
+                .split('\n')
+                .map((line) => {
+                  let cls = 'diff-ctx',
+                    text = line;
+                  if (line.startsWith('+++') || line.startsWith('---'))
+                    cls = 'diff-meta';
+                  else if (line.startsWith('@@')) cls = 'diff-hunk';
+                  // Drop the leading diff marker (+/-/space) — colour encodes add/del.
+                  else if (line.startsWith('+')) {
+                    cls = 'diff-add';
+                    text = line.slice(1);
+                  } else if (line.startsWith('-')) {
+                    cls = 'diff-del';
+                    text = line.slice(1);
+                  } else if (line.startsWith(' ')) {
+                    text = line.slice(1);
+                  }
+                  return `<span class="${cls}">${esc(text) || '&nbsp;'}</span>`;
+                })
+                .join(''); // spans are display:block \u2014 a literal \n would double-space
               evDiffHtml = `<details class="agent-tool-output agent-tool-diff"><summary><span class="diff-file">${esc(d.file || 'diff')}</span> <span class="diff-summary-stats">${stat}</span></summary><pre class="diff-pre">${rows}</pre></details>`;
             }
             const node = document.createElement('div');
             node.className = 'agent-thread-node' + (ok ? '' : ' error');
             // Hide the raw JSON command when a diff says it better (same as live).
-            const evCmdHtml = (ev.command && !(ev.diff && ev.diff.text)) ? `<pre class="agent-thread-cmd">${esc(ev.command)}</pre>` : '';
+            const evCmdHtml =
+              ev.command && !(ev.diff && ev.diff.text)
+                ? `<pre class="agent-thread-cmd">${esc(ev.command)}</pre>`
+                : '';
             node.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${esc(ev.tool)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${evCmdHtml}${outHtml}${evDiffHtml}</div>`;
             // Click handling is delegated globally \u2014 see chat.js init.
             threadWrap.appendChild(node);
@@ -2112,7 +2688,16 @@ export function addMessage(role, content, modelName, metadata) {
 
           for (const ev of roundTools) {
             if (ev.image_url) {
-              box.appendChild(buildImageBubble(ev.image_url, ev.image_prompt, ev.image_model, ev.image_size, ev.image_quality, ev.image_id));
+              box.appendChild(
+                buildImageBubble(
+                  ev.image_url,
+                  ev.image_prompt,
+                  ev.image_model,
+                  ev.image_size,
+                  ev.image_quality,
+                  ev.image_id,
+                ),
+              );
             }
           }
         }
@@ -2120,13 +2705,16 @@ export function addMessage(role, content, modelName, metadata) {
 
       const firstWrap = lastMsgAi || lastWrap;
       if (firstWrap && firstWrap.classList.contains('msg-ai')) {
-        if (metadata?.memories_used?.length) firstWrap._memoriesUsed = metadata.memories_used;
+        if (metadata?.memories_used?.length)
+          firstWrap._memoriesUsed = metadata.memories_used;
         firstWrap.appendChild(createMsgFooter(firstWrap));
         if (metadata) displayMetrics(firstWrap, metadata);
       }
 
       if (window.hljs) {
-        box.querySelectorAll('pre code:not(.hljs)').forEach(b => window.hljs.highlightElement(b));
+        box
+          .querySelectorAll('pre code:not(.hljs)')
+          .forEach((b) => window.hljs.highlightElement(b));
       }
       if (markdownModule.renderMermaid) markdownModule.renderMermaid(box);
       return lastWrap;
@@ -2140,7 +2728,9 @@ export function addMessage(role, content, modelName, metadata) {
     // just with role "Supervisor" and a short summary body — instead of
     // a slim system chip. Matches chat style and integrates cleanly
     // into the conversation flow.
-    let _isWakeCheck = !!(metadata?.wake_check_in || metadata?.hidden_from_user_view);
+    let _isWakeCheck = !!(
+      metadata?.wake_check_in || metadata?.hidden_from_user_view
+    );
     if (!_isWakeCheck && typeof textRaw === 'string') {
       // Also catch historical messages persisted as "[Task] Self-check: <sid>"
       // (older wake tasks that didn't set wake_check_in metadata).
@@ -2164,18 +2754,37 @@ export function addMessage(role, content, modelName, metadata) {
     const isCompacted = metadata?.compacted;
     const replyModels = replyModelPair(modelName, metadata);
     const resolvedModel = replyModels.actualModel || replyModels.requestedModel;
-    var _roleText = role === 'user' ? 'You' : (isSlash || isCompacted) ? 'Odysseus' : modelRouteLabel(replyModels.requestedModel, resolvedModel);
-    if (role === 'assistant' && (metadata?.research || metadata?.research_clarification)) {
+    var _roleText =
+      role === 'user'
+        ? 'You'
+        : isSlash || isCompacted
+          ? 'Odysseus'
+          : modelRouteLabel(replyModels.requestedModel, resolvedModel);
+    if (
+      role === 'assistant' &&
+      (metadata?.research || metadata?.research_clarification)
+    ) {
       _roleText += ' (Research)';
     }
     if (metadata?.group_model && role !== 'user') {
       _roleText = metadata.group_model;
-    } else if (metadata?.character_name && role !== 'user' && !isSlash && !isCompacted) {
+    } else if (
+      metadata?.character_name &&
+      role !== 'user' &&
+      !isSlash &&
+      !isCompacted
+    ) {
       _roleText = metadata.character_name;
     }
     r.textContent = _roleText;
     if (role !== 'user') {
-      if (!isSlash && !isCompacted && replyModels.requestedModel && resolvedModel && !sameModelName(replyModels.requestedModel, resolvedModel)) {
+      if (
+        !isSlash &&
+        !isCompacted &&
+        replyModels.requestedModel &&
+        resolvedModel &&
+        !sameModelName(replyModels.requestedModel, resolvedModel)
+      ) {
         r.title = replyModels.requestedModel + ' -> ' + resolvedModel;
       }
       if (!isSlash && !isCompacted) applyModelColor(r, resolvedModel);
@@ -2196,7 +2805,11 @@ export function addMessage(role, content, modelName, metadata) {
     if (role === 'user') {
       text = text.replace(
         /\n*\[Image: ([^\]]+)\]\n([\s\S]*?)(?=\n*\[Image: |\n*\[Image attached: |\n*=== File: |\n*\[PDF content\]:|$)/g,
-        (_m, name, desc) => { const d = desc.trim(); if (d) _visionBlocks.push({ name: name, desc: d }); return ''; }
+        (_m, name, desc) => {
+          const d = desc.trim();
+          if (d) _visionBlocks.push({ name: name, desc: d });
+          return '';
+        },
       );
     }
     // With attachments present, also strip the embedded file/PDF/image-marker text.
@@ -2204,8 +2817,14 @@ export function addMessage(role, content, modelName, metadata) {
       // Strip === File: ... === blocks, [PDF content]: blocks, and [Image attached: ...] lines
       text = text
         .replace(/\n*=== File: .+? ===\n\[Type: .+?\]\n+```[\s\S]*?```/g, '')
-        .replace(/\n*=== File: .+? ===\n\[Type: .+?\]\n+[\s\S]*?(?=\n*=== File:|$)/g, '')
-        .replace(/\n*\[PDF content\]:[\s\S]*?(?=\n*\[PDF content\]|\n*=== File:|$)/g, '')
+        .replace(
+          /\n*=== File: .+? ===\n\[Type: .+?\]\n+[\s\S]*?(?=\n*=== File:|$)/g,
+          '',
+        )
+        .replace(
+          /\n*\[PDF content\]:[\s\S]*?(?=\n*\[PDF content\]|\n*=== File:|$)/g,
+          '',
+        )
         .replace(/\n*\[Image attached: [^\]]+\]/g, '')
         .replace(/\n*\[Attached (?:document|non-text) file\]/g, '')
         .trim();
@@ -2232,11 +2851,19 @@ export function addMessage(role, content, modelName, metadata) {
     if (role === 'assistant' && metadata?.thinking) {
       const thinkTime = metadata.thinking_time || null;
       const thinkHtml = markdownModule.processWithThinking(
-        '<think' + (thinkTime ? ` time="${thinkTime}"` : '') + '>' + metadata.thinking + '</think>\n\n' + text
+        '<think' +
+          (thinkTime ? ` time="${thinkTime}"` : '') +
+          '>' +
+          metadata.thinking +
+          '</think>\n\n' +
+          text,
       );
       b.innerHTML = sourcesPrefix + thinkHtml + findingsSuffix;
     } else {
-      b.innerHTML = sourcesPrefix + markdownModule.processWithThinking(text) + findingsSuffix;
+      b.innerHTML =
+        sourcesPrefix +
+        markdownModule.processWithThinking(text) +
+        findingsSuffix;
     }
 
     // The vision/OCR caption is stripped from the displayed text above (so the
@@ -2256,18 +2883,24 @@ export function addMessage(role, content, modelName, metadata) {
     if (role === 'user') {
       // Match compact format: [Doc edit: line X] instruction
       b.innerHTML = b.innerHTML.replace(
-        /\[Doc edit: (lines? [\d–\-]+)\]\s*/,
-        '<span class="doc-edit-tag">Doc edit: $1</span> '
+        /\[Doc edit: (lines? [\d–-]+)\]\s*/,
+        '<span class="doc-edit-tag">Doc edit: $1</span> ',
       );
       // Match raw format: "In the document, edit this specific text (line X):\n```\n...\n```\n\nInstruction: ..."
       // After markdown processing this becomes a <p> + <pre><code> block + <p>Instruction: text</p>
-      const rawDocMatch = b.innerHTML.match(/In the document, edit this specific text \((lines? [\d–\-]+)\)/);
+      const rawDocMatch = b.innerHTML.match(
+        /In the document, edit this specific text \((lines? [\d–-]+)\)/,
+      );
       if (rawDocMatch) {
         const lineRef = rawDocMatch[1];
         // Extract instruction text (after "Instruction: ")
         const instrMatch = b.textContent.match(/Instruction:\s*([\s\S]*)$/);
         const instrText = instrMatch ? instrMatch[1].trim() : '';
-        b.innerHTML = '<span class="doc-edit-tag">Doc edit: ' + lineRef + '</span> ' + markdownModule.processWithThinking(instrText);
+        b.innerHTML =
+          '<span class="doc-edit-tag">Doc edit: ' +
+          lineRef +
+          '</span> ' +
+          markdownModule.processWithThinking(instrText);
       }
 
       // Render attachment cards
@@ -2302,11 +2935,17 @@ export function addMessage(role, content, modelName, metadata) {
           if (window.chatModule) {
             window.chatModule.setHideUserBubble();
             window.chatModule.setPendingContinue(wrap);
-            const rawText = wrap.dataset.raw || wrap.querySelector('.body')?.textContent || '';
+            const rawText =
+              wrap.dataset.raw ||
+              wrap.querySelector('.body')?.textContent ||
+              '';
             const cutoff = rawText;
             const msgInput = document.getElementById('message');
             if (msgInput) {
-              msgInput.value = 'Your previous response was interrupted. It ended with:\n\n' + cutoff.slice(-500) + '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
+              msgInput.value =
+                'Your previous response was interrupted. It ended with:\n\n' +
+                cutoff.slice(-500) +
+                '\n\nDo NOT repeat what you already said. Continue exactly from where you were cut off.';
               const sb = document.querySelector('.send-btn');
               if (sb) sb.click();
             }
@@ -2325,7 +2964,11 @@ export function addMessage(role, content, modelName, metadata) {
     }
 
     // Restore variant navigation from saved metadata
-    if (role === 'assistant' && metadata?.variants && metadata.variants.length > 1) {
+    if (
+      role === 'assistant' &&
+      metadata?.variants &&
+      metadata.variants.length > 1
+    ) {
       wrap.dataset.variants = JSON.stringify(metadata.variants);
       const idx = metadata.variantIndex ?? metadata.variants.length - 1;
       wrap.dataset.variantIndex = String(idx);
@@ -2333,9 +2976,12 @@ export function addMessage(role, content, modelName, metadata) {
       // Re-render from `raw` markdown rather than trusting cached `v.html`.
       // Variants ride through localStorage / chat export-import; cached HTML
       // would let an attacker-controlled session JSON inject markup.
-      const _renderVariant = (v) => (v && v.raw)
-        ? markdownModule.processWithThinking(markdownModule.squashOutsideCode(v.raw))
-        : (v && v.html) || '';
+      const _renderVariant = (v) =>
+        v && v.raw
+          ? markdownModule.processWithThinking(
+              markdownModule.squashOutsideCode(v.raw),
+            )
+          : (v && v.html) || '';
 
       // Show the selected variant's content
       const v = metadata.variants[idx];
@@ -2355,9 +3001,15 @@ export function addMessage(role, content, modelName, metadata) {
       nav.appendChild(divider);
 
       const tagLabel = document.createElement('span');
-      const _icons = { regen: '\u21BB', shorter: '\u2702', simpler: '?', original: '\u25CB' };
+      const _icons = {
+        regen: '\u21BB',
+        shorter: '\u2702',
+        simpler: '?',
+        original: '\u25CB',
+      };
       const _tl0 = metadata.variants[idx]?.label;
-      tagLabel.className = 'variant-tag' + (_tl0 === 'shorter' ? ' variant-tag-scissors' : '');
+      tagLabel.className =
+        'variant-tag' + (_tl0 === 'shorter' ? ' variant-tag-scissors' : '');
       tagLabel.textContent = _icons[_tl0] || '';
       nav.appendChild(tagLabel);
 
@@ -2397,19 +3049,36 @@ export function addMessage(role, content, modelName, metadata) {
         b.innerHTML = _renderVariant(sv);
         wrap.dataset.raw = sv.raw;
         wrap.dataset.variantIndex = String(newIdx);
-        if (window.hljs) wrap.querySelectorAll('pre code').forEach(bl => window.hljs.highlightElement(bl));
+        if (window.hljs)
+          wrap
+            .querySelectorAll('pre code')
+            .forEach((bl) => window.hljs.highlightElement(bl));
         tagLabel.textContent = _icons[sv.label] || '';
-        tagLabel.className = 'variant-tag' + (sv.label === 'shorter' ? ' variant-tag-scissors' : '');
+        tagLabel.className =
+          'variant-tag' +
+          (sv.label === 'shorter' ? ' variant-tag-scissors' : '');
         numLeft.textContent = String(newIdx + 1);
         numLeft.disabled = newIdx === 0;
         numRight.disabled = newIdx === vars.length - 1;
         prevBtn.disabled = newIdx === 0;
         nextBtn.disabled = newIdx === vars.length - 1;
       };
-      prevBtn.addEventListener('click', (e) => { e.stopPropagation(); switchFn(parseInt(wrap.dataset.variantIndex) - 1); });
-      numLeft.addEventListener('click', (e) => { e.stopPropagation(); switchFn(parseInt(wrap.dataset.variantIndex) - 1); });
-      numRight.addEventListener('click', (e) => { e.stopPropagation(); switchFn(parseInt(wrap.dataset.variantIndex) + 1); });
-      nextBtn.addEventListener('click', (e) => { e.stopPropagation(); switchFn(parseInt(wrap.dataset.variantIndex) + 1); });
+      prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchFn(parseInt(wrap.dataset.variantIndex) - 1);
+      });
+      numLeft.addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchFn(parseInt(wrap.dataset.variantIndex) - 1);
+      });
+      numRight.addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchFn(parseInt(wrap.dataset.variantIndex) + 1);
+      });
+      nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchFn(parseInt(wrap.dataset.variantIndex) + 1);
+      });
 
       r.appendChild(nav);
     }
@@ -2419,7 +3088,8 @@ export function addMessage(role, content, modelName, metadata) {
       // wrap._memoriesUsed — propagate it from saved metadata so the pill
       // survives a page refresh (live-stream path sets it via SSE, but
       // history reloads need this assignment).
-      if (metadata?.memories_used?.length) wrap._memoriesUsed = metadata.memories_used;
+      if (metadata?.memories_used?.length)
+        wrap._memoriesUsed = metadata.memories_used;
       wrap.appendChild(createMsgFooter(wrap));
       if (metadata) displayMetrics(wrap, metadata);
     } else {
