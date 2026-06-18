@@ -1,10 +1,9 @@
-// static/js/group.js
 // Group Chat — multi-model conversations (parallel or round-robin)
 
 import uiModule from './ui.js';
 import markdownModule from './markdown.js';
-import { shortModel } from '../model/models.js';
-import { safeDisplayImageSrc } from '../util/safeString.js';
+import { shortModel } from './model/models.js';
+import { safeDisplayImageSrc } from './util/safeString.js';
 import chatRenderer from './chatRenderer.js';
 import spinnerModule from './spinner.js';
 import { providerLogo } from './providers.js';
