@@ -4893,8 +4893,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     window.__odysseus_thread_click_bound = true;
   }
 
-export default chatModule;
-window.chatModule = chatModule;
-
+  export default chatModule;
+  window.chatModule = chatModule;
 
 
