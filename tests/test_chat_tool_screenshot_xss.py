@@ -16,14 +16,14 @@ def test_live_tool_screenshot_does_not_template_raw_sse_value():
 
 def test_restored_tool_screenshot_uses_raster_data_url_whitelist():
     renderer = (_REPO / "static" / "js" / "chatRenderer.js").read_text(encoding="utf-8")
+    safe = (_REPO / "static" / "js" / "util" / "safeString.js").read_text(encoding="utf-8")
+
     assert_valid_imports(
         renderer,
         import_names=["safeToolScreenshotSrc"],
         module_path="./util/safeString"
     )
-    # util = (_REPO / "static" / "js" / "util" / "safeString.js").read_text(encoding="utf-8")
-    # assert "import { safeToolScreenshotSrc } from ./util/safeString.js" in renderer
-    # assert "(?:png|jpe?g|gif|webp)" in util
+    assert "(?:png|jpe?g|gif|webp)" in safe
     assert "safeToolScreenshotSrc(ev.screenshot)" in renderer
     assert 'src="${esc(ev.screenshot)}"' not in renderer
 
