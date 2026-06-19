@@ -5023,3 +5023,4 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
 
   export default chatModule;
   window.chatModule = chatModule;
+
