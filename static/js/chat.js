@@ -18,6 +18,12 @@ import { svgifyEmoji } from './markdown.js';
 import spinnerModule from './spinner.js';
 import presetsModule from './presets.js';
 import fileHandlerModule from './fileHandler.js';
+import {
+  modelRouteLabel,
+  sameModelName,
+  shortModel
+} from './model/models.js';
+import { getImageCost, getModelCost } from './model/pricing.js';
 import searchModule from './search.js';
 import documentModule from './document.js';
 import * as emailInbox from './emailInbox.js';
@@ -55,6 +61,12 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
   const _AUTO_NUDGE_CAP = 3;
 
   // shortModel and modelColor are now in chatRenderer.js
+<<<<<<< HEAD
+=======
+  var _shortModel = shortModel;
+  var _modelRouteLabel = modelRouteLabel;
+  var _sameModelName = sameModelName;
+>>>>>>> d4436d1 (wip: chatRenderer refactor+)
   var _applyModelColor = chatRenderer.applyModelColor;
   function _setRoleModelLabel(roleEl, requestedModel, actualModel, opts) {
     if (!roleEl) return;
