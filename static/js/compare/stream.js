@@ -1,12 +1,12 @@
 // compare/stream.js — SSE streaming to panes
-import state from './state.js';
-import { addFinishBadge } from './vote.js';
-import { getModelCost } from '../model/models.js';
-import { safeDisplayImageSrc } from '../util/safeString.js';
 import markdownModule from '../markdown.js';
+import { getImageCost, getModelCost } from '../model/pricing.js';
+import presetsModule from '../presets.js';
 import spinnerModule from '../spinner.js';
 import uiModule from '../ui.js';
-import presetsModule from '../presets.js';
+import { safeDisplayImageSrc } from '../util/safeString.js';
+import state from './state.js';
+import { addFinishBadge } from './vote.js';
 
 var escapeHtml = uiModule.esc;
 
@@ -18,7 +18,7 @@ function _safeHttpHref(raw) {
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
       return parsed.href;
     }
-  } catch (_) {}
+  } catch (_) {/*Silent Fail*/}
   return '';
 }
 
@@ -43,7 +43,7 @@ function _formatMs(ms) {
 function _renderSearchResults(data) {
   const container = document.createElement('div');
   container.className = 'compare-search-results';
-  (data.results || []).forEach(r => {
+  (data.results || []).forEach((r) => {
     const card = document.createElement('div');
     card.className = 'compare-search-result';
     const titleLink = document.createElement('a');
@@ -74,7 +74,13 @@ function _renderSearchResults(data) {
 }
 
 /** Run synthesis for a search pane — sends search results to an LLM for analysis. */
-async function _runSynthForPane(modelToUse, synthPrompt, synthBody, spinner, hist) {
+async function _runSynthForPane(
+  modelToUse,
+  synthPrompt,
+  synthBody,
+  spinner,
+  hist,
+) {
   // Create temp session for synthesis
   const fd = new FormData();
   fd.append('name', 'Synthesis');
@@ -86,9 +92,12 @@ async function _runSynthForPane(modelToUse, synthPrompt, synthBody, spinner, his
   }
 
   try {
-    const createRes = await fetch(`${state.API_BASE}/api/session`, { method: 'POST', body: fd });
+    const createRes = await fetch(`${state.API_BASE}/api/session`, {
+      method: 'POST',
+      body: fd,
+    });
     if (!createRes.ok) {
-      const errData = await createRes.json().catch(() => ({}));
+      const errData = await createRes.json().catch(() => ({/*Silent Fail*/}));
       throw new Error(errData.detail || 'Failed to create session');
     }
     const createData = await createRes.json();
@@ -121,26 +130,34 @@ async function _runSynthForPane(modelToUse, synthPrompt, synthBody, spinner, his
               synthText += d.delta;
               if (markdownModule && synthText.trim()) {
                 synthBody.innerHTML = markdownModule.processWithThinking(
-                  markdownModule.squashOutsideCode(synthText)
+                  markdownModule.squashOutsideCode(synthText),
                 );
               } else {
                 synthBody.textContent = synthText;
               }
               hist.scrollTop = hist.scrollHeight;
             }
-          } catch (e) {}
+          } catch (e) {/*Silent Fail*/}
         }
       }
     }
 
     // Final highlight
-    if (window.hljs) synthBody.querySelectorAll('pre code:not(.hljs)').forEach(b => window.hljs.highlightElement(b));
+    if (window.hljs)
+      synthBody
+        .querySelectorAll('pre code:not(.hljs)')
+        .forEach((b) => window.hljs.highlightElement(b));
 
     // Cleanup temp session
-    fetch(`${state.API_BASE}/api/session/${createData.id}`, { method: 'DELETE' }).catch(() => {});
+    fetch(`${state.API_BASE}/api/session/${createData.id}`, {
+      method: 'DELETE',
+    }).catch(() => {/*Silent Fail*/});
   } catch (e) {
     if (spinner) spinner.stop();
-    synthBody.innerHTML = '<div style="color:var(--color-error);font-size:0.85em;">Synthesis failed: ' + escapeHtml(e.message) + '</div>';
+    synthBody.innerHTML =
+      '<div style="color:var(--color-error);font-size:0.85em;">Synthesis failed: ' +
+      escapeHtml(e.message) +
+      '</div>';
   }
 }
 
@@ -155,7 +172,9 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
   state._abortControllers[paneIdx] = ac;
 
   // Show stop button for this pane
-  const _paneEl = document.querySelector(`.compare-pane[data-pane="${paneIdx}"]`);
+  const _paneEl = document.querySelector(
+    `.compare-pane[data-pane="${paneIdx}"]`,
+  );
   if (_paneEl) {
     const _stopBtn = _paneEl.querySelector('.pane-stop-btn');
     if (_stopBtn) _stopBtn.style.display = '';
@@ -165,15 +184,21 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
   let metrics = null;
   let timedOut = false;
   let streamOk = false;
-  let currentToolBlock = null;  // track active agent tool block
+  let currentToolBlock = null; // track active agent tool block
   // Idle timeout — abort only if no data is received for this many seconds.
   // Long generations (SVG, big code) are fine as long as the stream stays
   // active. opts.timeout may still tighten this for specific paths.
   const effectiveTimeout = opts.timeout || state._timeout;
-  let timeoutId = setTimeout(() => { timedOut = true; ac.abort(); }, effectiveTimeout * 1000);
+  let timeoutId = setTimeout(() => {
+    timedOut = true;
+    ac.abort();
+  }, effectiveTimeout * 1000);
   const _resetIdleTimeout = () => {
     clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => { timedOut = true; ac.abort(); }, effectiveTimeout * 1000);
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      ac.abort();
+    }, effectiveTimeout * 1000);
   };
 
   // Live timer
@@ -200,14 +225,15 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     if (_renderPending) return;
     const now = performance.now();
     const elapsed = now - _renderLastAt;
-    const delay = elapsed >= _RENDER_THROTTLE_MS ? 0 : _RENDER_THROTTLE_MS - elapsed;
+    const delay =
+      elapsed >= _RENDER_THROTTLE_MS ? 0 : _RENDER_THROTTLE_MS - elapsed;
     _renderPending = true;
     setTimeout(() => {
       _renderPending = false;
       _renderLastAt = performance.now();
       if (markdownModule && accumulated.trim()) {
         target.innerHTML = markdownModule.processWithThinking(
-          markdownModule.squashOutsideCode(accumulated)
+          markdownModule.squashOutsideCode(accumulated),
         );
       } else {
         target.textContent = accumulated;
@@ -257,7 +283,9 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     }
 
     const response = await fetch(`${state.API_BASE}/api/chat_stream`, {
-      method: 'POST', body: fd, signal: ac.signal
+      method: 'POST',
+      body: fd,
+      signal: ac.signal,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -268,7 +296,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      _resetIdleTimeout();  // any chunk = stream is alive
+      _resetIdleTimeout(); // any chunk = stream is alive
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
@@ -283,54 +311,80 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
           if (json.type === 'metrics') {
             metrics = json.data;
 
-          // ── Research progress (spinner updates) ──
+            // ── Research progress (spinner updates) ──
           } else if (json.type === 'research_progress') {
             const rp = json.data;
             const spinner = aiMsgEl._spinner;
             if (spinner) {
               if (rp.phase === 'searching') {
                 const q = rp.queries ? `${rp.queries} queries` : '';
-                const s = rp.total_sources ? ` · ${rp.total_sources} sources` : '';
-                spinner.updateMessage(`R${rp.round || '?'}: Searching${q ? ' (' + q + ')' : ''}${s}`);
+                const s = rp.total_sources
+                  ? ` · ${rp.total_sources} sources`
+                  : '';
+                spinner.updateMessage(
+                  `R${rp.round || '?'}: Searching${q ? ' (' + q + ')' : ''}${s}`,
+                );
               } else if (rp.phase === 'reading') {
-                spinner.updateMessage(`R${rp.round || '?'}: Reading ${rp.new_sources || ''} pages`);
+                spinner.updateMessage(
+                  `R${rp.round || '?'}: Reading ${rp.new_sources || ''} pages`,
+                );
               } else if (rp.phase === 'analyzing') {
-                spinner.updateMessage(`R${rp.round || '?'}: Analyzing ${rp.total_findings || 0} findings`);
+                spinner.updateMessage(
+                  `R${rp.round || '?'}: Analyzing ${rp.total_findings || 0} findings`,
+                );
               } else if (rp.phase === 'writing') {
-                spinner.updateMessage(`Writing report · ${rp.total_sources || 0} sources`);
+                spinner.updateMessage(
+                  `Writing report · ${rp.total_sources || 0} sources`,
+                );
               } else if (rp.phase === 'error') {
                 spinner.updateMessage(rp.message || 'Research error');
               }
             }
 
-          // ── Research sources / Web sources (compact sources box) ──
-          } else if (json.type === 'research_sources' || json.type === 'web_sources') {
+            // ── Research sources / Web sources (compact sources box) ──
+          } else if (
+            json.type === 'research_sources' ||
+            json.type === 'web_sources'
+          ) {
             const sources = json.data || [];
             if (sources.length > 0) {
-              const label = json.type === 'research_sources' ? 'Research' : 'Web';
+              const label =
+                json.type === 'research_sources' ? 'Research' : 'Web';
               const box = document.createElement('div');
               box.className = 'compare-sources-box';
-              box.innerHTML = '<span class="sources-label">' + sources.length + ' ' + label + ' sources</span>';
-              box.title = sources.map(s => s.title || s.url).join('\n');
+              box.innerHTML =
+                '<span class="sources-label">' +
+                sources.length +
+                ' ' +
+                label +
+                ' sources</span>';
+              box.title = sources.map((s) => s.title || s.url).join('\n');
               // Replace spinner with sources + new spinner
               aiBody.innerHTML = '';
               aiBody.appendChild(box);
               if (spinnerModule) {
-                const newSpinner = spinnerModule.create('Generating response...', 'right');
+                const newSpinner = spinnerModule.create(
+                  'Generating response...',
+                  'right',
+                );
                 aiBody.appendChild(newSpinner.createElement());
                 newSpinner.start();
                 aiMsgEl._spinner = newSpinner;
               }
             }
 
-          // ── Tool start (bash, web search agent tool) ──
+            // ── Tool start (bash, web search agent tool) ──
           } else if (json.type === 'tool_start') {
             // Finalize any accumulated text before the tool block
             if (accumulated.trim() && aiMsgEl._textEl) {
               if (markdownModule) {
                 aiMsgEl._textEl.innerHTML = markdownModule.processWithThinking(
-                  markdownModule.squashOutsideCode(accumulated));
-                if (window.hljs) aiMsgEl._textEl.querySelectorAll('pre code:not(.hljs)').forEach(b => window.hljs.highlightElement(b));
+                  markdownModule.squashOutsideCode(accumulated),
+                );
+                if (window.hljs)
+                  aiMsgEl._textEl
+                    .querySelectorAll('pre code:not(.hljs)')
+                    .forEach((b) => window.hljs.highlightElement(b));
               }
             }
             // Destroy spinner if still present
@@ -338,7 +392,9 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
               aiMsgEl._spinner.destroy();
               aiMsgEl._spinner = null;
               // Clean up spinner element but keep sources box + text
-              const spinnerEl = aiBody.querySelector('.spinner-wrapper, .mini-spinner');
+              const spinnerEl = aiBody.querySelector(
+                '.spinner-wrapper, .mini-spinner',
+              );
               if (spinnerEl) spinnerEl.remove();
             }
             const toolName = json.tool || 'tool';
@@ -346,37 +402,56 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             // Image generation: show ASCII spinner instead of compact tool block
             if (toolName === 'generate_image' && spinnerModule) {
               aiBody.innerHTML = '';
-              const imgSpinner = spinnerModule.create('Generating image...', 'right');
+              const imgSpinner = spinnerModule.create(
+                'Generating image...',
+                'right',
+              );
               aiBody.appendChild(imgSpinner.createElement());
               imgSpinner.start();
               aiMsgEl._imgSpinner = imgSpinner;
               currentToolBlock = null;
             } else {
               // Agent thread node — matches main chat style
-              const _toolLabels = { bash: 'Terminal', python: 'Python', web_search: 'Web Search', read_file: 'Read File', write_file: 'Write File' };
+              const _toolLabels = {
+                bash: 'Terminal',
+                python: 'Python',
+                web_search: 'Web Search',
+                read_file: 'Read File',
+                write_file: 'Write File',
+              };
               const toolLabel = _toolLabels[toolName.toLowerCase()] || toolName;
-              const cmdHtml = cmd ? `<pre class="agent-thread-cmd">${escapeHtml(cmd)}</pre>` : '';
+              const cmdHtml = cmd
+                ? `<pre class="agent-thread-cmd">${escapeHtml(cmd)}</pre>`
+                : '';
               const node = document.createElement('div');
               node.className = 'agent-thread-node running';
               node.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">\u25B6</span><span class="agent-thread-tool">${escapeHtml(toolLabel)}</span><span class="agent-thread-wave">▁▂▃</span></div><div class="agent-thread-content">${cmdHtml}</div>`;
-              node.querySelector('.agent-thread-header').addEventListener('click', () => node.classList.toggle('open'));
+              node
+                .querySelector('.agent-thread-header')
+                .addEventListener('click', () => node.classList.toggle('open'));
               // Animate wave
               const waveEl = node.querySelector('.agent-thread-wave');
               if (waveEl) {
                 const waveFrames = WAVE_FRAMES;
                 let waveIdx = 0;
-                node._waveInterval = setInterval(() => { waveIdx = (waveIdx + 1) % waveFrames.length; waveEl.textContent = waveFrames[waveIdx]; }, 100);
+                node._waveInterval = setInterval(() => {
+                  waveIdx = (waveIdx + 1) % waveFrames.length;
+                  waveEl.textContent = waveFrames[waveIdx];
+                }, 100);
               }
               aiBody.appendChild(node);
               currentToolBlock = node;
             }
             if (hist) hist.scrollTop = hist.scrollHeight;
 
-          // ── Tool output (image or non-image) ──
+            // ── Tool output (image or non-image) ──
           } else if (json.type === 'tool_output') {
             if (json.image_url) {
               // Stop image spinner and render generated image in pane
-              if (aiMsgEl._imgSpinner) { aiMsgEl._imgSpinner.destroy(); aiMsgEl._imgSpinner = null; }
+              if (aiMsgEl._imgSpinner) {
+                aiMsgEl._imgSpinner.destroy();
+                aiMsgEl._imgSpinner = null;
+              }
               const safeImageUrl = safeDisplayImageSrc(json.image_url);
               aiBody.innerHTML = '';
               if (!safeImageUrl) {
@@ -387,38 +462,67 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
                 img.src = safeImageUrl;
                 img.alt = json.image_prompt || '';
                 img.title = json.image_prompt || '';
-                img.addEventListener('click', () => window.open(safeImageUrl, '_blank', 'noopener,noreferrer'));
+                img.addEventListener('click', () =>
+                  window.open(safeImageUrl, '_blank', 'noopener,noreferrer'),
+                );
                 aiBody.appendChild(img);
                 if (json.image_prompt) {
                   const caption = document.createElement('div');
-                  caption.style.cssText = 'font-size:0.82em;color:color-mix(in srgb, var(--fg) 55%, transparent);margin-top:6px;line-height:1.4;';
+                  caption.style.cssText =
+                    'font-size:0.82em;color:color-mix(in srgb, var(--fg) 55%, transparent);margin-top:6px;line-height:1.4;';
                   caption.textContent = json.image_prompt;
                   aiBody.appendChild(caption);
                 }
                 // Show model name below image (hidden in blind mode until vote)
                 if (json.image_model && !state._blindMode) {
                   const modelLabel = document.createElement('div');
-                  modelLabel.style.cssText = 'font-size:0.75em;color:color-mix(in srgb, var(--fg) 40%, transparent);margin-top:4px;';
+                  modelLabel.style.cssText =
+                    'font-size:0.75em;color:color-mix(in srgb, var(--fg) 40%, transparent);margin-top:4px;';
                   modelLabel.textContent = json.image_model;
                   aiBody.appendChild(modelLabel);
                 }
-                aiMsgEl._imageData = { url: safeImageUrl, prompt: json.image_prompt, model: json.image_model, size: json.image_size, quality: json.image_quality };
+                aiMsgEl._imageData = {
+                  url: safeImageUrl,
+                  prompt: json.image_prompt,
+                  model: json.image_model,
+                  size: json.image_size,
+                  quality: json.image_quality,
+                };
               }
             } else if (currentToolBlock) {
               // Stop wave animation
-              if (currentToolBlock._waveInterval) { clearInterval(currentToolBlock._waveInterval); currentToolBlock._waveInterval = null; }
-              const ok = (json.exit_code === 0 || json.exit_code == null);
+              if (currentToolBlock._waveInterval) {
+                clearInterval(currentToolBlock._waveInterval);
+                currentToolBlock._waveInterval = null;
+              }
+              const ok = json.exit_code === 0 || json.exit_code == null;
               const cmd = json.command || '';
-              const _toolLabels2 = { bash: 'Terminal', python: 'Python', web_search: 'Web Search', read_file: 'Read File', write_file: 'Write File' };
-              const tLabel = _toolLabels2[(json.tool || '').toLowerCase()] || json.tool || '';
+              const _toolLabels2 = {
+                bash: 'Terminal',
+                python: 'Python',
+                web_search: 'Web Search',
+                read_file: 'Read File',
+                write_file: 'Write File',
+              };
+              const tLabel =
+                _toolLabels2[(json.tool || '').toLowerCase()] ||
+                json.tool ||
+                '';
               let outHtml = '';
               if (json.output && json.output.trim()) {
                 outHtml = `<details class="agent-tool-output"><summary>Output</summary><pre>${escapeHtml(json.output)}</pre></details>`;
               }
-              const cmdHtml = cmd ? `<pre class="agent-thread-cmd">${escapeHtml(cmd)}</pre>` : '';
-              currentToolBlock.className = 'agent-thread-node' + (ok ? '' : ' error');
+              const cmdHtml = cmd
+                ? `<pre class="agent-thread-cmd">${escapeHtml(cmd)}</pre>`
+                : '';
+              currentToolBlock.className =
+                'agent-thread-node' + (ok ? '' : ' error');
               currentToolBlock.innerHTML = `<div class="agent-thread-dot"></div><div class="agent-thread-header"><span class="agent-thread-icon">${ok ? '\u2713' : '\u2717'}</span><span class="agent-thread-tool">${escapeHtml(tLabel)}</span><span class="agent-thread-status">${ok ? 'done' : 'failed'}</span><span class="agent-thread-chevron">\u25B6</span></div><div class="agent-thread-content">${cmdHtml}${outHtml}</div>`;
-              currentToolBlock.querySelector('.agent-thread-header').addEventListener('click', () => currentToolBlock.classList.toggle('open'));
+              currentToolBlock
+                .querySelector('.agent-thread-header')
+                .addEventListener('click', () =>
+                  currentToolBlock.classList.toggle('open'),
+                );
               currentToolBlock = null;
               // Reset text element so next deltas create a fresh container
               aiMsgEl._textEl = null;
@@ -455,23 +559,28 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             const target = aiMsgEl._textEl || aiBody;
             _scheduleLiveRender(target);
           }
-        } catch (e) { console.warn('Compare stream render error:', e); }
+        } catch (e) {
+          console.warn('Compare stream render error:', e);
+        }
       }
     }
 
     streamOk = true;
     // Destroy any remaining spinner
-    if (aiMsgEl._spinner && aiMsgEl._spinner.element) aiMsgEl._spinner.destroy();
+    if (aiMsgEl._spinner && aiMsgEl._spinner.element)
+      aiMsgEl._spinner.destroy();
     aiMsgEl._spinner = null;
     // Final render
     const finalTarget = aiMsgEl._textEl || aiBody;
     if (markdownModule && accumulated.trim()) {
       finalTarget.innerHTML = markdownModule.processWithThinking(
-        markdownModule.squashOutsideCode(accumulated)
+        markdownModule.squashOutsideCode(accumulated),
       );
     }
     if (window.hljs) {
-      finalTarget.querySelectorAll('pre code:not(.hljs)').forEach(b => window.hljs.highlightElement(b));
+      finalTarget
+        .querySelectorAll('pre code:not(.hljs)')
+        .forEach((b) => window.hljs.highlightElement(b));
     }
 
     // ── Show play button if response contains HTML ──
@@ -496,10 +605,20 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
       copyBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const txt = imgD.prompt || '';
-        if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
-        else { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+        if (navigator.clipboard)
+          navigator.clipboard.writeText(txt).catch(() => {/*Silent Fail*/});
+        else {
+          const ta = document.createElement('textarea');
+          ta.value = txt;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
         copyBtn.textContent = '\u2713';
-        setTimeout(() => { copyBtn.textContent = '\u2398'; }, 1500);
+        setTimeout(() => {
+          copyBtn.textContent = '\u2398';
+        }, 1500);
         if (uiModule) uiModule.showToast('Prompt copied!');
       });
       actions.appendChild(copyBtn);
@@ -516,14 +635,24 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
           const blob = await resp.blob();
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
-          a.download = (imgD.prompt || 'image').slice(0, 40).replace(/[^a-zA-Z0-9 ]/g, '') + '.png';
+          a.download =
+            (imgD.prompt || 'image')
+              .slice(0, 40)
+              .replace(/[^a-zA-Z0-9 ]/g, '') + '.png';
           document.body.appendChild(a);
           a.click();
           a.remove();
           URL.revokeObjectURL(a.href);
           dlBtn.textContent = '\u2713';
-          setTimeout(() => { dlBtn.textContent = '\u2913'; }, 1500);
-        } catch { dlBtn.textContent = '\u2717'; setTimeout(() => { dlBtn.textContent = '\u2913'; }, 1500); }
+          setTimeout(() => {
+            dlBtn.textContent = '\u2913';
+          }, 1500);
+        } catch {
+          dlBtn.textContent = '\u2717';
+          setTimeout(() => {
+            dlBtn.textContent = '\u2913';
+          }, 1500);
+        }
       });
       actions.appendChild(dlBtn);
 
@@ -537,12 +666,11 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
         if (imgD.model) parts.push(imgD.model.split('/').pop());
         if (imgD.size) parts.push(imgD.size);
         if (imgD.quality) parts.push(imgD.quality);
-        if (metrics && metrics.response_time) parts.push(metrics.response_time + 's');
-        const costFn = window.chatModule && window.chatModule.getImageCost;
-        if (costFn) {
-          const cost = costFn(imgD.model, imgD.quality, imgD.size);
-          if (cost !== null) parts.push('$' + (cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)));
-        }
+        if (metrics && metrics.response_time)
+          parts.push(metrics.response_time + 's');
+        const cost = getImageCost(imgD.model, imgD.quality, imgD.size);
+        if (cost !== null)
+          parts.push('$' + (cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)));
         span.textContent = parts.join(' \u00b7 ');
         footer.appendChild(span);
       }
@@ -577,8 +705,16 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
         parts.push(responseTime + 's');
       }
       // Add per-request cost and cost per 1000
-      const _model = metrics.model || (state._selectedModels[paneIdx] && state._selectedModels[paneIdx].model) || '';
-      const _cost = getModelCost(_model, metrics.input_tokens || 0, metrics.output_tokens || 0);
+      const _model =
+        metrics.model ||
+        (state._selectedModels[paneIdx] &&
+          state._selectedModels[paneIdx].model) ||
+        '';
+      const _cost = getModelCost(
+        _model,
+        metrics.input_tokens || 0,
+        metrics.output_tokens || 0,
+      );
       // Build the metrics span with optional cost and context
       span.textContent = parts.join(' | ');
       if (_cost !== null) {
@@ -600,36 +736,53 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
       aiMsgEl.appendChild(footer);
     }
     if (hist) hist.scrollTop = hist.scrollHeight;
-
   } catch (error) {
     if (error.name === 'AbortError') {
       if (timedOut) {
         if (accumulated.trim()) {
           if (markdownModule) {
             aiBody.innerHTML = markdownModule.processWithThinking(
-              markdownModule.squashOutsideCode(accumulated));
+              markdownModule.squashOutsideCode(accumulated),
+            );
           }
         }
         const notice = document.createElement('div');
-        notice.style.cssText = 'color:#ff9800;font-size:0.8em;margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+        notice.style.cssText =
+          'color:#ff9800;font-size:0.8em;margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
         const text = document.createElement('span');
         text.style.fontStyle = 'italic';
-        text.textContent = 'Timed out after ' + effectiveTimeout + 's' + (accumulated.trim() ? ' \u2014 response may be incomplete' : '');
+        text.textContent =
+          'Timed out after ' +
+          effectiveTimeout +
+          's' +
+          (accumulated.trim() ? ' \u2014 response may be incomplete' : '');
         notice.appendChild(text);
         const retryBtn = document.createElement('button');
         retryBtn.textContent = 'Retry +' + effectiveTimeout + 's';
-        retryBtn.style.cssText = 'background:rgba(255,152,0,0.15);border:1px solid #ff9800;color:#ff9800;border-radius:4px;cursor:pointer;padding:2px 8px;font-size:0.9em;white-space:nowrap;transition:all 0.15s;';
-        retryBtn.addEventListener('mouseenter', () => { retryBtn.style.background = 'rgba(255,152,0,0.3)'; });
-        retryBtn.addEventListener('mouseleave', () => { retryBtn.style.background = 'rgba(255,152,0,0.15)'; });
-        retryBtn.addEventListener('click', () => { if (_rerollPane) _rerollPane(paneIdx, effectiveTimeout * 2); });
+        retryBtn.style.cssText =
+          'background:rgba(255,152,0,0.15);border:1px solid #ff9800;color:#ff9800;border-radius:4px;cursor:pointer;padding:2px 8px;font-size:0.9em;white-space:nowrap;transition:all 0.15s;';
+        retryBtn.addEventListener('mouseenter', () => {
+          retryBtn.style.background = 'rgba(255,152,0,0.3)';
+        });
+        retryBtn.addEventListener('mouseleave', () => {
+          retryBtn.style.background = 'rgba(255,152,0,0.15)';
+        });
+        retryBtn.addEventListener('click', () => {
+          if (_rerollPane) _rerollPane(paneIdx, effectiveTimeout * 2);
+        });
         notice.appendChild(retryBtn);
         aiBody.appendChild(notice);
       } else {
-        if (!accumulated.trim()) aiBody.innerHTML = '<div style="color:#f0ad4e;font-size:0.9em;">Cancelled.</div>';
+        if (!accumulated.trim())
+          aiBody.innerHTML =
+            '<div style="color:#f0ad4e;font-size:0.9em;">Cancelled.</div>';
       }
     } else {
       console.error('Compare stream error:', error);
-      aiBody.innerHTML = '<span style="color:var(--color-error);">Error: ' + escapeHtml(error.message) + '</span>';
+      aiBody.innerHTML =
+        '<span style="color:var(--color-error);">Error: ' +
+        escapeHtml(error.message) +
+        '</span>';
     }
   } finally {
     clearTimeout(timeoutId);
@@ -643,12 +796,16 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     }
     state._abortControllers[paneIdx] = null;
     // Hide stop button, show response action buttons
-    const _paneElFinal = document.querySelector(`.compare-pane[data-pane="${paneIdx}"]`);
+    const _paneElFinal = document.querySelector(
+      `.compare-pane[data-pane="${paneIdx}"]`,
+    );
     if (_paneElFinal) {
       const _stopBtnFinal = _paneElFinal.querySelector('.pane-stop-btn');
       if (_stopBtnFinal) _stopBtnFinal.style.display = 'none';
       if (accumulated.trim()) {
-        _paneElFinal.querySelectorAll('.pane-needs-response').forEach(b => b.style.display = '');
+        _paneElFinal
+          .querySelectorAll('.pane-needs-response')
+          .forEach((b) => (b.style.display = ''));
       }
     }
     state._paneMetrics[paneIdx] = metrics;
@@ -666,12 +823,18 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
           // Wait until all panes are done, then badge whichever had
           // the lowest measured per-pane elapsed time.
           const total = state._selectedModels.length;
-          const finished = state._paneElapsed.filter(v => typeof v === 'number').length;
+          const finished = state._paneElapsed.filter(
+            (v) => typeof v === 'number',
+          ).length;
           if (finished >= total) {
-            let winnerIdx = -1, winnerMs = Infinity;
+            let winnerIdx = -1,
+              winnerMs = Infinity;
             for (let i = 0; i < total; i++) {
               const v = state._paneElapsed[i];
-              if (typeof v === 'number' && v < winnerMs) { winnerMs = v; winnerIdx = i; }
+              if (typeof v === 'number' && v < winnerMs) {
+                winnerMs = v;
+                winnerIdx = i;
+              }
             }
             if (winnerIdx >= 0) addFinishBadge(winnerIdx);
           }
@@ -679,7 +842,10 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
       } else {
         // Timed out or errored — show failed badge
         const badge = document.getElementById('cmp-badge-' + paneIdx);
-        if (badge) { badge.textContent = timedOut ? 'Timeout' : 'Failed'; badge.style.color = 'var(--color-error)'; }
+        if (badge) {
+          badge.textContent = timedOut ? 'Timeout' : 'Failed';
+          badge.style.color = 'var(--color-error)';
+        }
       }
     }
     // Auto-grade against expected answer — stamps ✓ or ✗ on the pane header.
@@ -687,8 +853,13 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
       _stampGradeBadge(paneIdx, accumulated, state._expectedAnswer);
     }
     // Show copy/reroll buttons now that response exists
-    const paneEl = document.querySelector('.compare-pane:nth-child(' + (paneIdx + 1) + ')');
-    if (paneEl) paneEl.querySelectorAll('.pane-needs-response').forEach(b => b.style.display = '');
+    const paneEl = document.querySelector(
+      '.compare-pane:nth-child(' + (paneIdx + 1) + ')',
+    );
+    if (paneEl)
+      paneEl
+        .querySelectorAll('.pane-needs-response')
+        .forEach((b) => (b.style.display = ''));
   }
 }
 
@@ -712,12 +883,16 @@ function _stampGradeBadge(paneIdx, response, expected) {
     const m = expected.match(/-?\d[\d,]*(?:\.\d+)?/);
     if (m) {
       const n = m[0].replace(/,/g, '');
-      const re = new RegExp('(?<![\\d.])' + n.replace('.', '\\.') + '(?![\\d.])');
+      const re = new RegExp(
+        '(?<![\\d.])' + n.replace('.', '\\.') + '(?![\\d.])',
+      );
       pass = re.test(response);
     }
   }
 
-  const paneEl = document.querySelector(`.compare-pane[data-pane="${paneIdx}"]`);
+  const paneEl = document.querySelector(
+    `.compare-pane[data-pane="${paneIdx}"]`,
+  );
   if (!paneEl) return;
   const header = paneEl.querySelector('.pane-header');
   if (!header) return;
@@ -726,7 +901,9 @@ function _stampGradeBadge(paneIdx, response, expected) {
   if (prev) prev.remove();
   const badge = document.createElement('span');
   badge.className = 'pane-grade-badge ' + (pass ? 'pass' : 'fail');
-  badge.title = pass ? 'Response contains the expected answer' : 'Expected answer not found in response';
+  badge.title = pass
+    ? 'Response contains the expected answer'
+    : 'Expected answer not found in response';
   badge.textContent = pass ? '✓' : '✗';
   // Insert just before the finish badge if present, else after the title
   const finBadge = header.querySelector('.pane-finish-badge');
@@ -734,4 +911,11 @@ function _stampGradeBadge(paneIdx, response, expected) {
   else header.appendChild(badge);
 }
 
-export { streamToPane, _renderSearchResults, _runSynthForPane, _formatMs, registerStreamActions };
+export {
+  _formatMs,
+  _renderSearchResults,
+  _runSynthForPane,
+  registerStreamActions,
+  streamToPane,
+};
+
