@@ -95,8 +95,13 @@ WEB_FETCH_USER_AGENT = os.environ.get(
 DEFAULT_HOST = os.getenv("LLM_HOST", "localhost")
 LLM_HOSTS = [h.strip() for h in os.getenv("LLM_HOSTS", "").split(",") if h.strip()]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-SEARXNG_INSTANCE = os.getenv("SEARXNG_INSTANCE", "http://localhost:8080")
 
+# SearchXNG coinfiguration
+SEARXNG_PORT = os.getenv("SEARXNG_PORT", "8080")
+SEARXNG_HOST = os.getenv("SEARXNG_HOST", "localhost")
+SEARXNG_INSTANCE = os.getenv(
+    "SEARXNG_INSTANCE", f"http://{SEARXNG_HOST}:{SEARXNG_PORT}"
+)
 
 # Cleanup configuration
 CLEANUP_ENABLED = os.getenv("CLEANUP_ENABLED", "True").lower() == "true"

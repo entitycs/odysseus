@@ -108,12 +108,21 @@ services:
         fi
         exec /usr/local/searxng/entrypoint.sh
     ports:
-      - "127.0.0.1:8080:8080"
+      # Host port follows SEARXNG_PORT (default 8080) so the published port
+      # can dodge a host collision (e.g. OpenWebUI also wants 8080). The
+      # container port stays 8080 — SearXNG's image listens on 8080 internally
+      # regardless, so only the host side of the mapping changes.
+      - "127.0.0.1:${SEARXNG_PORT:-8080}:8080"
     volumes:
       - searxng-data:/etc/searxng
       - ./config/searxng/settings.yml:/tmp/searxng-settings.yml.template:ro,z
     environment:
-      - SEARXNG_BASE_URL=http://localhost:8080/
+      # Browser-facing base URL — keep host/port in sync with how users reach
+      # SearXNG (default localhost:<SEARXNG_PORT>). Override SEARXNG_HOST in
+      # .env to a LAN name/IP if browsing from another machine. This does NOT
+      # change the Docker bind address (still 127.0.0.1 above) — exposing to
+      # the LAN is a separate step.
+      - SEARXNG_BASE_URL=http://${SEARXNG_HOST:-localhost}:${SEARXNG_PORT:-8080}/
       - SEARXNG_SECRET=${SEARXNG_SECRET:-}
     # The official searxng image runs as the non-root `searxng` user, but its
     # entrypoint still needs to chown /etc/searxng on first boot, drop privs via
