@@ -272,7 +272,7 @@ function _openImageLightbox(att) {
     if (_overlayObs) {
       try {
         _overlayObs.disconnect();
-      } catch {}
+      } catch {/*Silent Fail*/}
     }
     overlay.remove();
   };
@@ -288,7 +288,7 @@ function _openImageLightbox(att) {
       }
     });
     _overlayObs.observe(document.body, { childList: true, subtree: false });
-  } catch {}
+  } catch {/*Silent Fail*/}
   overlay.addEventListener('click', _close);
   document.addEventListener('keydown', _onKey);
   document.body.appendChild(overlay);
@@ -1007,7 +1007,7 @@ function _appendReportButton(container, sessionId) {
         var detail = '';
         try {
           detail = (await res.json()).detail || '';
-        } catch {}
+        } catch {/*Silent Fail*/}
         throw new Error(detail || 'HTTP ' + res.status);
       }
       var payload = await res.json();
@@ -2214,7 +2214,7 @@ export function displayMetrics(messageElement, metrics) {
               try {
                 const err = await res.json();
                 if (err.detail) detail = err.detail;
-              } catch {}
+              } catch {/*Silent Fail*/}
               compactBody.textContent = detail;
               compactBody.style.color = 'var(--red)';
             }
@@ -3035,7 +3035,6 @@ export function addMessage(role, content, modelName, metadata) {
 
 const chatRenderer = {
   applyModelColor,
-  getImageCost,
   getSessionCost,
   resetSessionCost,
   updateSessionCostUI,
