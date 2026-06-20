@@ -1,7 +1,6 @@
 // compare/stream.js — SSE streaming to panes
-
 import markdownModule from '../markdown.js';
-import { getModelCost } from '../model/pricing.js';
+import { getImageCost, getModelCost } from '../model/pricing.js';
 import presetsModule from '../presets.js';
 import spinnerModule from '../spinner.js';
 import uiModule from '../ui.js';
@@ -98,7 +97,7 @@ async function _runSynthForPane(
       body: fd,
     });
     if (!createRes.ok) {
-      const errData = await createRes.json().catch(() => ({}));
+      const errData = await createRes.json().catch(() => ({/*Silent Fail*/}));
       throw new Error(errData.detail || 'Failed to create session');
     }
     const createData = await createRes.json();
@@ -138,7 +137,7 @@ async function _runSynthForPane(
               }
               hist.scrollTop = hist.scrollHeight;
             }
-          } catch (e) {}
+          } catch (e) {/*Silent Fail*/}
         }
       }
     }
@@ -152,7 +151,7 @@ async function _runSynthForPane(
     // Cleanup temp session
     fetch(`${state.API_BASE}/api/session/${createData.id}`, {
       method: 'DELETE',
-    }).catch(() => {});
+    }).catch(() => {/*Silent Fail*/});
   } catch (e) {
     if (spinner) spinner.stop();
     synthBody.innerHTML =
@@ -607,7 +606,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
         e.stopPropagation();
         const txt = imgD.prompt || '';
         if (navigator.clipboard)
-          navigator.clipboard.writeText(txt).catch(() => {});
+          navigator.clipboard.writeText(txt).catch(() => {/*Silent Fail*/});
         else {
           const ta = document.createElement('textarea');
           ta.value = txt;
@@ -669,12 +668,9 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
         if (imgD.quality) parts.push(imgD.quality);
         if (metrics && metrics.response_time)
           parts.push(metrics.response_time + 's');
-        const costFn = window.chatModule && window.chatModule.getImageCost;
-        if (costFn) {
-          const cost = costFn(imgD.model, imgD.quality, imgD.size);
-          if (cost !== null)
-            parts.push('$' + (cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)));
-        }
+        const cost = getImageCost(imgD.model, imgD.quality, imgD.size);
+        if (cost !== null)
+          parts.push('$' + (cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)));
         span.textContent = parts.join(' \u00b7 ');
         footer.appendChild(span);
       }
