@@ -64,6 +64,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from core.constants import (
     BASE_DIR, STATIC_DIR, SESSIONS_FILE,
     REQUEST_TIMEOUT, OPENAI_API_KEY, AUTH_FILE,
+    SVELTEKIT_BUILD_DIR, SVELTEKIT_PATHS,
 )
 from core.database import SessionLocal, ApiToken
 from core.middleware import SecurityHeadersMiddleware, is_cors_preflight
@@ -462,6 +463,17 @@ class _RevalidatingStatic(StaticFiles):
 
 
 app.mount("/static", _RevalidatingStatic(directory=STATIC_DIR), name="static")
+
+# ========= SVELTEKIT BUILT ASSETS (Track B) =========
+# adapter-static emits JS/CSS chunks into web-build/_app/. Mounting this
+# below /static (which has revalidating cache headers) gives SvelteKit assets
+# the same no-cache treatment so deploys are picked up immediately.
+if os.path.isdir(os.path.join(SVELTEKIT_BUILD_DIR, "_app")):
+    app.mount(
+        "/_app",
+        _RevalidatingStatic(directory=os.path.join(SVELTEKIT_BUILD_DIR, "_app")),
+        name="sveltekit-app",
+    )
 
 # ========= GENERATED IMAGES =========
 @app.get("/api/generated-image/{filename}")

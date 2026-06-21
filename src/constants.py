@@ -9,6 +9,19 @@ APP_VERSION = "1.0.1"
 # Base paths
 BASE_DIR = os.path.join(get_app_root(), "")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+SVELTEKIT_BUILD_DIR = os.path.join(BASE_DIR, "web-build")
+
+# URLs whose HTML is served by SvelteKit (adapter-static build output) instead
+# of the legacy static/index.html shell. To migrate a page to SvelteKit: build
+# the SvelteKit route, add the URL path here, and (optionally) remove the legacy
+# SPA handler for that path. SvelteKit pages are served as a pure SPA — the
+# built index.html is returned for every matching path and client-side routing
+# takes over. The path set should contain the *prefix*, e.g. "/insights" (not
+# "/insights/"), since the catch-all checks request.url.path.startswith().
+SVELTEKIT_PATHS: set[str] = set()
+# Example: once you build a SvelteKit route for /insights, flip it:
+#   SVELTEKIT_PATHS = {"/insights"}
+
 DATA_DIR = os.getenv("ODYSSEUS_DATA_DIR", get_default_data_dir())
 
 # Data file paths
