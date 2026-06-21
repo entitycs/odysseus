@@ -5,7 +5,12 @@
  */
 // ES6 module — IIFE removed
 
+import Storage from './storage.js';
+import uiModule from './ui.js';
+import sessionModule from './sessions.js';
 import chatRenderer from './chatRenderer.js?v=20260722emailfastindex1';
+import { modelRouteLabel, replyModelPair, sameModelName, shortModel } from './model/models.js';
+import { getImageCost, getModelCost } from './model/pricing.js';
 import chatStream from './chatStream.js';
 import codeRunnerModule from './codeRunner.js';
 import { getUserMessagesFromChatHistory, wireArrowUpRecall } from './composerArrowUpRecall.js?v=20260714promptrecall';
@@ -388,7 +393,8 @@ const DEFAULT_TIMEOUT_MS = 120000;
   let _autoNudges = 0;             // handshakes fired for the CURRENT user turn
   let _autoContinuePending = false; // marks the next submit as an auto-continue (don't reset the counter)
   const _AUTO_NUDGE_CAP = 3;
-  // shortModel, modelColor, and other exports not specific to rendering are now in chat/model.js
+
+  // shortModel and modelColor are now in chatRenderer.js
   var _applyModelColor = chatRenderer.applyModelColor;
   function _setRoleModelLabel(roleEl, requestedModel, actualModel, opts) {
     if (!roleEl) return;

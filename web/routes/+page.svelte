@@ -1,8 +1,8 @@
 <script lang="ts">
-	import welcomeFallback from '$lib/images/svelte-welcome.png';
-	import welcome from '$lib/images/svelte-welcome.webp';
+import welcomeFallback from '$lib/images/svelte-welcome.png';
+import welcome from '$lib/images/svelte-welcome.webp';
 
-	import Counter from './Counter.svelte';
+import Counter from './Counter.svelte';
 </script>
 
 <svelte:head>
@@ -30,7 +30,7 @@
 </section>
 
 <style>
-	section {
+	/* section {
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
@@ -56,5 +56,5 @@
 		height: 100%;
 		top: 0;
 		display: block;
-	}
+	} */
 </style>
