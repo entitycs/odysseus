@@ -878,16 +878,24 @@ app.include_router(setup_companion_routes())
 
 @app.get("/")
 async def serve_index(request: Request):
-    is_sveltekit_route = any(
-        request.url.path.startswith(p) for p in SVELTEKIT_PATHS
-    )
+    logger.info("GET / hit — starting route resolution")
+
+    is_sveltekit_route = True
+    logger.info(f"is_sveltekit_route = {is_sveltekit_route}")
 
     if is_sveltekit_route:
         sveltekit_path = os.path.join(SVELTEKIT_BUILD_DIR, "index.html")
+        logger.info(f"Checking SvelteKit path: {sveltekit_path}")
+
         if os.path.exists(sveltekit_path):
-            return _serve_html_with_nonce(request, sveltekit_path)
+            logger.info("Serving SvelteKit index.html")
+            return serve_html_with_nonce(request, sveltekit_path)
+        else:
+            logger.warning("SvelteKit index.html NOT found")
 
     static_path = abs_join(BASE_DIR, "static/index.html")
+    logger.info(f"Checking static fallback path: {static_path}")
+
     if os.path.exists(static_path):
         return serve_html_with_nonce(request, static_path)
     # No static bundle — fall back to a root-level index.html if one is shipped.
@@ -896,6 +904,14 @@ async def serve_index(request: Request):
     # "not found". This keeps the app-shell route consistent with the other
     # bundled-template routes instead of mislabelling the fault as a 404.
     return serve_html_with_nonce(request, abs_join(BASE_DIR, "index.html"))
+
+@app.get("/chat")
+async def serve_chat(request: Request):
+    return await serve_index(request)
+
+@app.get("/about")
+async def serve_about(request: Request):
+    return await serve_index(request)
 
 @app.get("/notes")
 async def serve_notes(request: Request):
@@ -1300,4 +1316,3 @@ if __name__ == "__main__":
     bind_port = int(os.getenv("APP_PORT", "7000"))
 
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
-
