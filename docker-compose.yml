@@ -24,7 +24,8 @@ services:
       # socket's owning group — see `group_add` below; the GID
       # there must match the host's `docker` group (defaults to 963
       # on Debian, 999 on Ubuntu — override via env if yours differs).
-      - /var/run/docker.sock:/var/run/docker.sock
+      # - /var/run/docker.sock:/var/run/docker.sock
+      # removed the above, for security and necessity reasons
     group_add:
       - "${DOCKER_GID:-963}"
     extra_hosts:
