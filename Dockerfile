@@ -37,6 +37,10 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
     && rm -rf /tmp/docker /tmp/docker.tgz
 
+# Install Node 22
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs
+
 RUN npm install -g pnpm
 
 WORKDIR /app
@@ -50,6 +54,14 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 # Copy app code
 COPY . .
+
+# Build SvelteKit (Track B)
+WORKDIR /app/web
+RUN pnpm install
+RUN pnpm build:app
+
+# Return to backend root
+WORKDIR /app
 
 # Create data directory (mount a volume here for persistence)
 RUN mkdir -p data logs services/cache/search
@@ -67,4 +79,5 @@ EXPOSE 7000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]
+
 
