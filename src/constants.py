@@ -18,9 +18,9 @@ SVELTEKIT_BUILD_DIR = os.path.join(BASE_DIR, "web-build")
 # built index.html is returned for every matching path and client-side routing
 # takes over. The path set should contain the *prefix*, e.g. "/insights" (not
 # "/insights/"), since the catch-all checks request.url.path.startswith().
-SVELTEKIT_PATHS: set[str] = set()
+# SVELTEKIT_PATHS: set[str] = set()
 # Example: once you build a SvelteKit route for /insights, flip it:
-#   SVELTEKIT_PATHS = {"/insights"}
+SVELTEKIT_PATHS = {"/insights"}
 
 DATA_DIR = os.getenv("ODYSSEUS_DATA_DIR", get_default_data_dir())
 
