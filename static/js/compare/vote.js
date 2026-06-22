@@ -1,12 +1,11 @@
 // compare/vote.js — voting, revealing, confetti
-
-import { getModelCost } from '../model/pricing.js';
 import Storage from '../storage.js';
-import uiModule from '../ui.js';
-import { VOTES_MAX, VOTES_STORAGE_KEY } from './icons.js';
-import { _modelDisplayNames } from './models.js';
-import { showScoreboard } from './scoreboard.js';
 import state from './state.js';
+import { _modelDisplayNames } from './models.js';
+import { getModelCost } from '../model/pricing.js';
+import uiModule from '../ui.js';
+import { VOTES_STORAGE_KEY, VOTES_MAX } from './icons.js';
+import { showScoreboard } from './scoreboard.js';
 
 var escapeHtml = uiModule.esc;
 
@@ -21,9 +20,7 @@ function registerCompareActions({ stopAll, resetCompare }) {
   _resetCompare = resetCompare;
 }
 
-function _slotChar(i) {
-  return state._parallel ? String.fromCharCode(65 + i) : String(i + 1);
-}
+function _slotChar(i) { return state._parallel ? String.fromCharCode(65 + i) : String(i + 1); }
 
 function addFinishBadge(paneIdx) {
   const hist = document.getElementById('cmp-history-' + paneIdx);
@@ -56,9 +53,7 @@ function buildVoteBar(n) {
   // their enabled/labelled state needs to refresh whenever this bar is
   // (re)built (e.g. after sending the first prompt or revealing models).
   for (let i = 0; i < n; i++) {
-    const paneBtn = document.querySelector(
-      '.compare-pane[data-pane="' + i + '"] .pane-vote-btn',
-    );
+    const paneBtn = document.querySelector('.compare-pane[data-pane="' + i + '"] .pane-vote-btn');
     if (!paneBtn) continue;
     paneBtn.disabled = noPrompt;
     paneBtn.style.opacity = noPrompt ? '0.4' : '';
@@ -71,10 +66,7 @@ function buildVoteBar(n) {
   const tieBtn = document.createElement('button');
   tieBtn.className = 'compare-vote-btn compare-vote-tie';
   tieBtn.textContent = 'Tie';
-  if (noPrompt) {
-    tieBtn.disabled = true;
-    tieBtn.style.opacity = '0.25';
-  }
+  if (noPrompt) { tieBtn.disabled = true; tieBtn.style.opacity = '0.25'; }
   tieBtn.addEventListener('click', () => handleVote(-1));
   bar.appendChild(tieBtn);
 
@@ -82,8 +74,7 @@ function buildVoteBar(n) {
   // before a prompt) since viewing the scoreboard is always allowed.
   const scoreBtn = document.createElement('button');
   scoreBtn.className = 'compare-vote-btn compare-score-btn';
-  scoreBtn.innerHTML =
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Score';
+  scoreBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Score';
   scoreBtn.title = 'Scoreboard';
   scoreBtn.addEventListener('click', () => showScoreboard());
   bar.insertBefore(scoreBtn, tieBtn); // furthest left, before Tie
@@ -92,8 +83,7 @@ function buildVoteBar(n) {
     const revealBtn = document.createElement('button');
     revealBtn.className = 'compare-vote-btn';
     revealBtn.style.opacity = noPrompt ? '0.25' : '0.5';
-    revealBtn.innerHTML =
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Reveal';
+    revealBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Reveal';
     if (noPrompt) revealBtn.disabled = true;
     revealBtn.addEventListener('click', () => handleVote(-2));
     bar.appendChild(revealBtn);
@@ -104,11 +94,8 @@ function buildVoteBar(n) {
   // Reset button (always)
   const resetBtn = document.createElement('button');
   resetBtn.className = 'compare-vote-btn compare-rematch-btn';
-  resetBtn.innerHTML =
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:3px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Reset';
-  resetBtn.addEventListener('click', () => {
-    if (_resetCompare) _resetCompare();
-  });
+  resetBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:3px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Reset';
+  resetBtn.addEventListener('click', () => { if (_resetCompare) _resetCompare(); });
   bar.appendChild(resetBtn);
 }
 
@@ -120,11 +107,7 @@ function _saveVote(winnerIdx) {
   const costs = state._selectedModels.map((m, i) => {
     const pm = state._paneMetrics[i];
     if (!pm) return null;
-    return getModelCost(
-      pm.model || m.model,
-      pm.input_tokens || 0,
-      pm.output_tokens || 0,
-    );
+    return getModelCost(pm.model || m.model, pm.input_tokens || 0, pm.output_tokens || 0);
   });
   const record = {
     models: modelNames,
@@ -153,7 +136,7 @@ function _saveVote(winnerIdx) {
         winner: winner,
         is_blind: state._blindMode,
       }),
-    }).catch(() => {}); // silently ignore errors
+    }).catch(() => {});   // silently ignore errors
   } catch (_) {}
 }
 
@@ -165,17 +148,11 @@ function handleVote(winnerIdx) {
   if (winnerIdx === -2) {
     for (let i = 0; i < state._selectedModels.length; i++) {
       const el = document.getElementById('cmp-title-' + i);
-      if (el)
-        el.innerHTML =
-          '<strong>' +
-          escapeHtml(displayNames[i]) +
-          '</strong> <span class="pane-title-caret">&#x25BE;</span>';
+      if (el) el.innerHTML = '<strong>' + escapeHtml(displayNames[i]) + '</strong> <span class="pane-title-caret">&#x25BE;</span>';
       const hist = document.getElementById('cmp-history-' + i);
-      if (hist)
-        hist.querySelectorAll('.msg-ai .role').forEach((roleEl) => {
-          if (roleEl.textContent.trim() === 'AI')
-            roleEl.textContent = displayNames[i];
-        });
+      if (hist) hist.querySelectorAll('.msg-ai .role').forEach(roleEl => {
+        if (roleEl.textContent.trim() === 'AI') roleEl.textContent = displayNames[i];
+      });
     }
     return;
   }
@@ -210,17 +187,15 @@ function handleVote(winnerIdx) {
     el.innerHTML = html;
 
     if (pane) {
-      if (isWinner) {
-        pane.classList.add('winner');
-      } else if (winnerIdx >= 0) pane.classList.add('loser');
-    }
+      if (isWinner) { pane.classList.add('winner'); }
+      else if (winnerIdx >= 0) pane.classList.add('loser'); }
   }
 
   // Swap "AI" role labels to real model names in each pane's messages
   for (let i = 0; i < state._selectedModels.length; i++) {
     const hist = document.getElementById('cmp-history-' + i);
     if (!hist) continue;
-    hist.querySelectorAll('.msg-ai .role').forEach((roleEl) => {
+    hist.querySelectorAll('.msg-ai .role').forEach(roleEl => {
       if (roleEl.textContent.trim() === 'AI') {
         roleEl.textContent = displayNames[i];
       }
@@ -229,14 +204,9 @@ function handleVote(winnerIdx) {
 
   // Disable vote buttons but keep reset active — include the per-pane vote
   // buttons (.pane-vote-btn) so they can't be spammed after a vote.
-  document
-    .querySelectorAll(
-      '.compare-vote-btn:not(.compare-rematch-btn):not(.compare-score-btn), .pane-vote-btn',
-    )
-    .forEach((b) => {
-      b.disabled = true;
-      b.style.opacity = '0.4';
-    });
+  document.querySelectorAll('.compare-vote-btn:not(.compare-rematch-btn):not(.compare-score-btn), .pane-vote-btn').forEach(b => {
+    b.disabled = true; b.style.opacity = '0.4';
+  });
 
   // Confetti burst at the winner's pane header
   if (winnerIdx >= 0) {
@@ -254,16 +224,7 @@ function handleVote(winnerIdx) {
 
 /** Spawn confetti particles from a point. */
 function spawnConfetti(cx, cy, count) {
-  const colors = [
-    '#ffd700',
-    '#ff6b6b',
-    '#5b8def',
-    '#51cf66',
-    '#ff922b',
-    '#cc5de8',
-    '#22b8cf',
-    '#fff',
-  ];
+  const colors = ['#ffd700', '#ff6b6b', '#5b8def', '#51cf66', '#ff922b', '#cc5de8', '#22b8cf', '#fff'];
   for (let i = 0; i < count; i++) {
     const el = document.createElement('div');
     el.className = 'confetti-piece';
@@ -281,31 +242,13 @@ function spawnConfetti(cx, cy, count) {
     const dx = Math.cos(angle) * speed;
     const dy = Math.sin(angle) * speed - 100;
     const duration = 1.0 + Math.random() * 1.0;
-    el.animate(
-      [
-        { transform: 'translate(0, 0) rotate(0deg) scale(1)', opacity: 1 },
-        {
-          transform: `translate(${dx}px, ${dy + 200}px) rotate(${400 + Math.random() * 400}deg) scale(0)`,
-          opacity: 0,
-        },
-      ],
-      {
-        duration: duration * 1000,
-        easing: 'cubic-bezier(0.15, 0.6, 0.35, 1)',
-        fill: 'forwards',
-      },
-    );
+    el.animate([
+      { transform: 'translate(0, 0) rotate(0deg) scale(1)', opacity: 1 },
+      { transform: `translate(${dx}px, ${dy + 200}px) rotate(${400 + Math.random() * 400}deg) scale(0)`, opacity: 0 }
+    ], { duration: duration * 1000, easing: 'cubic-bezier(0.15, 0.6, 0.35, 1)', fill: 'forwards' });
     document.body.appendChild(el);
     setTimeout(() => el.remove(), duration * 1000 + 50);
   }
 }
 
-export {
-  _saveVote,
-  addFinishBadge,
-  buildVoteBar,
-  handleVote,
-  registerCompareActions,
-  spawnConfetti,
-};
-
+export { _saveVote, handleVote, buildVoteBar, addFinishBadge, spawnConfetti, registerCompareActions };
