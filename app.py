@@ -813,19 +813,29 @@ def _serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
 
 @app.get("/")
 async def serve_index(request: Request):
-    is_sveltekit_route = any(
-        request.url.path.startswith(p) for p in SVELTEKIT_PATHS
-    )
+    logger.info("GET / hit — starting route resolution")
+
+    is_sveltekit_route = True
+    logger.info(f"is_sveltekit_route = {is_sveltekit_route}")
 
     if is_sveltekit_route:
         sveltekit_path = os.path.join(SVELTEKIT_BUILD_DIR, "index.html")
+        logger.info(f"Checking SvelteKit path: {sveltekit_path}")
+
         if os.path.exists(sveltekit_path):
+            logger.info("Serving SvelteKit index.html")
             return _serve_html_with_nonce(request, sveltekit_path)
+        else:
+            logger.warning("SvelteKit index.html NOT found")
 
     static_path = abs_join(BASE_DIR, "static/index.html")
+    logger.info(f"Checking static fallback path: {static_path}")
+
     if os.path.exists(static_path):
+        logger.info("Serving static/index.html fallback")
         return _serve_html_with_nonce(request, static_path)
 
+    logger.error("No index.html found in either location — raising 404")
     raise HTTPException(404, "index.html not found")
 
 @app.get("/notes")
