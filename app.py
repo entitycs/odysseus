@@ -873,6 +873,15 @@ app.include_router(setup_companion_routes())
 
 @app.get("/")
 async def serve_index(request: Request):
+    is_sveltekit_route = any(
+        request.url.path.startswith(p) for p in SVELTEKIT_PATHS
+    )
+
+    if is_sveltekit_route:
+        sveltekit_path = os.path.join(SVELTEKIT_BUILD_DIR, "index.html")
+        if os.path.exists(sveltekit_path):
+            return _serve_html_with_nonce(request, sveltekit_path)
+
     static_path = abs_join(BASE_DIR, "static/index.html")
     if os.path.exists(static_path):
         return serve_html_with_nonce(request, static_path)
@@ -1286,3 +1295,4 @@ if __name__ == "__main__":
     bind_port = int(os.getenv("APP_PORT", "7000"))
 
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
+
