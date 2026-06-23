@@ -2,7 +2,7 @@
 <html lang="en">
 	<head>
 		<!-- From index.html -->
-		<!-- verbatim, except "%sveltekit.nonce% for {{CSP_NONCE}}-->
+
 		<title>Odysseus Chat</title>
 		<meta charset="utf-8" />
 		<meta name="theme-color" content="#282c34">
@@ -17,7 +17,7 @@
 		<link rel="manifest" href="/static/manifest.json">
 		<link rel="stylesheet" href="/static/style.css" />
 		<link rel="manifest" href="/static/manifest.json">
-		<script  nonce="%sveltekit.nonce%">
+		<script  nonce="{{CSP_NONCE}}">
 		window._odysseusLoadTime = Date.now();
 		(function(){
 			try {
@@ -100,7 +100,7 @@
 		<!-- Per-route favicon. Bookmarking /calendar shows a calendar icon,
 			/notes a notes icon, etc. Each shape is rendered in the current
 			theme accent color. Falls back to the boat logo on the root path. -->
-		<script  nonce="%sveltekit.nonce%">
+		<script  nonce="{{CSP_NONCE}}">
 		(function(){
 			try {
 			var path = (window.location.pathname || '').toLowerCase();
@@ -193,7 +193,7 @@
 			} catch(e){}
 		})();
 		</script>
-		<script  nonce="%sveltekit.nonce%">
+		<script  nonce="{{CSP_NONCE}}">
 			(function(){
 			var mobile = window.matchMedia('(max-width: 768px)').matches;
 			var desktop = [
@@ -230,11 +230,11 @@
 		<!-- KaTeX CSS is loaded with media="print" so it doesn't block render,
 			then flipped to "all" via JS after load. Mermaid init runs once the
 			library finishes loading. Both hooks are wired via addEventListener
-			below (inline onload= attrs are blocked by %sveltekit.nonce%). -->
+			below (inline onload= attrs are blocked by {{CSP_NONCE}}). -->
 		<link id="katex-css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css" media="print">
 		<script async src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
 		<script id="mermaid-script" async src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-		<script  nonce="%sveltekit.nonce%">
+		<script  nonce="{{CSP_NONCE}}">
 			(function(){
 			var k = document.getElementById('katex-css');
 			if (k) k.addEventListener('load', function(){ k.media = 'all'; }, { once: true });
@@ -246,7 +246,6 @@
 		</script>
 
 		<link rel="stylesheet" href="/static/style.css">
-		<link rel="modulepreload" href="/static/app.js">
 		<link rel="modulepreload" href="/static/js/chat.js">
 		<link rel="modulepreload" href="/static/js/ui.js">
 		<link rel="modulepreload" href="/static/js/sessions.js">
@@ -266,16 +265,16 @@
 			<div id="loader-wave" style="color:var(--brand-color,var(--red,#e06c75));font-family:monospace;font-size:11px;opacity:.5">▁▂▃</div>
 		</div>
 		<script nonce="{{CSP_NONCE}}">
-		(function(){
-			var el=document.getElementById('loader-wave');
-			if(!el)return;
-			var frames=['▁▂▃','▂▃▄','▃▄▅','▄▅▆','▅▆▅','▆▅▄','▅▄▃','▄▃▂','▃▂▁'];
+			(function(){
+				var el=document.getElementById('loader-wave');
+				if(!el)return;
+				var frames=['▁▂▃','▂▃▄','▃▄▅','▄▅▆','▅▆▅','▆▅▄','▅▄▃','▄▃▂','▃▂▁'];
 			var i=0;
 			var iv=setInterval(function(){
 			if(!document.getElementById('app-loader')){clearInterval(iv);return}
 			el.textContent=frames[i%frames.length];
 			i++;
-			},150);
+		},150);
 			setTimeout(function(){var l=document.getElementById('app-loader');if(l){l.style.opacity='0';setTimeout(function(){l.remove()},300)}},5000);
 		})();
 		</script>
@@ -286,7 +285,7 @@
 
 		<!-- From index.html-->
 
-		<script  nonce="%sveltekit.nonce%">
+		<script  nonce="{{CSP_NONCE}}">
 		(function(){
 			const container = document.getElementById('chat-history');
 			const chatBar = document.querySelector('.chat-input-bar');
@@ -320,7 +319,7 @@
 			if (_scrollRaf) { cancelAnimationFrame(_scrollRaf); _scrollRaf = null; }
 			if (_scrollTimeout) { clearTimeout(_scrollTimeout); _scrollTimeout = null; }
 			_scrollingToBottom = false;
-			}
+		}
 
 			container.addEventListener('scroll', update, {passive:true});
 			container.addEventListener('wheel', () => { if (_scrollingToBottom) cancelAutoScroll(); }, {passive:true});
@@ -339,14 +338,14 @@
 			}
 			step();
 			_scrollTimeout = setTimeout(() => { if (_scrollingToBottom) { container.scrollTop = target; _scrollingToBottom = false; } }, 1500);
-			});
+		});
 			new ResizeObserver(reposition).observe(chatBar);
 			new MutationObserver(update).observe(container, {childList:true, subtree:true});
 			window.addEventListener('resize', reposition);
 			update();
 		})();
 		</script>
-		<script  nonce="%sveltekit.nonce%">
+		<script  nonce="{{CSP_NONCE}}">
 		(function(){
 		var mobile = window.matchMedia('(max-width: 768px)').matches;
 		var desktop = [
@@ -371,8 +370,8 @@
 		fetch('/api/version').then(function(r){return r.json()}).then(function(d){
 			if (d.version) window._appVersion = d.version;
 		}).catch(function(){});
-		})();
-		</script>
+	})();
+	</script>
 		<!-- Load modules in this order -->
 		<script type="module" src="/static/js/storage.js"></script>
 		<script type="module" src="/static/js/ui.js"></script>
@@ -410,14 +409,6 @@
 		<script type="module" src="/static/js/init.js"></script>
 		<script type="module" src="/static/js/a11y.js"></script>
 
-		<!-- ===== Svelte widgets (Track A migration) =====
-			Compiled by `pnpm build:widgets` from web/lib/ + web/entries/ into
-			static/svelte/. Each is a self-contained ES module covered by the existing
-			script-src 'self' CSP — no nonce needed. Add a widget: create a
-			web/entries/<name>.ts + a [data-svelte="<name>"] mount point below. -->
-		<div data-svelte="theme-toggle" hidden></div>
-		<script type="module" src="/static/svelte/theme-toggle.js" onerror="this.previousElementSibling.remove()"></script>
-
-		<script  nonce="%sveltekit.nonce%">if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>
+		<script  nonce="{{CSP_NONCE}}">if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>
 	</body>
 </html>
