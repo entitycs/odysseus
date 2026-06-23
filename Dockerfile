@@ -25,7 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     nodejs \
-    npm \
     tmux \
     openssh-client \
     gosu \
@@ -54,18 +53,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # /var/run/docker.sock mount). The Debian `docker.io` package ships
 # dockerd but not the client binary on slim, so grab the static client
 # tarball from download.docker.com instead.
-ARG DOCKER_CLI_VERSION=27.5.1
-RUN ARCH="$(dpkg --print-architecture)" \
-    && case "$ARCH" in \
-         amd64) DARCH=x86_64 ;; \
-         arm64) DARCH=aarch64 ;; \
-         *) echo "unsupported arch $ARCH"; exit 1 ;; \
-       esac \
-    && curl -fsSL "https://download.docker.com/linux/static/stable/${DARCH}/docker-${DOCKER_CLI_VERSION}.tgz" \
-       -o /tmp/docker.tgz \
-    && tar -xzf /tmp/docker.tgz -C /tmp \
-    && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
-    && rm -rf /tmp/docker /tmp/docker.tgz
+# ARG DOCKER_CLI_VERSION=27.5.1
+# RUN ARCH="$(dpkg --print-architecture)" \
+#     && case "$ARCH" in \
+#          amd64) DARCH=x86_64 ;; \
+#          arm64) DARCH=aarch64 ;; \
+#          *) echo "unsupported arch $ARCH"; exit 1 ;; \
+#        esac \
+#     && curl -fsSL "https://download.docker.com/linux/static/stable/${DARCH}/docker-${DOCKER_CLI_VERSION}.tgz" \
+#        -o /tmp/docker.tgz \
+#     && tar -xzf /tmp/docker.tgz -C /tmp \
+#     && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
+#     && rm -rf /tmp/docker /tmp/docker.tgz
 
 # Install Node 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -123,5 +122,4 @@ EXPOSE 7000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]
-
 

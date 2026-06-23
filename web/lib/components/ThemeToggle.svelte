@@ -1,30 +1,35 @@
-<script lang="ts">
-	import { applyTheme, getSavedTheme, THEMES, type ThemeColors } from '$lib/themes';
+<script nonce="{{{CSP_NONCE}}}" lang="ts">
+import {
+  applyTheme,
+  getSavedTheme,
+  THEMES,
+  type ThemeColors,
+} from '$lib/themes';
 
-	// A self-contained theme switcher widget. Mounted into the legacy
-	// index.html shell via web/entries/theme-toggle.ts. Reads/writes the same
-	// 'odysseus-theme' localStorage key the vanilla-JS app uses, so the two
-	// stay in lockstep.
+// A self-contained theme switcher widget. Mounted into the legacy
+// index.html shell via web/entries/theme-toggle.ts. Reads/writes the same
+// 'odysseus-theme' localStorage key the vanilla-JS app uses, so the two
+// stay in lockstep.
 
-	const themeNames = Object.keys(THEMES);
+const themeNames = Object.keys(THEMES);
 
-	let current = $state(getSavedTheme()?.name ?? 'dark');
+let current = $state(getSavedTheme()?.name ?? 'dark');
 
-	// The mount point in index.html starts hidden so an unbuilt/missing widget
-	// leaves no empty gap. Reveal it once we actually render.
-	$effect(() => {
-		const host = document.querySelector('[data-svelte="theme-toggle"]');
-		if (host) host.removeAttribute('hidden');
-	});
+// The mount point in index.html starts hidden so an unbuilt/missing widget
+// leaves no empty gap. Reveal it once we actually render.
+$effect(() => {
+  const host = document.querySelector('[data-svelte="theme-toggle"]');
+  if (host) host.removeAttribute('hidden');
+});
 
-	function cycle(): void {
-		const idx = themeNames.indexOf(current);
-		const next = themeNames[(idx + 1) % themeNames.length];
-		current = next;
-		applyTheme(next);
-	}
+function cycle(): void {
+  const idx = themeNames.indexOf(current);
+  const next = themeNames[(idx + 1) % themeNames.length];
+  current = next;
+  applyTheme(next);
+}
 
-	const colors = $derived<ThemeColors>(THEMES[current] ?? THEMES.dark);
+const colors = $derived<ThemeColors>(THEMES[current] ?? THEMES.dark);
 </script>
 
 <button

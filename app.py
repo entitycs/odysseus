@@ -64,7 +64,6 @@ from starlette.middleware.gzip import GZipMiddleware
 from core.constants import (
     BASE_DIR, STATIC_DIR, SESSIONS_FILE,
     REQUEST_TIMEOUT, OPENAI_API_KEY, AUTH_FILE,
-    SVELTEKIT_BUILD_DIR, SVELTEKIT_PATHS,
 )
 from core.database import SessionLocal, ApiToken
 from core.middleware import SecurityHeadersMiddleware, is_cors_preflight
@@ -464,17 +463,6 @@ class _RevalidatingStatic(StaticFiles):
 
 app.mount("/static", _RevalidatingStatic(directory=STATIC_DIR), name="static")
 
-# ========= SVELTEKIT BUILT ASSETS (Track B) =========
-# adapter-static emits JS/CSS chunks into web-build/_app/. Mounting this
-# below /static (which has revalidating cache headers) gives SvelteKit assets
-# the same no-cache treatment so deploys are picked up immediately.
-if os.path.isdir(os.path.join(SVELTEKIT_BUILD_DIR, "_app")):
-    app.mount(
-        "/_app",
-        _RevalidatingStatic(directory=os.path.join(SVELTEKIT_BUILD_DIR, "_app")),
-        name="sveltekit-app",
-    )
-
 # ========= GENERATED IMAGES =========
 @app.get("/api/generated-image/{filename}")
 async def serve_generated_image(filename: str, request: Request):
@@ -835,24 +823,7 @@ app.include_router(setup_companion_routes())
 
 @app.get("/")
 async def serve_index(request: Request):
-    logger.info("GET / hit — starting route resolution")
-
-    is_sveltekit_route = True
-    logger.info(f"is_sveltekit_route = {is_sveltekit_route}")
-
-    if is_sveltekit_route:
-        sveltekit_path = os.path.join(SVELTEKIT_BUILD_DIR, "index.html")
-        logger.info(f"Checking SvelteKit path: {sveltekit_path}")
-
-        if os.path.exists(sveltekit_path):
-            logger.info("Serving SvelteKit index.html")
-            return _serve_html_with_nonce(request, sveltekit_path)
-        else:
-            logger.warning("SvelteKit index.html NOT found")
-
     static_path = abs_join(BASE_DIR, "static/index.html")
-    logger.info(f"Checking static fallback path: {static_path}")
-
     if os.path.exists(static_path):
         return serve_html_with_nonce(request, static_path)
     # No static bundle — fall back to a root-level index.html if one is shipped.
@@ -1239,5 +1210,3 @@ if __name__ == "__main__":
     bind_port = int(os.getenv("APP_PORT", "7000"))
 
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
-
-

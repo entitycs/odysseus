@@ -2512,18 +2512,11 @@
 <script type="module" src="/static/js/settings.js"></script>
 <script type="module" src="/static/js/admin.js"></script>
 <script type="module" src="/static/js/assistant.js"></script>
-<script type="module" src="/static/app.js?v=20260630mdfontsize"></script>  <!-- app.js must be LAST -->
+<script type="module" src="/static/app.js"></script>  <!-- app.js must be LAST -->
 <script type="module" src="/static/js/init.js"></script>
 <script type="module" src="/static/js/a11y.js"></script>
-
-<!-- ===== Svelte widgets (Track A migration) =====
-     Compiled by `pnpm build:widgets` from web/lib/ + web/entries/ into
-     static/svelte/. Each is a self-contained ES module covered by the existing
-     script-src 'self' CSP — no nonce needed. Add a widget: create a
-     web/entries/<name>.ts + a [data-svelte="<name>"] mount point below. -->
-<div data-svelte="theme-toggle" hidden></div>
-<script type="module" src="/static/svelte/theme-toggle.js" onerror="this.previousElementSibling.remove()"></script>
 
 <script nonce="{{CSP_NONCE}}">if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>
 </body>
 </html>
+
