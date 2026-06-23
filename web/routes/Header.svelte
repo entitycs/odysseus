@@ -18,14 +18,20 @@ import logo from '$lib/images/svelte-logo.svg';
 			<path d="M0,0 L1,2 C1.5,3 1.5,3 2,3 L2,0 Z" />
 		</svg>
 		<ul>
-			<li aria-current={page.url.pathname === '/' ? 'page' : undefined}>
-				<a href={resolve('/')}>Home</a>
+			<li aria-current={page.url.pathname === '/chat' ? 'page' : undefined}>
+				<a href={resolve('/chat')}>Home</a>
 			</li>
 			<li aria-current={page.url.pathname === '/about' ? 'page' : undefined}>
 				<a href={resolve('/about')}>About</a>
 			</li>
 			<li aria-current={page.url.pathname.startsWith('/sverdle') ? 'page' : undefined}>
-				<a href={resolve('/sverdle')}>Sverdle</a>
+				<!-- ===== Svelte widgets (Track A migration!) =====
+				Compiled by `pnpm build:widgets` from web/lib/ + web/entries/ into
+				static/svelte/. Each is a self-contained ES module covered by the existing
+				script-src 'self' CSP — no nonce needed. Add a widget: create a
+				web/entries/<name>.ts + a [data-svelte="<name>"] mount point below. -->
+				<div data-svelte="theme-toggle" hidden class="theme-toggle"></div>
+				<script type="module" src="/static/svelte/theme-toggle.js"></script>
 			</li>
 		</ul>
 		<svg viewBox="0 0 2 3" aria-hidden="true">
@@ -127,5 +133,12 @@ import logo from '$lib/images/svelte-logo.svg';
 
 	a:hover {
 		color: var(--color-theme-1);
+	}
+
+	.theme-toggle {
+
+	}
+	.theme-toggle button {
+		font-size:5rem;
 	}
 </style>
