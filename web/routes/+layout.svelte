@@ -1562,7 +1562,13 @@ let { children } = $props();
 				</div>
 
 				<!-- ═══ THEME TAB ═══ -->
-
+		<!-- ===== Svelte widgets (Track A migration!) =====
+			Compiled by `pnpm build:widgets` from web/lib/ + web/entries/ into
+			static/svelte/. Each is a self-contained ES module covered by the existing
+			script-src 'self' CSP — no nonce needed. Add a widget: create a
+			web/entries/<name>.ts + a [data-svelte="<name>"] mount point below. -->
+		<div data-svelte="theme-toggle" hidden class="foo"></div>
+		<script type="module" src="/static/svelte/theme-toggle.js"></script>
 				<!-- ═══ MEMORY TAB ═══ -->
 				<!-- ═══ SHORTCUTS TAB ═══ -->
 				<div data-settings-panel="shortcuts" class="hidden">
@@ -2108,7 +2114,7 @@ let { children } = $props();
 
 		<!-- end From index.html -->
 		<!-- Rendering children below original html for now -->
-		{@render children()}
+		<!--{@render children()} -->
 
 	</main>
 

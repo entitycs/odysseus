@@ -25,7 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     nodejs \
-    npm \
     tmux \
     openssh-client \
     gosu \
@@ -54,18 +53,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # /var/run/docker.sock mount). The Debian `docker.io` package ships
 # dockerd but not the client binary on slim, so grab the static client
 # tarball from download.docker.com instead.
-ARG DOCKER_CLI_VERSION=29.6.2
-RUN ARCH="$(dpkg --print-architecture)" \
-    && case "$ARCH" in \
-         amd64) DARCH=x86_64 ;; \
-         arm64) DARCH=aarch64 ;; \
-         *) echo "unsupported arch $ARCH"; exit 1 ;; \
-       esac \
-    && curl -fsSL "https://download.docker.com/linux/static/stable/${DARCH}/docker-${DOCKER_CLI_VERSION}.tgz" \
-       -o /tmp/docker.tgz \
-    && tar -xzf /tmp/docker.tgz -C /tmp \
-    && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
-    && rm -rf /tmp/docker /tmp/docker.tgz
+# ARG DOCKER_CLI_VERSION=27.5.1
+# RUN ARCH="$(dpkg --print-architecture)" \
+#     && case "$ARCH" in \
+#          amd64) DARCH=x86_64 ;; \
+#          arm64) DARCH=aarch64 ;; \
+#          *) echo "unsupported arch $ARCH"; exit 1 ;; \
+#        esac \
+#     && curl -fsSL "https://download.docker.com/linux/static/stable/${DARCH}/docker-${DOCKER_CLI_VERSION}.tgz" \
+#        -o /tmp/docker.tgz \
+#     && tar -xzf /tmp/docker.tgz -C /tmp \
+#     && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
+#     && rm -rf /tmp/docker /tmp/docker.tgz
 
 # Install Node 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -81,11 +80,6 @@ ARG INSTALL_OPTIONAL=false
 COPY requirements.txt requirements-optional.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
-
-# python-magic powers content-based MIME sniffing in src/upload_handler.py.
-# Image-only (not in requirements.txt) because it needs the libmagic1 system
-# lib installed above; see the apt note near the top of this stage.
-RUN pip install --no-cache-dir python-magic==0.4.27
 
 # Pre-install the patched basicsr/gfpgan/facexlib wheels built in the
 # realesrgan-wheels stage (--no-deps keeps the image lean — torch & friends are
@@ -123,5 +117,6 @@ EXPOSE 7000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]
+
 
 

@@ -15,8 +15,8 @@ const config = {
     adapter: adapter({
       pages: 'web-build',
       assets: 'web-build',
-      // fallback: 'index.html', // issue? - see nonce in app.html
-      strict: false,
+      fallback: 'index.html', // issue? - see nonce in app.html
+      strict: true,
     }),
   },
 };
