@@ -809,6 +809,7 @@ def _serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
         html = f.read()
     nonce = getattr(request.state, "csp_nonce", "")
     html = html.replace("{{CSP_NONCE}}", nonce)
+    html = html.replace("%sveltekit.nonce%", nonce)
     return HTMLResponse(html)
 
 @app.get("/")

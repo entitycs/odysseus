@@ -11,7 +11,9 @@
 import { mount } from 'svelte';
 import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
-const targets = document.querySelectorAll<HTMLElement>('[data-svelte="theme-toggle"]');
+const targets = document.querySelectorAll<HTMLElement>(
+  '[data-svelte="theme-toggle"]',
+);
 for (const el of targets) {
-	mount(ThemeToggle, { target: el });
+  mount(ThemeToggle, { target: el });
 }
