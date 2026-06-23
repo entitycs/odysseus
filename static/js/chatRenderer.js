@@ -3,10 +3,10 @@
 
 import { bindMenuDismiss } from './escMenuStack.js';
 import markdownModule from './markdown.js';
-import {  
+import {
   isCostTrackedEndpoint,
   isLocalEndpoint,
-  isSubscriptionEndpoint
+  isSubscriptionEndpoint,
 } from './model/endpoint.js';
 import { matchModelKey } from './model/matchKey.js';
 import {
@@ -271,7 +271,9 @@ function _openImageLightbox(att) {
     if (_overlayObs) {
       try {
         _overlayObs.disconnect();
-      } catch {/*Silent Fail*/}
+      } catch {
+        /*Silent Fail*/
+      }
     }
     overlay.remove();
   };
@@ -287,7 +289,9 @@ function _openImageLightbox(att) {
       }
     });
     _overlayObs.observe(document.body, { childList: true, subtree: false });
-  } catch {/*Silent Fail*/}
+  } catch {
+    /*Silent Fail*/
+  }
   overlay.addEventListener('click', _close);
   document.addEventListener('keydown', _onKey);
   document.body.appendChild(overlay);
@@ -366,7 +370,7 @@ function _openVisionEditor(att, userMsgEl) {
       await _saveVisionText();
       if (uiModule?.showToast) uiModule.showToast('Saved');
       _closeVisionEditor();
-    } catch (e) {
+    } catch {
       saveBtn.disabled = false;
       saveBtn.innerHTML = '<span class="vision-btn-label">Save</span>';
       if (uiModule?.showError) uiModule.showError('Failed to save OCR text');
@@ -388,11 +392,13 @@ function _openVisionEditor(att, userMsgEl) {
       await _saveVisionText();
       _closeVisionEditor();
       if (userMsgEl && window.chatModule?.resendUserMessage) {
-        window.chatModule.resendUserMessage(userMsgEl, { replaceFromHere: true });
+        window.chatModule.resendUserMessage(userMsgEl, {
+          replaceFromHere: true,
+        });
       } else if (uiModule?.showToast) {
         uiModule.showToast('Saved');
       }
-    } catch (e) {
+    } catch {
       regenBtn.disabled = false;
       saveBtn.disabled = false;
       if (uiModule?.showError) uiModule.showError('Failed to save OCR text');
@@ -491,10 +497,18 @@ export function applyModelColor(roleEl, modelName) {
       const logoHtml = providerLogo(modelName);
       const popup = document.createElement('div');
       popup.className = 'ctx-popup';
-      let html = '<div style="font-weight:600;margin-bottom:6px;color:var(--fg);display:flex;align-items:center;gap:6px;">';
-      if (logoHtml) html += '<span class="role-provider-logo" style="opacity:0.7">' + logoHtml + '</span>';
+      let html =
+        '<div style="font-weight:600;margin-bottom:6px;color:var(--fg);display:flex;align-items:center;gap:6px;">';
+      if (logoHtml)
+        html +=
+          '<span class="role-provider-logo" style="opacity:0.7">' +
+          logoHtml +
+          '</span>';
       html += uiModule.esc(short) + '</div>';
-      html += '<div><span class="ctx-label">Model</span> ' + uiModule.esc(modelName.split('/').pop()) + '</div>';
+      html +=
+        '<div><span class="ctx-label">Model</span> ' +
+        uiModule.esc(modelName.split('/').pop()) +
+        '</div>';
       // Provider = the serving endpoint, distinct from the model vendor/logo
       // (e.g. the same model via OpenRouter vs Copilot vs Anthropic direct).
       const _epUrl =
@@ -540,7 +554,8 @@ export function applyModelColor(roleEl, modelName) {
                 window._realContextLengths[modelName] = d.context_length;
                 const el = document.getElementById('_ctx-val');
                 if (el) {
-                  el.innerHTML = formatCompactNumber(d.context_length) + ' tokens';
+                  el.innerHTML =
+                    formatCompactNumber(d.context_length) + ' tokens';
                   if (info && info.ctx && info.ctx !== d.context_length) {
                     el.innerHTML +=
                       ' <span style="opacity:0.35">(spec: ' +
@@ -550,7 +565,7 @@ export function applyModelColor(roleEl, modelName) {
                 }
               }
             })
-            .catch(() => {});
+            .catch(() => null);
         }
       }
       // Show configured max tokens if set
@@ -963,12 +978,14 @@ function _appendReportButton(container, sessionId) {
         var detail = '';
         try {
           detail = (await res.json()).detail || '';
-        } catch {/*Silent Fail*/}
+        } catch {
+          /*Silent Fail*/
+        }
         throw new Error(detail || 'HTTP ' + res.status);
       }
       var payload = await res.json();
       if (window.sessionModule && payload.session_id) {
-        await window.sessionModule.loadSessions().catch(() => {});
+        await window.sessionModule.loadSessions().catch(() => null);
         await window.sessionModule.selectSession(payload.session_id);
       }
     } catch (e) {
@@ -1066,14 +1083,14 @@ document.addEventListener('click', function (e) {
             (mod.default.loadDocument || mod.default.openDocument));
         if (open) open(id);
       })
-      .catch(() => {});
+      .catch(() => null);
   } else if (kind === 'note') {
     import('./notes.js')
       .then((mod) => {
         const open = mod.openNote || (mod.default && mod.default.openNote);
         if (open) open(id);
       })
-      .catch(() => {});
+      .catch(() => null);
   } else if (kind === 'image') {
     import('./gallery.js')
       .then((mod) => {
@@ -1081,7 +1098,7 @@ document.addEventListener('click', function (e) {
           mod.openGalleryImage || (mod.default && mod.default.openGalleryImage);
         if (open) open(id);
       })
-      .catch(() => {});
+      .catch(() => null);
   } else if (kind === 'email') {
     import('./emailLibrary.js')
       .then((mod) => {
@@ -1089,7 +1106,7 @@ document.addEventListener('click', function (e) {
           mod.openEmailLibrary || (mod.default && mod.default.openEmailLibrary);
         if (open) open({ uid: id });
       })
-      .catch(() => {});
+      .catch(() => null);
   } else if (kind === 'event') {
     import('./calendar.js')
       .then((mod) => {
@@ -1097,7 +1114,7 @@ document.addEventListener('click', function (e) {
           mod.openCalendarTo || (mod.default && mod.default.openCalendarTo);
         if (open) open(id);
       })
-      .catch(() => {});
+      .catch(() => null);
   } else if (kind === 'task') {
     import('./tasks.js')
       .then((mod) => {
@@ -1118,14 +1135,14 @@ document.addEventListener('click', function (e) {
         const open = mod.openSkill || (mod.default && mod.default.openSkill);
         if (open) open(id);
       })
-      .catch(() => {});
+      .catch(() => null);
   } else if (kind === 'research') {
     import('./research/panel.js')
       .then((mod) => {
         const open = mod.openPanel || (mod.default && mod.default.openPanel);
         if (open) open(id);
       })
-      .catch(() => {});
+      .catch(() => null);
   }
 });
 
@@ -2132,7 +2149,9 @@ export function displayMetrics(messageElement, metrics) {
               try {
                 const err = await res.json();
                 if (err.detail) detail = err.detail;
-              } catch {/*Silent Fail*/}
+              } catch {
+                /*Silent Fail*/
+              }
               compactBody.textContent = detail;
               compactBody.style.color = 'var(--red)';
             }
