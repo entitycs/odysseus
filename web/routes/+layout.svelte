@@ -976,7 +976,7 @@ let { children } = $props();
 			static/svelte/. Each is a self-contained ES module covered by the existing
 			script-src 'self' CSP — no nonce needed. Add a widget: create a
 			web/entries/<name>.ts + a [data-svelte="<name>"] mount point below. -->
-			<div data-svelte="theme-toggle" hidden class="foo"></div>
+			<div data-svelte="theme-toggle" hidden class="theme-toggle"></div>
 			<script type="module" src="/static/svelte/theme-toggle.js"></script>
 
 		<!-- Rename Session Modal -->
@@ -2129,6 +2129,13 @@ let { children } = $props();
 </div>
 
 <style>
+	.theme-toggle {
+		position:fixed;
+		font-size: 1rem;
+	}
+	.theme-toggle button {
+		font-size: 4rem;
+	}
 	.app {
 		display: flex;
 		flex-direction: column;
