@@ -45,7 +45,7 @@ const colors = $derived<ThemeColors>(THEMES[current] ?? THEMES.dark);
 </button>
 
 <style>
-	:global(button) {
+	button {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;

@@ -29,4 +29,3 @@ let { children } = $props();
    </button>
    <div id="welcome-setup" style="display:none"></div>
 </div>
-

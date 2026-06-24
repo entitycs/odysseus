@@ -5227,3 +5227,19 @@ function _openRunningTabForRepo(repo) {
     }
   }, 180);
 }
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+document.addEventListener('click', (e) => {
+  const pill =
+    e.target.closest &&
+    e.target.closest('.cookbook-serve-running-pill.is-clickable');
+  if (!pill) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const repo = pill.dataset.repo || '';
+  if (repo) _openRunningTabForRepo(repo);
+});
+>>>>>>> 71669786 (Initial, unchecked migration from static to web/lib/legacy for imported modules.)
+=======
+>>>>>>> 8af61e34 (Initial round of compiler issue fixes.)

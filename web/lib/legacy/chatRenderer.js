@@ -3224,4 +3224,7 @@ const chatRenderer = {
 };
 
 export default chatRenderer;
+<<<<<<< HEAD
 
+=======
+>>>>>>> 71669786 (Initial, unchecked migration from static to web/lib/legacy for imported modules.)

@@ -56,14 +56,11 @@ onMount(async () => {
   tourAutoPlay.init?.();
   tourHints.init?.();
   fileHandler.init?.();
-  voiceRecorder.initLegacy?.();
+  voiceRecorder.init?.();
+  fileHandler.init?.();
   models.init?.();
   rag.init?.();
   presets.init?.();
-  search.init?.();
-  spinner.init?.();
-  ttsAi.init?.();
-  documentModule.init?.();
   gallery.init?.();
   await calendar.init?.();
   chatRenderer.init?.();
@@ -793,14 +790,6 @@ let { children } = $props();
 			{@render children()}
 		</main>
 		<button id="scroll-bottom-btn" class="scroll-nav-btn" title="Scroll to bottom">▼</button>
-
-			<!-- ===== Svelte widgets (Track A migration!) =====
-			Compiled by `pnpm build:widgets` from web/lib/ + web/entries/ into
-			static/svelte/. Each is a self-contained ES module covered by the existing
-			script-src 'self' CSP — no nonce needed. Add a widget: create a
-			web/entries/<name>.ts + a [data-svelte="<name>"] mount point below. -->
-			<div data-svelte="theme-toggle" hidden class="foo"></div>
-			<script type="module" src="/static/svelte/theme-toggle.js"></script>
 
 		<!-- Rename Session Modal -->
 		<div id="rename-session-modal" class="modal hidden">
@@ -1949,7 +1938,7 @@ let { children } = $props();
 </div>
 
 <style>
-	.theme-toggle {
+	/* .theme-toggle {
 		position:fixed;
 		font-size: 1rem;
 	}
@@ -1984,5 +1973,5 @@ let { children } = $props();
 		footer {
 			padding: 12px 0;
 		}
-	}
+	} */
 </style>
