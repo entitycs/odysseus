@@ -44,8 +44,8 @@ const colors = $derived<ThemeColors>(THEMES[current] ?? THEMES.dark);
 	<span class="label">{current}</span>
 </button>
 
-<style>
-	button {
+<style nonce=%sveltekit.nonce%>
+	:global(button) {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -56,6 +56,7 @@ const colors = $derived<ThemeColors>(THEMES[current] ?? THEMES.dark);
 		font-family: inherit;
 		cursor: pointer;
 		transition: opacity 0.12s ease;
+		position:absolute;
 	}
 	button:hover {
 		opacity: 0.85;
@@ -70,4 +71,5 @@ const colors = $derived<ThemeColors>(THEMES[current] ?? THEMES.dark);
 	.label {
 		text-transform: capitalize;
 	}
+
 </style>
