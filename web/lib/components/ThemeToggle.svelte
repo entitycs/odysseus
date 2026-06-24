@@ -52,7 +52,7 @@ const colors = $derived<ThemeColors>(THEMES[current] ?? THEMES.dark);
 		padding: 0.3rem 0.6rem;
 		border: 1px solid;
 		border-radius: 6px;
-		font-size: 0.85rem;
+		font-size: 1.85rem !important;
 		font-family: inherit;
 		cursor: pointer;
 		transition: opacity 0.12s ease;

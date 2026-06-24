@@ -77,13 +77,6 @@ RUN pip install --no-cache-dir --no-deps /tmp/odysseus-wheels/*.whl \
 # Copy app code
 COPY . .
 
-# Build SvelteKit (Track B)
-WORKDIR /app/web
-RUN pnpm install
-RUN pnpm build:app
-
-# Return to backend root
-WORKDIR /app
 
 # Create data directory (mount a volume here for persistence)
 RUN mkdir -p data logs services/cache/search
@@ -96,6 +89,9 @@ RUN mkdir -p data logs services/cache/search
 # prefs persistence, mail attachments, etc.
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+# Build SvelteKit (Track B)
+RUN pnpm install --frozen-lockfile
+RUN pnpm build:app
 
 EXPOSE 7000
 
