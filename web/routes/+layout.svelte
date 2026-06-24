@@ -971,6 +971,14 @@ let { children } = $props();
 		</main>
 		<button id="scroll-bottom-btn" class="scroll-nav-btn" title="Scroll to bottom">▼</button>
 
+			<!-- ===== Svelte widgets (Track A migration!) =====
+			Compiled by `pnpm build:widgets` from web/lib/ + web/entries/ into
+			static/svelte/. Each is a self-contained ES module covered by the existing
+			script-src 'self' CSP — no nonce needed. Add a widget: create a
+			web/entries/<name>.ts + a [data-svelte="<name>"] mount point below. -->
+			<div data-svelte="theme-toggle" hidden class="foo"></div>
+			<script type="module" src="/static/svelte/theme-toggle.js"></script>
+
 		<!-- Rename Session Modal -->
 		<div id="rename-session-modal" class="modal hidden">
 			<div class="modal-content" role="dialog" aria-label="Rename session" style="width: 400px;">
@@ -1562,13 +1570,6 @@ let { children } = $props();
 				</div>
 
 				<!-- ═══ THEME TAB ═══ -->
-		<!-- ===== Svelte widgets (Track A migration!) =====
-			Compiled by `pnpm build:widgets` from web/lib/ + web/entries/ into
-			static/svelte/. Each is a self-contained ES module covered by the existing
-			script-src 'self' CSP — no nonce needed. Add a widget: create a
-			web/entries/<name>.ts + a [data-svelte="<name>"] mount point below. -->
-		<div data-svelte="theme-toggle" hidden class="foo"></div>
-		<script type="module" src="/static/svelte/theme-toggle.js"></script>
 				<!-- ═══ MEMORY TAB ═══ -->
 				<!-- ═══ SHORTCUTS TAB ═══ -->
 				<div data-settings-panel="shortcuts" class="hidden">
