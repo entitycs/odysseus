@@ -28,8 +28,13 @@ function _isMobileViewport() {
 function _isCroppableImage(f) {
   const mime = (f?.type || '').toLowerCase();
   const name = (f?.name || '').toLowerCase();
-  if (!(mime.startsWith('image/') || /\.(png|jpe?g|webp|bmp)$/i.test(name))) return false;
-  return !mime.includes('svg') && !mime.includes('gif') && !/\.svg|\.gif$/i.test(name);
+  if (!(mime.startsWith('image/') || /\.(png|jpe?g|webp|bmp)$/i.test(name)))
+    return false;
+  return (
+    !mime.includes('svg') &&
+    !mime.includes('gif') &&
+    !/\.svg|\.gif$/i.test(name)
+  );
 }
 
 function _loadImage(url) {
@@ -42,7 +47,9 @@ function _loadImage(url) {
 }
 
 function _canvasToBlob(canvas, type, quality) {
-  return new Promise((resolve) => canvas.toBlob(resolve, type || 'image/png', quality));
+  return new Promise((resolve) =>
+    canvas.toBlob(resolve, type || 'image/png', quality),
+  );
 }
 
 async function _openMobileCropper(file) {
@@ -74,11 +81,13 @@ async function _openMobileCropper(file) {
 
     function applyCrop() {
       const r = img.getBoundingClientRect();
-      const pr = overlay.querySelector('.attach-crop-stage').getBoundingClientRect();
-      box.style.left = (r.left - pr.left + crop.x * r.width) + 'px';
-      box.style.top = (r.top - pr.top + crop.y * r.height) + 'px';
-      box.style.width = (crop.w * r.width) + 'px';
-      box.style.height = (crop.h * r.height) + 'px';
+      const pr = overlay
+        .querySelector('.attach-crop-stage')
+        .getBoundingClientRect();
+      box.style.left = r.left - pr.left + crop.x * r.width + 'px';
+      box.style.top = r.top - pr.top + crop.y * r.height + 'px';
+      box.style.width = crop.w * r.width + 'px';
+      box.style.height = crop.h * r.height + 'px';
     }
     function clampCrop() {
       crop.w = Math.max(0.12, Math.min(1, crop.w));
@@ -99,7 +108,9 @@ async function _openMobileCropper(file) {
       e.preventDefault();
       box.setPointerCapture(e.pointerId);
       drag = {
-        mode: e.target.classList.contains('attach-crop-handle') ? 'resize' : 'move',
+        mode: e.target.classList.contains('attach-crop-handle')
+          ? 'resize'
+          : 'move',
         sx: e.clientX,
         sy: e.clientY,
         start: { ...crop },
@@ -120,29 +131,48 @@ async function _openMobileCropper(file) {
       clampCrop();
       applyCrop();
     });
-    box.addEventListener('pointerup', () => { drag = null; });
-    box.addEventListener('pointercancel', () => { drag = null; });
-
-    overlay.querySelector('[data-action="cancel"]').addEventListener('click', () => finish(null));
-    overlay.querySelector('[data-action="original"]').addEventListener('click', () => finish(file));
-    overlay.querySelector('[data-action="crop"]').addEventListener('click', async () => {
-      clampCrop();
-      const canvas = document.createElement('canvas');
-      const sx = Math.round(crop.x * imgProbe.naturalWidth);
-      const sy = Math.round(crop.y * imgProbe.naturalHeight);
-      const sw = Math.max(1, Math.round(crop.w * imgProbe.naturalWidth));
-      const sh = Math.max(1, Math.round(crop.h * imgProbe.naturalHeight));
-      canvas.width = sw;
-      canvas.height = sh;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(imgProbe, sx, sy, sw, sh, 0, 0, sw, sh);
-      const type = file.type && file.type !== 'image/bmp' ? file.type : 'image/png';
-      const blob = await _canvasToBlob(canvas, type, 0.92);
-      if (!blob) { finish(file); return; }
-      const ext = type.includes('jpeg') ? 'jpg' : (type.split('/')[1] || 'png');
-      const base = (file.name || 'image').replace(/\.[^.]+$/, '');
-      finish(new File([blob], `${base}-cropped.${ext}`, { type, lastModified: Date.now() }));
+    box.addEventListener('pointerup', () => {
+      drag = null;
     });
+    box.addEventListener('pointercancel', () => {
+      drag = null;
+    });
+
+    overlay
+      .querySelector('[data-action="cancel"]')
+      .addEventListener('click', () => finish(null));
+    overlay
+      .querySelector('[data-action="original"]')
+      .addEventListener('click', () => finish(file));
+    overlay
+      .querySelector('[data-action="crop"]')
+      .addEventListener('click', async () => {
+        clampCrop();
+        const canvas = document.createElement('canvas');
+        const sx = Math.round(crop.x * imgProbe.naturalWidth);
+        const sy = Math.round(crop.y * imgProbe.naturalHeight);
+        const sw = Math.max(1, Math.round(crop.w * imgProbe.naturalWidth));
+        const sh = Math.max(1, Math.round(crop.h * imgProbe.naturalHeight));
+        canvas.width = sw;
+        canvas.height = sh;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(imgProbe, sx, sy, sw, sh, 0, 0, sw, sh);
+        const type =
+          file.type && file.type !== 'image/bmp' ? file.type : 'image/png';
+        const blob = await _canvasToBlob(canvas, type, 0.92);
+        if (!blob) {
+          finish(file);
+          return;
+        }
+        const ext = type.includes('jpeg') ? 'jpg' : type.split('/')[1] || 'png';
+        const base = (file.name || 'image').replace(/\.[^.]+$/, '');
+        finish(
+          new File([blob], `${base}-cropped.${ext}`, {
+            type,
+            lastModified: Date.now(),
+          }),
+        );
+      });
   });
 }
 

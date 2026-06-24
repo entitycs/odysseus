@@ -2114,7 +2114,7 @@ body.bg-pattern-sparkles {
       background: color-mix(in srgb, var(--fg) 40%, transparent);
     }
     .msg .body {
-      width: 100%;
+      /* width: 100%; */
       white-space: normal;
       word-break: break-word;
       overflow-wrap: anywhere;
@@ -2122,7 +2122,7 @@ body.bg-pattern-sparkles {
       font-size: 0.95em;
       margin: 0;
       overflow: hidden;
-      max-width: 100%;
+      /* max-width: 100%; */
     }
     .msg .body > * {
       margin-top: 8px;

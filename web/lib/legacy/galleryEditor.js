@@ -327,14 +327,19 @@ function _setAiCommandStatus(text, kind = '') {
 }
 
 function _clickToolButton(toolId) {
-  const btn = state.container?.querySelector(`.ge-tool-btn[data-tool="${toolId}"]`);
+  const btn = state.container?.querySelector(
+    `.ge-tool-btn[data-tool="${toolId}"]`,
+  );
   if (btn) btn.click();
 }
 
 function _runExistingButton(id, status) {
   const btn = document.getElementById(id);
   if (!btn) {
-    _setAiCommandStatus('That edit is not available in this editor state.', 'error');
+    _setAiCommandStatus(
+      'That edit is not available in this editor state.',
+      'error',
+    );
     return false;
   }
   if (status) _setAiCommandStatus(status, 'running');
@@ -386,7 +391,9 @@ function _wireAiCommandBox() {
     toggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) requestAnimationFrame(() => input.focus());
   };
-  toggle?.addEventListener('click', () => setOpen(wrap.classList.contains('ge-ai-command-collapsed')));
+  toggle?.addEventListener('click', () =>
+    setOpen(wrap.classList.contains('ge-ai-command-collapsed')),
+  );
   closeBtn?.addEventListener('click', () => setOpen(false));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -398,29 +405,51 @@ function _wireAiCommandBox() {
     }
     const p = prompt.toLowerCase();
     try {
-      if (/\b(remove|erase|cut\s*out|transparent)\b.*\b(bg|background)\b|\b(bg|background)\b.*\b(remove|erase|transparent)\b/.test(p)) {
+      if (
+        /\b(remove|erase|cut\s*out|transparent)\b.*\b(bg|background)\b|\b(bg|background)\b.*\b(remove|erase|transparent)\b/.test(
+          p,
+        )
+      ) {
         _clickToolButton('rembg');
         _runExistingButton('ge-rembg-run', 'Removing background...');
         return;
       }
-      if (/\b(upscale|higher\s*res|increase\s*resolution|bigger|2x|4x)\b/.test(p)) {
+      if (
+        /\b(upscale|higher\s*res|increase\s*resolution|bigger|2x|4x)\b/.test(p)
+      ) {
         _clickToolButton('upscale');
         _runExistingButton('ge-upscale-ai', 'Upscaling image...');
         return;
       }
       if (/\b(denoise|noise|grain|grainy|clean\s*up)\b/.test(p)) {
         _setAiCommandStatus('Denoising image...', 'running');
-        await _applyImageTool('/api/image/denoise', { strength: 0.55 }, 'Denoised', runBtn, { busyLabel: 'Denoising...' });
+        await _applyImageTool(
+          '/api/image/denoise',
+          { strength: 0.55 },
+          'Denoised',
+          runBtn,
+          { busyLabel: 'Denoising...' },
+        );
         _setAiCommandStatus('Added denoised layer.', 'done');
         return;
       }
       if (/\b(face|portrait|skin|selfie|restore)\b/.test(p)) {
         _setAiCommandStatus('Enhancing face/portrait...', 'running');
-        await _applyImageTool('/api/image/enhance-face', {}, 'Enhanced Face', runBtn, { busyLabel: 'Enhancing...' });
+        await _applyImageTool(
+          '/api/image/enhance-face',
+          {},
+          'Enhanced Face',
+          runBtn,
+          { busyLabel: 'Enhancing...' },
+        );
         _setAiCommandStatus('Added enhanced layer.', 'done');
         return;
       }
-      if (/\b(sharpen|sharp|crisp|clearer|make it look better|enhance|improve|better)\b/.test(p)) {
+      if (
+        /\b(sharpen|sharp|crisp|clearer|make it look better|enhance|improve|better)\b/.test(
+          p,
+        )
+      ) {
         const amount = document.getElementById('ge-sharpen-amount');
         if (amount) {
           amount.value = '65';

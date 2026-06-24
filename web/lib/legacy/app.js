@@ -92,6 +92,7 @@ export function init() {
     startOdysseusApp();
   }
   // el = uiModule.el;
+<<<<<<< HEAD
 }
 
 function _isMobileChatInput() {
@@ -161,28 +162,24 @@ function _countLineBreaks(s) {
   return ((s || '').match(/\n/g) || []).length;
 }
 
-function initForegroundActivityHeartbeat() {
-  let lastSent = 0;
-  const minGapMs = 12000;
-  const send = (force = false) => {
-    if (document.visibilityState === 'hidden') return;
-    const now = Date.now();
-    if (!force && now - lastSent < minGapMs) return;
-    lastSent = now;
-    try {
-      if (navigator.sendBeacon) {
-        const body = new Blob(['{}'], { type: 'application/json' });
-        if (navigator.sendBeacon('/api/activity/heartbeat', body)) return;
-      }
-    } catch (_) {}
-    fetch('/api/activity/heartbeat', {
-      method: 'POST',
-      credentials: 'same-origin',
-      keepalive: true,
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    }).catch(() => {});
+export function init() {
+  API_BASE = window.location.origin;
+  window.themeModule = themeModule;
+  window.sessionModule = sessionModule;
+  window.uiModule = uiModule;
+  window.adminModule = adminModule;
+  window.cookbookModule = cookbookModule;
+
+  // Redirect to login on 401 from any fetch
+  const _origFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await _origFetch.apply(this, args);
+    if (res.status === 401 && !String(args[0]).includes('/api/auth/')) {
+      window.location.href = '/login';
+    }
+    return res;
   };
+<<<<<<< HEAD
   send(true);
   window.addEventListener('focus', () => send(true));
   document.addEventListener('visibilitychange', () => {
@@ -231,6 +228,33 @@ function el(id) {
 >>>>>>> 800fbc6f (Incremental fixes to pull from app.js, chat(.js/Renderer.js/etc))
 // Search settings
 
+=======
+  // Prime the cache once at load for initial paint paths that read _defaultChat
+  // synchronously; later reads should call _refreshDefaultChat() first.
+  _refreshDefaultChat();
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startOdysseusApp, {
+      once: true,
+    });
+  } else {
+    startOdysseusApp();
+  }
+=======
+>>>>>>> 800fbc6f (Incremental fixes to pull from app.js, chat(.js/Renderer.js/etc))
+}
+
+function el(id) {
+  return document.getElementById(id);
+}
+// Search settings
+
+<<<<<<< HEAD
+const el = uiModule.el;
+
+>>>>>>> 71669786 (Initial, unchecked migration from static to web/lib/legacy for imported modules.)
+=======
+>>>>>>> 800fbc6f (Incremental fixes to pull from app.js, chat(.js/Renderer.js/etc))
 // Default chat config — refreshed on every new-chat action so settings
 // changes take effect immediately (previously cached once at page load and
 // went stale when the user changed their default model).
@@ -347,6 +371,7 @@ function initializeEventListeners() {
   // // Chat form submission
   // //  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
 
+<<<<<<< HEAD
   // svelte-dev note: this perhaps should be moved to +.svelte for dom reasons
   // File attachments (inside overflow menu)
   const _overflowAttach = el('overflow-attach-btn');
@@ -354,10 +379,24 @@ function initializeEventListeners() {
   el('file-input').addEventListener('change', async (e)=>{
     await fileHandlerModule.addFiles(Array.from(e.target.files || []));
     e.target.value = '';
+
     // Refocus textarea after file picker closes (mobile keyboard)
     const ta = el('message');
     if (ta) setTimeout(() => ta.focus(), 100);
   });
+=======
+  // // File attachments (inside overflow menu)
+  // const _overflowAttach = document.getElementById('overflow-attach-btn');
+  // if (_overflowAttach)
+  //   _overflowAttach.addEventListener('click', fileHandlerModule.openPicker);
+  // document.getElementById('file-input').addEventListener('change', (e) => {
+  //   for (const f of e.target.files) fileHandlerModule.addFiles([f]);
+  //   fileHandlerModule.renderAttachStrip();
+  //   // Refocus textarea after file picker closes (mobile keyboard)
+  //   const ta = document.getElementById('message');
+  //   if (ta) setTimeout(() => ta.focus(), 100);
+  // });
+>>>>>>> 800fbc6f (Incremental fixes to pull from app.js, chat(.js/Renderer.js/etc))
 
   // Paste handler
   window.addEventListener('paste', async (e) => {
@@ -541,6 +580,7 @@ function initializeEventListeners() {
     }
   }
 
+<<<<<<< HEAD
   // svelte-dev note: ultimately moved to +.svelte
   // Serialize the current chat history into a plain-text transcript.
   // Includes user messages, assistant rounds, and agent tool calls in DOM order.
@@ -594,6 +634,66 @@ function initializeEventListeners() {
     }
     return parts.join('\n\n');
   }
+=======
+  /** moved to +.svelte */
+  // // Serialize the current chat history into a plain-text transcript.
+  // // Includes user messages, assistant rounds, and agent tool calls in DOM order.
+  // function _serializeChatTranscript() {
+  //   const box = document.getElementById('chat-history');
+  //   if (!box) return '';
+  //   const parts = [];
+  //   for (const child of box.children) {
+  //     if (child.classList?.contains('msg')) {
+  //       const isUser = child.classList.contains('msg-user');
+  //       let label;
+  //       if (isUser) {
+  //         label = 'User';
+  //       } else {
+  //         const roleEl = child.querySelector('.role');
+  //         const ts = roleEl?.querySelector('.role-timestamp');
+  //         let raw = roleEl ? roleEl.textContent : '';
+  //         if (ts) raw = raw.replace(ts.textContent, '');
+  //         label = (raw || '').trim() || 'Assistant';
+  //       }
+  //       const body = child.querySelector('.body');
+  //       // Prefer dataset.raw (original markdown) over innerText (rendered HTML as text)
+  //       // to avoid extra newlines and formatting artifacts.
+  //       const text = body
+  //         ? (
+  //             body.dataset.raw ||
+  //             body.innerText ||
+  //             body.textContent ||
+  //             ''
+  //           ).trim()
+  //         : '';
+  //       if (text) parts.push(`${label}: ${text}`);
+  //     } else if (child.classList?.contains('agent-thread')) {
+  //       const lines = ['[Tool calls]'];
+  //       for (const n of child.querySelectorAll('.agent-thread-node')) {
+  //         const tool =
+  //           n.querySelector('.agent-thread-tool')?.textContent?.trim() ||
+  //           'tool';
+  //         const cmd =
+  //           n.querySelector('.agent-thread-cmd')?.textContent?.trim() || '';
+  //         const output =
+  //           n.querySelector('.agent-tool-output pre')?.textContent?.trim() ||
+  //           '';
+  //         const status = n.classList.contains('error') ? 'failed' : 'done';
+  //         let line = `- ${tool} [${status}]`;
+  //         if (cmd) line += `\n  cmd: ${cmd}`;
+  //         if (output) {
+  //           const truncated =
+  //             output.length > 2000 ? output.slice(0, 2000) + '…' : output;
+  //           line += `\n  out: ${truncated}`;
+  //         }
+  //         lines.push(line);
+  //       }
+  //       parts.push(lines.join('\n'));
+  //     }
+  //   }
+  //   return parts.join('\n\n');
+  // }
+>>>>>>> 800fbc6f (Incremental fixes to pull from app.js, chat(.js/Renderer.js/etc))
 
   // Export: Copy all messages
   const exportCopyBtn = el('export-copy-btn');
@@ -2787,6 +2887,55 @@ function initializeEventListeners() {
   //     groupModule.stopGroup();
   //   });
   // }
+<<<<<<< HEAD
+  // ── Overflow Group Chat toggle ── todo? move to +svelte? new or discarded
+  const overflowGroupBtn = el('overflow-group-btn');
+  if (overflowGroupBtn) {
+    overflowGroupBtn.addEventListener('click', async () => {
+      const chk = el('group-toggle');
+      const turningOn = chk ? !chk.checked : false;
+      if (turningOn) {
+        const picked = await groupModule.showModelPicker();
+        if (!picked || picked.length < 2) return;
+        groupModule.setActive(true); // Set early so updateModelPicker sees it
+        _syncGroupIndicator(true);
+        _startFreshChat();
+        // Clear any leftover splash screens
+        const _chatBox = document.getElementById('chat-history');
+        if (_chatBox) {
+          _chatBox.querySelectorAll('.tool-splash').forEach((s) => s.remove());
+          // Also hide welcome screen
+          if (chatModule && chatModule.hideWelcomeScreen)
+            chatModule.hideWelcomeScreen();
+        }
+        // Start group — create participant sessions immediately
+        const sid =
+          sessionModule.getCurrentSessionId() || 'group-' + Date.now();
+        await groupModule.startGroup(picked, sid);
+        // Re-hide picker after everything settles
+        const _mpw = el('model-picker-wrap');
+        if (_mpw) _mpw.style.display = 'none';
+        uiModule.showToast(`Group chat ready — ${picked.length} models`);
+      } else {
+        _syncGroupIndicator(false);
+        groupModule.stopGroup();
+        // Restore model picker
+        const _mpWrap2 = el('model-picker-wrap');
+        if (_mpWrap2) _mpWrap2.style.display = '';
+      }
+    });
+  }
+
+  // ── Group toggle button (chatbox indicator) — click to deactivate ──
+  const groupToggleBtn = el('group-toggle-btn');
+  if (groupToggleBtn) {
+    groupToggleBtn.addEventListener('click', () => {
+      _syncGroupIndicator(false);
+      groupModule.stopGroup();
+    });
+  }
+=======
+>>>>>>> 800fbc6f (Incremental fixes to pull from app.js, chat(.js/Renderer.js/etc))
 
   // ── Incognito mode toggle (on welcome screen) ──
   const incognitoBtn = el('incognito-btn');
@@ -3995,36 +4144,66 @@ function initializeEventListeners() {
     );
   })();
 
-  async function _handleNewChatAction({ preferModel = true, focus = true } = {}) {
-      if (!sessionModule) return;
-      if (_closeCompareIfActive()) return;
-      _deactivateIncognito();
-      // Clear character on new chat
-      if (presetsModule && presetsModule.deactivateCharacter)
-        presetsModule.deactivateCharacter();
-      // Clear research mode if active
-      const _resChk = el('research-toggle');
-      if (_resChk && _resChk.checked) _syncResearchIndicator(false);
-      if (preferModel && await _createDirectChatFromPreferredModel()) return;
-      // No models at all — show welcome screen
-      _startFreshChat();
-      const docBtn3 = el('overflow-doc-btn');
-      if (docBtn3) docBtn3.classList.remove('active', 'has-docs');
-      document.querySelectorAll('.session-item.active').forEach(s => s.classList.remove('active'));
-      if (focus) {
-        const input = el('message');
-        if (input) { try { input.focus(); } catch (_) {} }
-      }
-  }
+//todo - move to chat +.svelte
+// //   async function _handleNewChatAction({ preferModel = true, focus = true } = {}) {
+//       if (!sessionModule) return;
+//       if (_closeCompareIfActive()) return;
+//       _deactivateIncognito();
+//       // Clear character on new chat
+//       if (presetsModule && presetsModule.deactivateCharacter)
+//         presetsModule.deactivateCharacter();
+//       // Clear research mode if active
+//       const _resChk = el('research-toggle');
+//       if (_resChk && _resChk.checked) _syncResearchIndicator(false);
+//       if (preferModel && await _createDirectChatFromPreferredModel()) return;
+//       // No models at all — show welcome screen
+//       _startFreshChat();
+//       const docBtn3 = el('overflow-doc-btn');
+//       if (docBtn3) docBtn3.classList.remove('active', 'has-docs');
+//       document.querySelectorAll('.session-item.active').forEach(s => s.classList.remove('active'));
+//       if (focus) {
+//         const input = el('message');
+//         if (input) { try { input.focus(); } catch (_) {} }
+//       }
+//   }
 
-  // New session button on icon rail
-  const railNewSession = el('rail-new-session');
-  if (railNewSession) {
-    railNewSession.addEventListener('click', async (e) => {
-      if (e) { e.preventDefault(); e.stopPropagation(); }
-      await _handleNewChatAction();
-    });
-  }
+<<<<<<< HEAD
+//   // New session button on icon rail
+//   const railNewSession = el('rail-new-session');
+//   if (railNewSession) {
+//     railNewSession.addEventListener('click', async (e) => {
+//       if (e) { e.preventDefault(); e.stopPropagation(); }
+//       await _handleNewChatAction();
+//     });
+//   }
+=======
+  /** planned to move, but search for mobile-new-chat-btn failed. 'removing' */
+  // // Mobile new chat button — always go to blank welcome screen.
+  // // The send path at chat.js:354 will auto-create a session using /api/default-chat
+  // // on first submit, so users can start typing before models finish loading and
+  // // the default model attaches when they hit send.
+  // const mobileNewChat = el('mobile-new-chat-btn');
+  // if (mobileNewChat) {
+  //   mobileNewChat.addEventListener('click', () => {
+  //     if (!sessionModule) return;
+  //     if (_closeCompareIfActive()) return;
+  //     _deactivateIncognito();
+  //     _startFreshChat();
+  //     document
+  //       .querySelectorAll('.session-item.active')
+  //       .forEach((s) => s.classList.remove('active'));
+  //     // Focus the composer synchronously so mobile keyboards pop open.
+  //     // iOS Safari only honours programmatic focus inside the original click
+  //     // callback — a setTimeout breaks the user-gesture chain.
+  //     const _input = el('message-input');
+  //     if (_input) {
+  //       try {
+  //         _input.focus();
+  //       } catch (_) {}
+  //     }
+  //   });
+  // }
+>>>>>>> 800fbc6f (Incremental fixes to pull from app.js, chat(.js/Renderer.js/etc))
 
   /** planned to move, but search for mobile-new-chat-btn failed. 'removing' */
   // // Mobile new chat button — always go to blank welcome screen.
@@ -4053,22 +4232,23 @@ function initializeEventListeners() {
   //   });
   // }
 
-  // Logo click → new chat (same logic as rail new-session button)
-  const brandBtn = el('sidebar-brand-btn');
-  if (brandBtn) {
-    brandBtn.addEventListener('click', async (e) => {
-      if (e) { e.preventDefault(); e.stopPropagation(); }
-      await _handleNewChatAction();
-    });
-  }
+  // // todo - move to chat +.svelte
+  // // Logo click → new chat (same logic as rail new-session button)
+  // const brandBtn = el('sidebar-brand-btn');
+  // if (brandBtn) {
+  //   brandBtn.addEventListener('click', async (e) => {
+  //     if (e) { e.preventDefault(); e.stopPropagation(); }
+  //     await _handleNewChatAction();
+  //   });
+  // }
 
-  const sidebarNewChatBtn = el('sidebar-new-chat-btn');
-  if (sidebarNewChatBtn) {
-    sidebarNewChatBtn.addEventListener('click', async (e) => {
-      if (e) { e.preventDefault(); e.stopImmediatePropagation(); }
-      await _handleNewChatAction();
-    });
-  }
+  // const sidebarNewChatBtn = el('sidebar-new-chat-btn');
+  // if (sidebarNewChatBtn) {
+  //   sidebarNewChatBtn.addEventListener('click', async (e) => {
+  //     if (e) { e.preventDefault(); e.stopImmediatePropagation(); }
+  //     await _handleNewChatAction();
+  //   });
+  // }
 
   // Delete session button on icon rail
   const railDelete = el('rail-delete-session');
@@ -4663,23 +4843,6 @@ function startOdysseusApp() {
       fileHandlerModule.getPendingCount &&
       fileHandlerModule.getPendingCount() > 0
     );
-  }
-
-  function _updateStreamingSubmitButton() {
-    if (!sendBtn || sendBtn.dataset.mode !== 'streaming') return false;
-    const hasText = messageInput && messageInput.value.trim().length > 0;
-    const nextPhase = hasText ? 'queue' : 'processing';
-    if (sendBtn.dataset.phase === nextPhase) return true;
-    sendBtn.dataset.phase = nextPhase;
-    sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded', 'anim-spin', 'anim-launch', 'anim-land');
-    if (hasText) {
-      sendBtn.innerHTML = _sendIcon;
-      sendBtn.title = 'Queue message';
-    } else {
-      sendBtn.innerHTML = _stopIcon;
-      sendBtn.title = 'Stop generation';
-    }
-    return true;
   }
 
   function _updateStreamingSubmitButton() {
@@ -5340,4 +5503,7 @@ function startOdysseusApp() {
     });
   }
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 71669786 (Initial, unchecked migration from static to web/lib/legacy for imported modules.)
