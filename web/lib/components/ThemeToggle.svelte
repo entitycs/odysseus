@@ -44,7 +44,7 @@ const colors = $derived<ThemeColors>(THEMES[current] ?? THEMES.dark);
 	<span class="label">{current}</span>
 </button>
 
-<style nonce=%sveltekit.nonce%>
+<style>
 	:global(button) {
 		display: inline-flex;
 		align-items: center;
