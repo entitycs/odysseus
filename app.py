@@ -900,6 +900,14 @@ async def serve_index(request: Request):
     # bundled-template routes instead of mislabelling the fault as a 404.
     return serve_html_with_nonce(request, abs_join(BASE_DIR, "index.html"))
 
+@app.get("/chat")
+async def serve_chat(request: Request):
+    return await serve_index(request)
+
+@app.get("/about")
+async def serve_about(request: Request):
+    return await serve_index(request)
+
 @app.get("/notes")
 async def serve_notes(request: Request):
     return await serve_index(request)
