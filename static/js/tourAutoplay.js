@@ -8,18 +8,18 @@
 // Mobile is excluded — tours position halos by rect math that doesn't fit
 // the bottom-sheet layout cleanly.
 
-import { handleSlashCommand } from './slashCommands.js';
+import { handleSlashCommand } from '$lib/legacy/slashCommands.js';
 
 // Modal id → slash command to fire (without the leading "/"). Add to this
 // map when a new feature picks up a `tour-*` command.
 const TOUR_FOR_MODAL = {
-  'doclib-modal':           'tour-library',
-  'cookbook-modal':         'tour-cookbook',
-  'research-overlay':       'tour-research',
-  'compare-model-overlay':  'tour-compare',
-  'theme-modal':            'tour-theme',
-  'settings-modal':         'tour-settings',
-  'gallery-modal':          'tour-gallery',
+  'doclib-modal': 'tour-library',
+  'cookbook-modal': 'tour-cookbook',
+  'research-overlay': 'tour-research',
+  'compare-model-overlay': 'tour-compare',
+  'theme-modal': 'tour-theme',
+  'settings-modal': 'tour-settings',
+  'gallery-modal': 'tour-gallery',
 };
 
 const SEEN_KEY = (tour) => `odysseus-tour-autoplay-seen-${tour}`;
@@ -44,15 +44,21 @@ async function _maybeFire(modal) {
   const tour = TOUR_FOR_MODAL[id];
   if (!tour) return;
   if (_tourActive()) {
-    try { window.cancelActiveTour?.('modal-opened'); } catch (_) {}
+    try {
+      window.cancelActiveTour?.('modal-opened');
+    } catch (_) {}
     return;
   }
   let seen = false;
-  try { seen = localStorage.getItem(SEEN_KEY(tour)) === '1'; } catch (_) {}
+  try {
+    seen = localStorage.getItem(SEEN_KEY(tour)) === '1';
+  } catch (_) {}
   if (seen) return;
   // Mark immediately so a quick double-trigger (e.g. modal-class observer
   // fires twice during animation) can't queue two tours.
-  try { localStorage.setItem(SEEN_KEY(tour), '1'); } catch (_) {}
+  try {
+    localStorage.setItem(SEEN_KEY(tour), '1');
+  } catch (_) {}
   // Let the modal's own enter-animation settle before halos try to position
   // off the title bar / first card / etc. ~400ms matches tourHints.
   setTimeout(() => {
@@ -77,14 +83,15 @@ function _watchModals() {
       const el = m.target;
       if (!(el instanceof HTMLElement)) continue;
       if (!(el.id in TOUR_FOR_MODAL)) continue;
-      const wasHidden = !m.oldValue
-        || /\bhidden\b/.test(m.oldValue)
-        || /display:\s*none/.test(m.oldValue);
+      const wasHidden =
+        !m.oldValue ||
+        /\bhidden\b/.test(m.oldValue) ||
+        /display:\s*none/.test(m.oldValue);
       if (wasHidden && _isVisible(el)) _maybeFire(el);
     }
   });
   // Observe each known target if it exists at boot…
-  Object.keys(TOUR_FOR_MODAL).forEach(id => {
+  Object.keys(TOUR_FOR_MODAL).forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
       observer.observe(el, {
@@ -98,7 +105,7 @@ function _watchModals() {
   // appended on demand, for example).
   const docObserver = new MutationObserver((muts) => {
     for (const m of muts) {
-      m.addedNodes.forEach(node => {
+      m.addedNodes.forEach((node) => {
         if (!(node instanceof HTMLElement)) return;
         if (node.id in TOUR_FOR_MODAL) {
           observer.observe(node, {
