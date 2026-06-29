@@ -5146,6 +5146,18 @@ function _presetsForModel(presets, repo) {
 }
 
 // ── Init ──
+export function init() {
+  document.addEventListener('click', (e) => {
+    const pill =
+      e.target.closest &&
+      e.target.closest('.cookbook-serve-running-pill.is-clickable');
+    if (!pill) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const repo = pill.dataset.repo || '';
+    if (repo) _openRunningTabForRepo(repo);
+  });
+}
 
 export function initServe(shared) {
   _envState = shared._envState;
@@ -5215,13 +5227,3 @@ function _openRunningTabForRepo(repo) {
     }
   }, 180);
 }
-document.addEventListener('click', (e) => {
-  const pill =
-    e.target.closest &&
-    e.target.closest('.cookbook-serve-running-pill.is-clickable');
-  if (!pill) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const repo = pill.dataset.repo || '';
-  if (repo) _openRunningTabForRepo(repo);
-});

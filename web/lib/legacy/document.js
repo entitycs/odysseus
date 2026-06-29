@@ -187,6 +187,14 @@ export function init() {
   s.id = 'doc-tab-menu-styles';
   s.textContent = `.doc-tab-menu-btn{background:none!important;border:none!important;outline:none!important;box-shadow:none!important;color:var(--fg);opacity:0.25;cursor:pointer;padding:2px 4px!important;height:auto!important;line-height:1;transition:opacity .15s;flex-shrink:0;-webkit-appearance:none;appearance:none}.doc-tab-menu-btn:focus,.doc-tab-menu-btn:active{outline:none!important;box-shadow:none!important;background:none!important}.doc-tab:hover .doc-tab-menu-btn{opacity:.5}.doc-tab-menu-btn:hover{opacity:1!important}.doc-tab-dropdown .dropdown-item-compact{padding:6px 8px;border-radius:6px;cursor:pointer;white-space:nowrap;border-bottom:none;display:flex;align-items:center;gap:10px;font-size:11px}.doc-tab-dropdown .dropdown-item-compact:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)}.doc-tab-dropdown .dropdown-item-compact .dropdown-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:0.5}.doc-tab-dropdown .dropdown-divider{height:1px;margin:3px 0;background:color-mix(in srgb,var(--border) 40%,transparent)}.doc-tab-action-delete{color:var(--red,#e06c75)!important}.doc-tab-action-delete .dropdown-icon{opacity:0.7!important}`;
   document.head.appendChild(s);
+  // Flush any pending debounced save before navigating away
+  window.addEventListener('beforeunload', () => {
+    if (_pdfPaneSaveTimer) {
+      clearTimeout(_pdfPaneSaveTimer);
+      _savePdfPaneToMarkdown({ keepalive: true });
+    }
+  });
+
   window.documentModule = documentModule;
 }
 
@@ -703,12 +711,13 @@ function _hideLoadingOverlay() {
 }
 
 /** Show/hide the unified action button in the header based on current language */
+const FORM_RE = new RegExp('<!--\\s*pdf_form_source\\s+upload_id="[^"]+"');
+
+const SOURCE_RE = new RegExp('<!--\\s*pdf_source\\s+upload_id="[^"]+"');
+
 function _isFormBackedDoc(content) {
   const c = content || '';
-  return (
-    /<!--\s*pdf_form_source\s+upload_id="[^"]+"/.test(c) ||
-    /<!--\s*pdf_source\s+upload_id="[^"]+"/.test(c)
-  );
+  return FORM_RE.test(c) || SOURCE_RE.test(c);
 }
 
 // Force the on-screen keyboard down on touch. Firefox mobile ignores a plain
@@ -2251,14 +2260,6 @@ async function _savePdfPaneToMarkdown(opts = {}) {
     return false;
   }
 }
-
-// Flush any pending debounced save before navigating away
-window.addEventListener('beforeunload', () => {
-  if (_pdfPaneSaveTimer) {
-    clearTimeout(_pdfPaneSaveTimer);
-    _savePdfPaneToMarkdown({ keepalive: true });
-  }
-});
 
 async function _refreshPdfPreviewIframe() {
   // Re-render the pane from the backend's current parsed values.

@@ -20,6 +20,53 @@ function el(id) {
 function esc(s) {
   return uiModule.esc(s);
 }
+
+export function init() {
+  // Handle redirect back from Google OAuth2 — open settings to integrations and show status.
+
+  const sp = new URLSearchParams(window.location.search);
+  if (!sp.has('email_oauth_success') && !sp.has('email_oauth_error')) return;
+  // Strip params from URL without a page reload.
+  const clean = window.location.pathname + window.location.hash;
+  window.history.replaceState(null, '', clean); // ok (ok to wipe sveltekit state if we ever get here)
+  const success = sp.has('email_oauth_success');
+  const errMsg = sp.get('email_oauth_error') || '';
+  // Open settings → integrations after the app has initialised.
+  function _tryOpen() {
+    if (
+      window.settingsModule &&
+      typeof window.settingsModule.open === 'function'
+    ) {
+      window.settingsModule.open('integrations');
+      // Brief toast-style banner.
+      const banner = document.createElement('div');
+      banner.textContent = success
+        ? '✓ Google account connected — email is ready'
+        : `Google OAuth failed: ${errMsg || 'unknown error'}`;
+      Object.assign(banner.style, {
+        position: 'fixed',
+        bottom: '24px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: success ? 'var(--accent, #50fa7b)' : 'var(--red, #ff5555)',
+        color: '#000',
+        padding: '8px 18px',
+        borderRadius: '6px',
+        fontSize: '12px',
+        fontWeight: '600',
+        zIndex: '99999',
+        pointerEvents: 'none',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+      });
+      document.body.appendChild(banner);
+      setTimeout(() => banner.remove(), 4000);
+    } else {
+      setTimeout(_tryOpen, 100);
+    }
+  }
+  _tryOpen();
+}
+
 function safeRasterDataUrl(raw) {
   const value = String(raw || '').trim();
   return /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(
@@ -7777,51 +7824,6 @@ export function close() {
     modalEl.classList.add('hidden');
   }
 }
-
-// Handle redirect back from Google OAuth2 — open settings to integrations and show status.
-(function _handleOauthRedirect() {
-  const sp = new URLSearchParams(window.location.search);
-  if (!sp.has('email_oauth_success') && !sp.has('email_oauth_error')) return;
-  // Strip params from URL without a page reload.
-  const clean = window.location.pathname + window.location.hash;
-  window.history.replaceState(null, '', clean); // ok (ok to wipe sveltekit state if we ever get here)
-  const success = sp.has('email_oauth_success');
-  const errMsg = sp.get('email_oauth_error') || '';
-  // Open settings → integrations after the app has initialised.
-  function _tryOpen() {
-    if (
-      window.settingsModule &&
-      typeof window.settingsModule.open === 'function'
-    ) {
-      window.settingsModule.open('integrations');
-      // Brief toast-style banner.
-      const banner = document.createElement('div');
-      banner.textContent = success
-        ? '✓ Google account connected — email is ready'
-        : `Google OAuth failed: ${errMsg || 'unknown error'}`;
-      Object.assign(banner.style, {
-        position: 'fixed',
-        bottom: '24px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: success ? 'var(--accent, #50fa7b)' : 'var(--red, #ff5555)',
-        color: '#000',
-        padding: '8px 18px',
-        borderRadius: '6px',
-        fontSize: '12px',
-        fontWeight: '600',
-        zIndex: '99999',
-        pointerEvents: 'none',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
-      });
-      document.body.appendChild(banner);
-      setTimeout(() => banner.remove(), 4000);
-    } else {
-      setTimeout(_tryOpen, 100);
-    }
-  }
-  _tryOpen();
-})();
 
 const settingsModule = {
   open,
