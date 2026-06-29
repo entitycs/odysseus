@@ -1436,10 +1436,10 @@ function redo() {
 // History panel — full implementation in editor/history-panel.js.
 // Wrappers preserve the legacy names that the topbar History button
 // + undo/redo paths already reference.
-const _historyPanel = createHistoryPanel({ undo, redo });
-const _jumpToHistory = _historyPanel.jumpToHistory;
-const _toggleHistoryPanel = _historyPanel.toggleHistoryPanel;
-const _refreshHistoryPanelIfOpen = _historyPanel.refreshHistoryPanelIfOpen;
+// const _historyPanel = createHistoryPanel({ undo, redo });
+// const _jumpToHistory = _historyPanel.jumpToHistory;
+// const _toggleHistoryPanel = _historyPanel.toggleHistoryPanel;
+// const _refreshHistoryPanelIfOpen = _historyPanel.refreshHistoryPanelIfOpen;
 
 // _relTime lives in editor/layer-helpers.js.
 

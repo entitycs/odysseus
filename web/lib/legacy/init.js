@@ -3,16 +3,16 @@
 
 import Storage from '$lib/legacy/storage.js';
 
-export function init() {
+export async function init() {
   clearFreshComposerRestore();
   window.addEventListener('pageshow', clearFreshComposerRestore);
   // SECURITY: defense-in-depth state wipe on user switch. If the authenticated
-// user is different from the one whose state is cached in this browser,
-// wipe localStorage + sessionStorage so the new account doesn't inherit
-// the previous user's last session id, last-used model, draft chat input,
-// or cached lists. The settings-tab Logout button already wipes on
-// explicit logout; this catches the cases where a different user signs
-// in without the previous one logging out cleanly.
+  // user is different from the one whose state is cached in this browser,
+  // wipe localStorage + sessionStorage so the new account doesn't inherit
+  // the previous user's last session id, last-used model, draft chat input,
+  // or cached lists. The settings-tab Logout button already wipes on
+  // explicit logout; this catches the cases where a different user signs
+  // in without the previous one logging out cleanly.
   try {
     const res = await fetch('/api/auth/status', { credentials: 'same-origin' });
     if (!res.ok) return;
@@ -100,8 +100,7 @@ export function init() {
     });
   }
 
-
-/* Publish the icon rail's + wide sidebar's current widths as CSS vars so
+  /* Publish the icon rail's + wide sidebar's current widths as CSS vars so
    fullscreen panels can reserve space on the left for whichever is
    currently visible (the two are mutually exclusive — see
    sidebar-layout.js:57). Updates live as either resizes; toggles to 0
@@ -169,11 +168,9 @@ export function init() {
   }
   window.addEventListener('resize', _sync);
 
-
-/* Keep minimized tool chips above the composer. Both the current modalManager
+  /* Keep minimized tool chips above the composer. Both the current modalManager
    dock and the legacy fallback dock consume this root-level clearance. */
 
-  const root = document.documentElement;
   const chatBar = document.querySelector('.chat-input-bar');
   const attachStrip = document.getElementById('attach-strip');
   const chatContainer = document.getElementById('chat-container');
@@ -203,10 +200,7 @@ export function init() {
     chatBar.addEventListener('transitionend', _syncComposerClearance);
   window.addEventListener('resize', _syncComposerClearance);
 
-
-/* ---- Resizable sidebar — drag edge to resize, collapse if small, drag rail edge to expand ---- */
-
-  const sidebar = document.getElementById('sidebar');
+  /* ---- Resizable sidebar — drag edge to resize, collapse if small, drag rail edge to expand ---- */
   const handle = document.getElementById('sidebar-resize-handle');
   const railHandle = document.getElementById('rail-resize-handle');
   const iconRail = document.getElementById('icon-rail');
@@ -341,8 +335,7 @@ export function init() {
     }
   } // end if (sidebar && handle)
 
-
-/* ---- Mobile viewport fix — keep chat visible when virtual keyboard opens ---- */
+  /* ---- Mobile viewport fix — keep chat visible when virtual keyboard opens ---- */
 
   if (window.visualViewport) {
     let _lastVVHeight = window.visualViewport.height;

@@ -52,7 +52,7 @@ let WEEK_HOUR_PX = WK_PX_DEFAULT;
 // fetch is cheap and already de-duped by _fetchPromise on line ~120.
 let _lastVisRefetchAt = 0;
 
-export function init() {
+export async function init() {
   API_BASE = window.location.origin;
   const saved = parseInt(localStorage.getItem('cal-wk-hour-px') || '', 10);
   if (saved >= WK_PX_MIN && saved <= WK_PX_MAX) {
@@ -3676,7 +3676,7 @@ function _showEventForm(existing, defaultDate, defaultEndDate) {
       e.preventDefault();
       const taskId = e.currentTarget?.dataset?.taskId || '';
       try {
-        const m = await import('/static/js/tasks.js');
+        const m = await import('$lib/legacy/tasks.js');
         const openTasks = m.openTasks || m.default?.openTasks;
         if (typeof openTasks === 'function') {
           openTasks(taskId);

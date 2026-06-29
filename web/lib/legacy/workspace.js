@@ -9,11 +9,16 @@ import Storage, { KEYS } from './storage.js';
 import uiModule from './ui.js';
 import { makeWindowDraggable } from './windowDrag.js';
 
-const API_BASE = window.location.origin;
+let API_BASE;
 // Same folder glyph as the overflow menu item + pill (not an emoji).
-const _FOLDER_SVG = '<svg class="workspace-row-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+const _FOLDER_SVG =
+  '<svg class="workspace-row-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
 let _modal = null;
 let _curPath = '';
+
+export function init() {
+  API_BASE = window.location.origin;
+}
 
 export function getWorkspace() {
   return Storage.get(KEYS.WORKSPACE, '') || '';
@@ -39,9 +44,10 @@ export function syncWorkspaceIndicator(path) {
   const name = document.getElementById('workspace-indicator-name');
   const overflow = document.getElementById('overflow-workspace-btn');
   if (pill) {
-    pill.style.display = (path && !chat) ? '' : 'none';
+    pill.style.display = path && !chat ? '' : 'none';
     pill.classList.toggle('active', !!path);
-    if (path) pill.title = `Workspace: ${path}\nFile tools are confined here; shell commands start here but are not sandboxed and can reach outside it.\nClick to clear.`;
+    if (path)
+      pill.title = `Workspace: ${path}\nFile tools are confined here; shell commands start here but are not sandboxed and can reach outside it.\nClick to clear.`;
   }
   if (name) name.textContent = path ? _basename(path) : '';
   if (overflow) {
@@ -49,7 +55,9 @@ export function syncWorkspaceIndicator(path) {
     overflow.classList.toggle('active', !!path);
   }
   // Recompute the "+" overflow dot (app.js owns updatePlusDot via this event).
-  try { document.dispatchEvent(new CustomEvent('overflow-state-change')); } catch (_) {}
+  try {
+    document.dispatchEvent(new CustomEvent('overflow-state-change'));
+  } catch (_) {}
 }
 
 // Called by the agent/chat mode toggle so the pill + overflow entry follow mode.
@@ -71,7 +79,10 @@ export function setWorkspace(path) {
  */
 export async function vetAndSetWorkspace(path) {
   try {
-    const res = await fetch(`${API_BASE}/api/workspace/vet?path=${encodeURIComponent(path)}`, { credentials: 'same-origin' });
+    const res = await fetch(
+      `${API_BASE}/api/workspace/vet?path=${encodeURIComponent(path)}`,
+      { credentials: 'same-origin' },
+    );
     if (!res.ok) return { ok: false, path: null };
     const data = await res.json();
     if (data.ok && data.path) {
@@ -114,19 +125,26 @@ function _render(data) {
     rows += `<div class="workspace-row" data-path="${encodeURIComponent(d.path)}">${_FOLDER_SVG}<span>${uiModule.esc(d.name)}</span></div>`;
   }
   if (data.truncated) {
-    rows += '<div class="workspace-empty">Too many folders to list. Type or paste a path above to jump in.</div>';
+    rows +=
+      '<div class="workspace-empty">Too many folders to list. Type or paste a path above to jump in.</div>';
   }
-  if (!data.dirs.length && !data.parent) rows = '<div class="workspace-empty">No subfolders</div>';
+  if (!data.dirs.length && !data.parent)
+    rows = '<div class="workspace-empty">No subfolders</div>';
   body.innerHTML = rows || '<div class="workspace-empty">No subfolders</div>';
   body.querySelectorAll('.workspace-row').forEach((row) => {
-    row.addEventListener('click', () => _navigate(decodeURIComponent(row.dataset.path)));
+    row.addEventListener('click', () =>
+      _navigate(decodeURIComponent(row.dataset.path)),
+    );
   });
   // Filesystem roots (and sensitive dirs) can be browsed through but never
   // bound as the workspace; the backend rejects them too.
   const useBtn = _modal.querySelector('#workspace-use');
   if (useBtn) {
     useBtn.disabled = data.selectable === false;
-    useBtn.title = data.selectable === false ? 'This folder cannot be used as a workspace' : '';
+    useBtn.title =
+      data.selectable === false
+        ? 'This folder cannot be used as a workspace'
+        : '';
   }
 }
 
@@ -134,7 +152,8 @@ async function _navigate(path) {
   try {
     _render(await _load(path));
   } catch (e) {
-    if (uiModule && uiModule.showError) uiModule.showError('Could not open folder');
+    if (uiModule && uiModule.showError)
+      uiModule.showError('Could not open folder');
   }
 }
 
@@ -161,19 +180,26 @@ function _getModal() {
       </div>
     </div>`;
   document.body.appendChild(_modal);
-  _modal.querySelector('#workspace-close').addEventListener('click', closeWorkspaceBrowser);
-  _modal.querySelector('#workspace-cancel').addEventListener('click', closeWorkspaceBrowser);
+  _modal
+    .querySelector('#workspace-close')
+    .addEventListener('click', closeWorkspaceBrowser);
+  _modal
+    .querySelector('#workspace-cancel')
+    .addEventListener('click', closeWorkspaceBrowser);
   // Editable path bar: Enter navigates to a typed/pasted folder.
-  _modal.querySelector('#workspace-cur-path').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const v = e.target.value.trim();
-      if (v) _navigate(v);
-    }
-  });
+  _modal
+    .querySelector('#workspace-cur-path')
+    .addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = e.target.value.trim();
+        if (v) _navigate(v);
+      }
+    });
   _modal.querySelector('#workspace-use').addEventListener('click', () => {
     setWorkspace(_curPath);
-    if (uiModule && uiModule.showToast) uiModule.showToast(`Workspace set: ${_basename(_curPath)}`);
+    if (uiModule && uiModule.showToast)
+      uiModule.showToast(`Workspace set: ${_basename(_curPath)}`);
     closeWorkspaceBrowser();
   });
   const content = _modal.querySelector('.modal-content');
@@ -188,7 +214,8 @@ export async function openWorkspaceBrowser() {
   try {
     _render(await _load(getWorkspace() || ''));
   } catch (e) {
-    if (uiModule && uiModule.showError) uiModule.showError('Could not browse folders');
+    if (uiModule && uiModule.showError)
+      uiModule.showError('Could not browse folders');
   }
 }
 
@@ -205,4 +232,13 @@ export function initWorkspace() {
   if (pill) pill.addEventListener('click', clearWorkspace);
 }
 
-export default { initWorkspace, openWorkspaceBrowser, getWorkspace, setWorkspace, vetAndSetWorkspace, clearWorkspace, syncWorkspaceIndicator, applyMode };
+export default {
+  initWorkspace,
+  openWorkspaceBrowser,
+  getWorkspace,
+  setWorkspace,
+  vetAndSetWorkspace,
+  clearWorkspace,
+  syncWorkspaceIndicator,
+  applyMode,
+};

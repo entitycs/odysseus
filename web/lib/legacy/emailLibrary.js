@@ -45,7 +45,7 @@ import { state } from './emailLibrary/state.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { collapseSidebarToRail } from './modalSnap.js';
 
-const API_BASE = window.location.origin;
+let API_BASE;
 let _emailUnreadChipClickWired = false;
 let _libLoadSeq = 0;
 let _libFolderSeq = 0;
@@ -57,6 +57,7 @@ let _libAccountsLoadedAt = 0;
 const _LIB_ACCOUNTS_TTL_MS = 5 * 60 * 1000;
 
 export function init() {
+  API_BASE = window.location.origin;
   // Frontend reads via the global so chat.js doesn't need a separate import
   // path (emailLibrary loads lazily in some entry points).
   try {
