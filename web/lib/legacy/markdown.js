@@ -36,6 +36,80 @@ export function init() {
     else set.delete(hash);
     _saveExpandedSet(set);
   });
+
+  // Watch the chat history; whenever a thinking section appears, expand it if
+  // its hash matches one the user previously expanded.
+
+  if (window._thinkingWatcherWired) return;
+  window._thinkingWatcherWired = true;
+  const _apply = (root) => {
+    if (!root || !root.querySelectorAll) return;
+    const sections = root.matches?.('.thinking-section')
+      ? [root]
+      : [...root.querySelectorAll('.thinking-section')];
+    if (!sections.length) return;
+    const set = _loadExpandedSet();
+    if (!set.size) return;
+    for (const sec of sections) {
+      const content = sec.querySelector('.thinking-content');
+      if (!content) continue;
+      if (content.classList.contains('expanded')) continue;
+      const hash = _hashThinkingContent(content);
+      if (!hash || !set.has(hash)) continue;
+      const header = sec.querySelector('.thinking-header[data-thinking-id]');
+      const id = header?.dataset.thinkingId;
+      const toggle = id ? document.getElementById(id + '-toggle') : null;
+      _setThinkingExpanded(content, toggle, header, true);
+    }
+  };
+  const start = () => {
+    const root = document.body;
+    if (!root) return;
+    _apply(root);
+    new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType === 1) _apply(node);
+        }
+      }
+    }).observe(root, { childList: true, subtree: true });
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+
+  // watchModelEndpointLinks
+
+  if (window._modelEndpointLinkWatcherWired) return;
+  window._modelEndpointLinkWatcherWired = true;
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest?.('.model-endpoint-add-btn');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _registerEndpointFromButton(btn);
+  });
+
+  const start2 = () => {
+    const root = document.body;
+    if (!root) return;
+    _appendEndpointAddButtons(root);
+    new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType === 1) _appendEndpointAddButtons(node);
+        }
+      }
+    }).observe(root, { childList: true, subtree: true });
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start2();
+  }
 }
 
 /**
@@ -1128,50 +1202,6 @@ function _setThinkingExpanded(content, toggle, header, expanded) {
   }
 }
 
-// Watch the chat history; whenever a thinking section appears, expand it if
-// its hash matches one the user previously expanded.
-(function _watchThinking() {
-  if (window._thinkingWatcherWired) return;
-  window._thinkingWatcherWired = true;
-  const _apply = (root) => {
-    if (!root || !root.querySelectorAll) return;
-    const sections = root.matches?.('.thinking-section')
-      ? [root]
-      : [...root.querySelectorAll('.thinking-section')];
-    if (!sections.length) return;
-    const set = _loadExpandedSet();
-    if (!set.size) return;
-    for (const sec of sections) {
-      const content = sec.querySelector('.thinking-content');
-      if (!content) continue;
-      if (content.classList.contains('expanded')) continue;
-      const hash = _hashThinkingContent(content);
-      if (!hash || !set.has(hash)) continue;
-      const header = sec.querySelector('.thinking-header[data-thinking-id]');
-      const id = header?.dataset.thinkingId;
-      const toggle = id ? document.getElementById(id + '-toggle') : null;
-      _setThinkingExpanded(content, toggle, header, true);
-    }
-  };
-  const start = () => {
-    const root = document.body;
-    if (!root) return;
-    _apply(root);
-    new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node.nodeType === 1) _apply(node);
-        }
-      }
-    }).observe(root, { childList: true, subtree: true });
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start, { once: true });
-  } else {
-    start();
-  }
-})();
-
 function _endpointNameFromUrl(url) {
   try {
     const parsed = new URL(url, window.location.origin);
@@ -1286,34 +1316,3 @@ async function _registerEndpointFromButton(btn) {
     uiModule.showError?.(`Add endpoint failed: ${err.message || err}`);
   }
 }
-
-(function _watchModelEndpointLinks() {
-  if (window._modelEndpointLinkWatcherWired) return;
-  window._modelEndpointLinkWatcherWired = true;
-
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest?.('.model-endpoint-add-btn');
-    if (!btn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    _registerEndpointFromButton(btn);
-  });
-
-  const start = () => {
-    const root = document.body;
-    if (!root) return;
-    _appendEndpointAddButtons(root);
-    new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node.nodeType === 1) _appendEndpointAddButtons(node);
-        }
-      }
-    }).observe(root, { childList: true, subtree: true });
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start, { once: true });
-  } else {
-    start();
-  }
-})();

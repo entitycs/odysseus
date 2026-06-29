@@ -1,5 +1,6 @@
 import chatRenderer from '$lib/legacy/chatRenderer.js';
 import { EVAL_PROMPTS } from '$lib/legacy/compare/index.js';
+import cookbookModule from '$lib/legacy/cookbook.js';
 import documentModule from '$lib/legacy/document.js';
 import { isCostTrackedEndpoint } from '$lib/legacy/model/endpoint.js';
 import modelsModule from '$lib/legacy/models.js';
@@ -15,7 +16,6 @@ import Storage from '$lib/legacy/storage.js';
 import themeModule from '$lib/legacy/theme.js';
 import uiModule from '$lib/legacy/ui.js';
 import workspaceModule from '$lib/legacy/workspace.js';
-import cookbookModule from '/cookbook.js';
 
 // ── Module state ──────────────────────────────────────────────────────
 

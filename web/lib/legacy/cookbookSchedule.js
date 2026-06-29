@@ -45,7 +45,7 @@ export function init() {
     async function _getToast() {
       if (_toastFn) return _toastFn;
       try {
-        const m = await import('/static/js/ui.js');
+        const m = await import('$lib/legacy/ui.js');
         _toastFn = m.default?.showToast || m.showToast || null;
       } catch (_) {
         _toastFn = null;
@@ -72,7 +72,7 @@ export function init() {
     async function _getTasksMod() {
       if (_tasksMod) return _tasksMod;
       try {
-        _tasksMod = await import('/static/js/tasks.js');
+        _tasksMod = await import('$lib/legacy/tasks.js');
       } catch (_) {}
       return _tasksMod;
     }

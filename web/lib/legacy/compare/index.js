@@ -9,42 +9,90 @@
  * compare button, mode toggle, etc. are preserved.
  */
 
-// ── Submodule imports ──
-import state from './state.js';
-import { EVAL_PROMPTS, WAVE_FRAMES,
-  ICON_DICE, ICON_EXPAND, ICON_COLLAPSE, ICON_CLOSE,
-  ICON_REROLL, ICON_COPY, ICON_PLAY, ICON_CODE,
-  ICON_PARALLEL, ICON_SEQUENTIAL,
-  EYE_OPEN, EYE_CLOSED, SAVE_ICON, CHAT_ICON,
-  SEND_SVG, VOTES_STORAGE_KEY,
-} from './icons.js';
-import { fetchModels, _persistSelections, _modelDisplayNames, getExcludedModels, setExcludedModels } from './models.js';
-import { showModelSelector, disableToolToggles, restoreToolToggles, _syncToolbarIndicator } from './selector.js';
-import { _checkUnprobed, _clearProbeWaves } from './probe.js';
-import { streamToPane, _renderSearchResults, _runSynthForPane, _formatMs, registerStreamActions } from './stream.js';
-import {
-  stopAll, stopPane, rerollPane, shufflePanePositions, resetCompare,
-  _addPane, _removePane, toggleExpandPane, togglePanePreview, copyPaneResponse,
-  _showModelSwapDropdown, _createAndAppendPane, _autoPreviewHtml,
-  registerPaneActions,
-} from './panes.js';
-import { handleVote, buildVoteBar, addFinishBadge, spawnConfetti, _saveVote, registerCompareActions } from './vote.js';
-import { showScoreboard } from './scoreboard.js';
-
-// ── External dependency imports ──
-import Storage from '../storage.js';
-import uiModule from '../ui.js';
+import { bindMenuDismiss } from '../escMenuStack.js';
+import markdownModule from '../markdown.js';
+import presetsModule from '../presets.js';
 import sessionModule from '../sessions.js';
 import spinnerModule from '../spinner.js';
+// ── External dependency imports ──
+import Storage from '../storage.js';
 import themeModule from '../theme.js';
-import presetsModule from '../presets.js';
-import markdownModule from '../markdown.js';
-import { bindMenuDismiss } from '../escMenuStack.js';
+import uiModule from '../ui.js';
+import {
+  CHAT_ICON,
+  EVAL_PROMPTS,
+  EYE_CLOSED,
+  EYE_OPEN,
+  ICON_CLOSE,
+  ICON_CODE,
+  ICON_COLLAPSE,
+  ICON_COPY,
+  ICON_DICE,
+  ICON_EXPAND,
+  ICON_PARALLEL,
+  ICON_PLAY,
+  ICON_REROLL,
+  ICON_SEQUENTIAL,
+  SAVE_ICON,
+  SEND_SVG,
+  VOTES_STORAGE_KEY,
+  WAVE_FRAMES,
+} from './icons.js';
+import {
+  _modelDisplayNames,
+  _persistSelections,
+  fetchModels,
+  getExcludedModels,
+  setExcludedModels,
+} from './models.js';
+import {
+  _addPane,
+  _autoPreviewHtml,
+  _createAndAppendPane,
+  _removePane,
+  _showModelSwapDropdown,
+  copyPaneResponse,
+  registerPaneActions,
+  rerollPane,
+  resetCompare,
+  shufflePanePositions,
+  stopAll,
+  stopPane,
+  toggleExpandPane,
+  togglePanePreview,
+} from './panes.js';
+import { _checkUnprobed, _clearProbeWaves } from './probe.js';
+import { showScoreboard } from './scoreboard.js';
+import {
+  _syncToolbarIndicator,
+  disableToolToggles,
+  restoreToolToggles,
+  showModelSelector,
+} from './selector.js';
+// ── Submodule imports ──
+import state from './state.js';
+import {
+  _formatMs,
+  _renderSearchResults,
+  _runSynthForPane,
+  registerStreamActions,
+  streamToPane,
+} from './stream.js';
+import {
+  _saveVote,
+  addFinishBadge,
+  buildVoteBar,
+  handleVote,
+  registerCompareActions,
+  spawnConfetti,
+} from './vote.js';
 
 var escapeHtml = uiModule.esc;
 
 /** Slot label: letters (A, B) in parallel, numbers (1, 2) in sequential */
-function _slotChar(i) { return state._parallel ? String.fromCharCode(65 + i) : String(i + 1); }
+function _slotChar(i) {
+  return state._parallel ? String.fromCharCode(65 + i) : String(i + 1);
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // ── Toolbar indicator sync ──
@@ -52,7 +100,11 @@ function _slotChar(i) { return state._parallel ? String.fromCharCode(65 + i) : S
 // ── init ──
 // ────────────────────────────────────────────────────────────────────────────
 
-function init(apiBase) {
+export function init() {
+  window.compareModule = compareModule;
+}
+
+function initLegacy(apiBase) {
   state.API_BASE = apiBase;
   // Clean up unsaved compare sessions on page close/refresh
   window.addEventListener('beforeunload', () => {
@@ -60,7 +112,9 @@ function init(apiBase) {
       // sendBeacon uses POST — use the bulk delete endpoint
       navigator.sendBeacon(
         `${state.API_BASE}/api/sessions/bulk-delete`,
-        new Blob([JSON.stringify({ ids: state._paneSessionIds })], { type: 'application/json' })
+        new Blob([JSON.stringify({ ids: state._paneSessionIds })], {
+          type: 'application/json',
+        }),
       );
     }
   });
@@ -75,7 +129,13 @@ function isCompareActive() {
 }
 
 function _compareModeLabel() {
-  return ({ search: ' search providers', agent: ' agents', research: ' research models' }[state._compareMode] || ' models');
+  return (
+    {
+      search: ' search providers',
+      agent: ' agents',
+      research: ' research models',
+    }[state._compareMode] || ' models'
+  );
 }
 
 function _setToolbarMode(mode, syncModeTools = !state.isActive) {
@@ -85,11 +145,17 @@ function _setToolbarMode(mode, syncModeTools = !state.isActive) {
   Storage.saveToggleState(toggleState);
   const agentBtn = document.getElementById('mode-agent-btn');
   const chatBtn = document.getElementById('mode-chat-btn');
-  const modeToggle = agentBtn?.closest('.mode-toggle') || chatBtn?.closest('.mode-toggle') || document.querySelector('.mode-toggle');
+  const modeToggle =
+    agentBtn?.closest('.mode-toggle') ||
+    chatBtn?.closest('.mode-toggle') ||
+    document.querySelector('.mode-toggle');
   if (agentBtn && chatBtn) {
     agentBtn.classList.toggle('active', target === 'agent');
     chatBtn.classList.toggle('active', target === 'chat');
-    agentBtn.setAttribute('aria-pressed', target === 'agent' ? 'true' : 'false');
+    agentBtn.setAttribute(
+      'aria-pressed',
+      target === 'agent' ? 'true' : 'false',
+    );
     chatBtn.setAttribute('aria-pressed', target === 'chat' ? 'true' : 'false');
   }
   if (modeToggle) {
@@ -97,7 +163,9 @@ function _setToolbarMode(mode, syncModeTools = !state.isActive) {
     modeToggle.classList.toggle('mode-right', target === 'chat');
   }
   if (syncModeTools) {
-    document.querySelectorAll('[data-mode-tool]').forEach(b => { b.style.display = target === 'agent' ? '' : 'none'; });
+    document.querySelectorAll('[data-mode-tool]').forEach((b) => {
+      b.style.display = target === 'agent' ? '' : 'none';
+    });
   }
 }
 
@@ -107,10 +175,17 @@ function _syncCompareModeFromToolbar(mode) {
   _setToolbarMode(state._compareMode, false);
   const headerLabel = document.querySelector('.compare-header-label');
   if (headerLabel) {
-    headerLabel.textContent = 'Comparing' + _compareModeLabel() + (state._blindMode ? ' (blind)' : '') + ' · ' + state._timeout + 's timeout';
+    headerLabel.textContent =
+      'Comparing' +
+      _compareModeLabel() +
+      (state._blindMode ? ' (blind)' : '') +
+      ' · ' +
+      state._timeout +
+      's timeout';
   }
   const evalWrap = document.getElementById('cmp-eval-wrap');
-  if (evalWrap && typeof evalWrap._renderItems === 'function') evalWrap._renderItems();
+  if (evalWrap && typeof evalWrap._renderItems === 'function')
+    evalWrap._renderItems();
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -157,23 +232,30 @@ async function toggleMode() {
 
 async function deactivate(teardown) {
   // Abort any in-flight streams
-  state._abortControllers.forEach(ac => { if (ac) ac.abort(); });
+  state._abortControllers.forEach((ac) => {
+    if (ac) ac.abort();
+  });
   state._abortControllers = [];
 
   // Move sessions to compare folder if saving
   if (state._saveOnClose && state._paneSessionIds.length > 0) {
     const modelShorts = _modelDisplayNames(state._selectedModels);
     const folderName = 'Compare: ' + modelShorts.join(' vs ');
-    await Promise.all(state._paneSessionIds.map(sid =>
-      fetch(`${state.API_BASE}/api/session/${sid}`, {
-        method: 'PATCH', body: new URLSearchParams({ folder: folderName })
-      }).catch(() => {})
-    ));
+    await Promise.all(
+      state._paneSessionIds.map((sid) =>
+        fetch(`${state.API_BASE}/api/session/${sid}`, {
+          method: 'PATCH',
+          body: new URLSearchParams({ folder: folderName }),
+        }).catch(() => {}),
+      ),
+    );
   }
 
   // Capture session IDs to delete before resetting state
-  const sessionIdsToDelete = (!state._saveOnClose && teardown && state._paneSessionIds.length > 0)
-    ? [...state._paneSessionIds] : [];
+  const sessionIdsToDelete =
+    !state._saveOnClose && teardown && state._paneSessionIds.length > 0
+      ? [...state._paneSessionIds]
+      : [];
 
   removeOverlays();
   state.isActive = false;
@@ -195,16 +277,22 @@ async function deactivate(teardown) {
   // Restore toolbar indicator display states and pointer events
   Object.entries(state._savedIndicatorDisplay).forEach(([id, display]) => {
     const el = document.getElementById(id);
-    if (el) { el.style.display = display; el.style.pointerEvents = ''; }
+    if (el) {
+      el.style.display = display;
+      el.style.pointerEvents = '';
+    }
   });
   state._savedIndicatorDisplay = {};
 
   // Unlock mode toggle
   const _modeToggleR = document.querySelector('.mode-toggle');
-  if (_modeToggleR) { _modeToggleR.style.pointerEvents = ''; _modeToggleR.style.opacity = ''; }
+  if (_modeToggleR) {
+    _modeToggleR.style.pointerEvents = '';
+    _modeToggleR.style.opacity = '';
+  }
 
   // Restore tool toggle pointer events
-  ['overflow-plus-btn', 'web-toggle-btn', 'bash-toggle-btn'].forEach(id => {
+  ['overflow-plus-btn', 'web-toggle-btn', 'bash-toggle-btn'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.pointerEvents = '';
   });
@@ -216,9 +304,14 @@ async function deactivate(teardown) {
   if (teardown) {
     if (sessionIdsToDelete.length > 0) {
       // keepalive ensures requests complete even during page navigation
-      await Promise.all(sessionIdsToDelete.map(sid =>
-        fetch(`${state.API_BASE}/api/session/${sid}`, { method: 'DELETE', keepalive: true }).catch(() => {})
-      ));
+      await Promise.all(
+        sessionIdsToDelete.map((sid) =>
+          fetch(`${state.API_BASE}/api/session/${sid}`, {
+            method: 'DELETE',
+            keepalive: true,
+          }).catch(() => {}),
+        ),
+      );
     }
     location.href = location.pathname;
   }
@@ -247,15 +340,23 @@ async function _buildCompareUI() {
       const fd = new FormData();
       // Blind mode: name the session by its neutral slot so the sidebar /
       // GET /api/sessions can't de-anonymize the comparison (issue #1285).
-      fd.append('name', '[CMP] ' + (state._blindMode ? 'Model ' + _slotChar(i) : modelShorts[i]));
+      fd.append(
+        'name',
+        '[CMP] ' +
+          (state._blindMode ? 'Model ' + _slotChar(i) : modelShorts[i]),
+      );
       fd.append('endpoint_url', m.endpoint || '');
       fd.append('model', m.model || '');
       if (m.endpointId) {
         fd.append('endpoint_id', m.endpointId);
         fd.append('skip_validation', 'true');
       }
-      const res = await fetch(`${state.API_BASE}/api/session`, { method: 'POST', body: fd });
-      if (!res.ok) throw new Error('Failed to create session for ' + modelShorts[i]);
+      const res = await fetch(`${state.API_BASE}/api/session`, {
+        method: 'POST',
+        body: fd,
+      });
+      if (!res.ok)
+        throw new Error('Failed to create session for ' + modelShorts[i]);
       const data = await res.json();
       sessionIds.push(data.id);
     }
@@ -286,9 +387,17 @@ async function _buildCompareUI() {
   }
 
   // 4. Save toolbar indicator display states before hiding
-  const indicatorIds = ['overflow-tts-btn', 'overflow-attach-btn', 'overflow-rag-btn', 'overflow-research-btn', 'overflow-doc-btn', 'rag-indicator-btn', 'research-toggle-btn'];
+  const indicatorIds = [
+    'overflow-tts-btn',
+    'overflow-attach-btn',
+    'overflow-rag-btn',
+    'overflow-research-btn',
+    'overflow-doc-btn',
+    'rag-indicator-btn',
+    'research-toggle-btn',
+  ];
   state._savedIndicatorDisplay = {};
-  indicatorIds.forEach(id => {
+  indicatorIds.forEach((id) => {
     const el = document.getElementById(id);
     if (el) state._savedIndicatorDisplay[id] = el.style.display;
   });
@@ -296,9 +405,10 @@ async function _buildCompareUI() {
   // 5. Save current mode and seed the toolbar for this compare type.
   const _toggleState = Storage.loadToggleState();
   state._savedMode = _toggleState.mode || 'chat';
-  const _targetMode = (state._compareMode === 'agent') ? 'agent' : 'chat';
+  const _targetMode = state._compareMode === 'agent' ? 'agent' : 'chat';
   _setToolbarMode(_targetMode, false);
-  const _ab = document.getElementById('mode-agent-btn'), _cb = document.getElementById('mode-chat-btn');
+  const _ab = document.getElementById('mode-agent-btn'),
+    _cb = document.getElementById('mode-chat-btn');
   let _modeCleanup = null;
   const _onCompareModeClick = (ev) => {
     ev.stopPropagation();
@@ -316,27 +426,39 @@ async function _buildCompareUI() {
     };
   }
   const _modeToggle = document.querySelector('.mode-toggle');
-  if (_modeToggle) { _modeToggle.style.pointerEvents = ''; _modeToggle.style.opacity = ''; }
+  if (_modeToggle) {
+    _modeToggle.style.pointerEvents = '';
+    _modeToggle.style.opacity = '';
+  }
 
   // 6. Force tool toggles per compare mode
   disableToolToggles();
   if (state._compareMode === 'search') {
     const webChk = document.getElementById('web-toggle');
-    if (webChk && !webChk.checked) { webChk.checked = true; webChk.dispatchEvent(new Event('change')); }
+    if (webChk && !webChk.checked) {
+      webChk.checked = true;
+      webChk.dispatchEvent(new Event('change'));
+    }
     const webBtn = document.getElementById('web-toggle-btn');
     if (webBtn) webBtn.classList.add('active');
   } else if (state._compareMode === 'research') {
     const resChk = document.getElementById('research-toggle');
-    if (resChk && !resChk.checked) { resChk.checked = true; resChk.dispatchEvent(new Event('change')); }
+    if (resChk && !resChk.checked) {
+      resChk.checked = true;
+      resChk.dispatchEvent(new Event('change'));
+    }
     const resBtn = document.getElementById('research-toggle-btn');
-    if (resBtn) { resBtn.style.display = ''; resBtn.classList.add('active'); }
+    if (resBtn) {
+      resBtn.style.display = '';
+      resBtn.classList.add('active');
+    }
   }
 
   // 7. Hide existing chat container children (preserves event listeners)
   const container = document.getElementById('chat-container');
   state._compareElements = [];
   if (_modeCleanup) state._compareElements.push(_modeCleanup);
-  Array.from(container.children).forEach(child => {
+  Array.from(container.children).forEach((child) => {
     if (child.style.display === 'none') return;
     child.dataset.cmpHidden = '1';
     child.style.display = 'none';
@@ -347,19 +469,29 @@ async function _buildCompareUI() {
   const cols = Math.min(n, 4);
   const headerBar = document.createElement('div');
   headerBar.className = 'compare-header-bar';
-  headerBar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 10px;flex-shrink:0;';
+  headerBar.style.cssText =
+    'display:flex;align-items:center;justify-content:space-between;padding:6px 10px;flex-shrink:0;';
   const headerLabel = document.createElement('span');
   headerLabel.className = 'compare-header-label';
-  headerLabel.style.cssText = 'font-size:10px;font-weight:400;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;';
-  headerLabel.textContent = 'Comparing' + _compareModeLabel() + (state._blindMode ? ' (blind)' : '') + ' · ' + state._timeout + 's timeout';
+  headerLabel.style.cssText =
+    'font-size:10px;font-weight:400;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;';
+  headerLabel.textContent =
+    'Comparing' +
+    _compareModeLabel() +
+    (state._blindMode ? ' (blind)' : '') +
+    ' · ' +
+    state._timeout +
+    's timeout';
   // Left side: the Compare tool icon (two side-by-side panes, matching the
   // rail/sidebar icon) + the label. Other tool headers carry their icon; this
   // one was missing it.
   const headerLeft = document.createElement('div');
   headerLeft.style.cssText = 'display:flex;align-items:center;min-width:0;';
   const headerIcon = document.createElement('span');
-  headerIcon.style.cssText = 'display:inline-flex;flex-shrink:0;margin-right:6px;opacity:0.85;';
-  headerIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="1"/><rect x="14" y="3" width="8" height="18" rx="1"/></svg>';
+  headerIcon.style.cssText =
+    'display:inline-flex;flex-shrink:0;margin-right:6px;opacity:0.85;';
+  headerIcon.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="1"/><rect x="14" y="3" width="8" height="18" rx="1"/></svg>';
   headerLeft.appendChild(headerIcon);
   headerLeft.appendChild(headerLabel);
   headerBar.appendChild(headerLeft);
@@ -367,11 +499,13 @@ async function _buildCompareUI() {
   const headerActions = document.createElement('div');
   headerActions.style.cssText = 'display:flex;align-items:center;gap:2px;';
 
-  const _btnCSS = 'background:none;border:1px solid var(--border);color:var(--fg);cursor:pointer;padding:3px 10px;font-size:11px;font-weight:600;opacity:0.7;transition:all 0.15s;line-height:1;border-radius:4px;display:inline-flex;align-items:center;font-family:inherit;';
+  const _btnCSS =
+    'background:none;border:1px solid var(--border);color:var(--fg);cursor:pointer;padding:3px 10px;font-size:11px;font-weight:600;opacity:0.7;transition:all 0.15s;line-height:1;border-radius:4px;display:inline-flex;align-items:center;font-family:inherit;';
 
   const checkBtn = document.createElement('button');
   checkBtn.id = 'compare-check-btn';
-  checkBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg><span style="font-size:11px;margin-left:3px;">Probe</span>';
+  checkBtn.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg><span style="font-size:11px;margin-left:3px;">Probe</span>';
   checkBtn.title = 'Probe unverified models with a small test request';
   checkBtn.style.cssText = _btnCSS;
   checkBtn.addEventListener('click', () => _checkUnprobed());
@@ -379,10 +513,12 @@ async function _buildCompareUI() {
 
   // Check button is dynamic: only visible when at least one selected model
   // hasn't been probed yet. Show right after add/change, hide after success.
-  window._updateCheckBtnState = function() {
+  window._updateCheckBtnState = function () {
     const btn = document.getElementById('compare-check-btn');
     if (!btn) return;
-    const hasUnprobed = state._selectedModels.some(m => !state._probed.has(m.model));
+    const hasUnprobed = state._selectedModels.some(
+      (m) => !state._probed.has(m.model),
+    );
     btn.style.display = hasUnprobed ? '' : 'none';
   };
 
@@ -392,7 +528,8 @@ async function _buildCompareUI() {
   exportWrap.style.cssText = 'position:relative;display:inline-flex;';
   const exportBtn = document.createElement('button');
   exportBtn.id = 'compare-export-btn';
-  exportBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span style="font-size:11px;margin-left:3px;">Export</span>';
+  exportBtn.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span style="font-size:11px;margin-left:3px;">Export</span>';
   exportBtn.title = 'Export options';
   exportBtn.style.cssText = _btnCSS;
   exportBtn.addEventListener('click', (e) => {
@@ -404,7 +541,8 @@ async function _buildCompareUI() {
 
   const shuffleBtn = document.createElement('button');
   shuffleBtn.id = 'compare-shuffle-btn';
-  shuffleBtn.innerHTML = ICON_DICE + '<span style="font-size:11px;margin-left:3px;">Shuffle</span>';
+  shuffleBtn.innerHTML =
+    ICON_DICE + '<span style="font-size:11px;margin-left:3px;">Shuffle</span>';
   shuffleBtn.title = 'Shuffle pane positions';
   shuffleBtn.style.cssText = _btnCSS;
   shuffleBtn.addEventListener('click', () => shufflePanePositions());
@@ -412,7 +550,8 @@ async function _buildCompareUI() {
 
   const addBtn = document.createElement('button');
   addBtn.id = 'compare-add-btn';
-  addBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span style="font-size:11px;margin-left:3px;">Add</span>';
+  addBtn.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span style="font-size:11px;margin-left:3px;">Add</span>';
   addBtn.title = 'Add model pane';
   addBtn.style.cssText = _btnCSS;
   addBtn.addEventListener('click', () => _addPane(addBtn));
@@ -420,7 +559,8 @@ async function _buildCompareUI() {
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'compare-close-btn';
-  closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  closeBtn.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
   closeBtn.title = 'Close compare mode';
   // Match Export/Score/Shuffle/Model styling so the X sits flush with
   // the rest of the toolbar instead of being a 24×24 bordered square.
@@ -449,25 +589,67 @@ async function _buildCompareUI() {
     pane.dataset.pane = String(i);
     pane.innerHTML =
       '<div class="pane-header">' +
-        '<button class="pane-title pane-title-btn" id="cmp-title-' + i + '" data-pane="' + i + '" type="button">' + escapeHtml(label) + ' <span class="pane-title-caret">&#x25BE;</span></button>' +
-        '<span class="pane-timer" id="cmp-timer-' + i + '"></span>' +
-        '<span class="pane-finish-badge" id="cmp-badge-' + i + '"></span>' +
-        '<div class="pane-actions">' +
-          '<button class="pane-action-btn pane-stop-btn" data-action="stop" data-pane="' + i + '" title="Stop" style="display:none;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>' +
-          '<button class="pane-action-btn pane-preview-btn" data-action="preview" data-pane="' + i + '" id="cmp-preview-' + i + '" title="Run preview" style="display:none;">' + ICON_PLAY + '</button>' +
-          '<button class="pane-action-btn" data-action="reroll" data-pane="' + i + '" title="Re-roll">' + ICON_REROLL + '</button>' +
-          '<button class="pane-action-btn" data-action="copy" data-pane="' + i + '" title="Copy">' + ICON_COPY + '</button>' +
-          '<button class="pane-action-btn" data-action="expand" data-pane="' + i + '" title="Expand">' + ICON_EXPAND + '</button>' +
-          '<button class="pane-action-btn pane-close-btn" data-action="close" data-pane="' + i + '" title="Remove pane">' + ICON_CLOSE + '</button>' +
-        '</div>' +
+      '<button class="pane-title pane-title-btn" id="cmp-title-' +
+      i +
+      '" data-pane="' +
+      i +
+      '" type="button">' +
+      escapeHtml(label) +
+      ' <span class="pane-title-caret">&#x25BE;</span></button>' +
+      '<span class="pane-timer" id="cmp-timer-' +
+      i +
+      '"></span>' +
+      '<span class="pane-finish-badge" id="cmp-badge-' +
+      i +
+      '"></span>' +
+      '<div class="pane-actions">' +
+      '<button class="pane-action-btn pane-stop-btn" data-action="stop" data-pane="' +
+      i +
+      '" title="Stop" style="display:none;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>' +
+      '<button class="pane-action-btn pane-preview-btn" data-action="preview" data-pane="' +
+      i +
+      '" id="cmp-preview-' +
+      i +
+      '" title="Run preview" style="display:none;">' +
+      ICON_PLAY +
+      '</button>' +
+      '<button class="pane-action-btn" data-action="reroll" data-pane="' +
+      i +
+      '" title="Re-roll">' +
+      ICON_REROLL +
+      '</button>' +
+      '<button class="pane-action-btn" data-action="copy" data-pane="' +
+      i +
+      '" title="Copy">' +
+      ICON_COPY +
+      '</button>' +
+      '<button class="pane-action-btn" data-action="expand" data-pane="' +
+      i +
+      '" title="Expand">' +
+      ICON_EXPAND +
+      '</button>' +
+      '<button class="pane-action-btn pane-close-btn" data-action="close" data-pane="' +
+      i +
+      '" title="Remove pane">' +
+      ICON_CLOSE +
+      '</button>' +
       '</div>' +
-      '<div class="chat-history" id="cmp-history-' + i + '"></div>' +
-      '<iframe class="compare-pane-iframe" id="cmp-iframe-' + i + '" sandbox="allow-scripts" style="display:none;"></iframe>' +
+      '</div>' +
+      '<div class="chat-history" id="cmp-history-' +
+      i +
+      '"></div>' +
+      '<iframe class="compare-pane-iframe" id="cmp-iframe-' +
+      i +
+      '" sandbox="allow-scripts" style="display:none;"></iframe>' +
       '<div class="pane-vote-footer">' +
-        '<button class="pane-vote-btn" data-pane="' + i + '" type="button" disabled style="opacity:0.4;">' +
-          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:-2px;"><polyline points="20 6 9 17 4 12"/></svg>' +
-          '<span class="pane-vote-label">Vote ' + escapeHtml(label) + '</span>' +
-        '</button>' +
+      '<button class="pane-vote-btn" data-pane="' +
+      i +
+      '" type="button" disabled style="opacity:0.4;">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:-2px;"><polyline points="20 6 9 17 4 12"/></svg>' +
+      '<span class="pane-vote-label">Vote ' +
+      escapeHtml(label) +
+      '</span>' +
+      '</button>' +
       '</div>';
     grid.appendChild(pane);
   }
@@ -522,7 +704,9 @@ async function _buildCompareUI() {
   }
   const msgTA = document.getElementById('message');
   if (msgTA) {
-    msgTA.placeholder = window.matchMedia('(max-width: 767px)').matches ? '' : 'Enter prompt for all models...';
+    msgTA.placeholder = window.matchMedia('(max-width: 767px)').matches
+      ? ''
+      : 'Enter prompt for all models...';
     requestAnimationFrame(() => msgTA.focus());
   }
 
@@ -532,15 +716,33 @@ async function _buildCompareUI() {
   _setupEvalPicker();
 
   // 12. Hide tool buttons that don't apply during compare
-  ['overflow-tts-btn', 'overflow-attach-btn', 'overflow-rag-btn', 'overflow-research-btn', 'overflow-doc-btn', 'rag-indicator-btn', 'web-toggle-btn', 'bash-toggle-btn', 'overflow-plus-btn'].forEach(id => {
+  [
+    'overflow-tts-btn',
+    'overflow-attach-btn',
+    'overflow-rag-btn',
+    'overflow-research-btn',
+    'overflow-doc-btn',
+    'rag-indicator-btn',
+    'web-toggle-btn',
+    'bash-toggle-btn',
+    'overflow-plus-btn',
+  ].forEach((id) => {
     const el = document.getElementById(id);
-    if (el) { el.style.display = 'none'; el.style.pointerEvents = 'none'; }
+    if (el) {
+      el.style.display = 'none';
+      el.style.pointerEvents = 'none';
+    }
   });
   if (state._compareMode !== 'research') {
     const resBtn = document.getElementById('research-toggle-btn');
-    if (resBtn) { resBtn.style.display = 'none'; resBtn.style.pointerEvents = 'none'; }
+    if (resBtn) {
+      resBtn.style.display = 'none';
+      resBtn.style.pointerEvents = 'none';
+    }
   }
-  document.querySelectorAll('[data-mode-tool]').forEach(b => { b.style.display = 'none'; });
+  document.querySelectorAll('[data-mode-tool]').forEach((b) => {
+    b.style.display = 'none';
+  });
 
   _setSendBtn('send');
 }
@@ -553,7 +755,8 @@ function _setSendBtn(mode) {
   const btn = document.querySelector('.send-btn');
   if (!btn) return;
   if (mode === 'stop') {
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+    btn.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
     btn.title = 'Stop all models';
     btn.dataset.mode = 'streaming';
     btn.classList.remove('mic-mode', 'newchat-mode');
@@ -609,11 +812,21 @@ function handleCompareSubmit(e) {
       // off the textarea by focusing a throwaway readonly input, then drop it.
       const tmp = document.createElement('input');
       tmp.setAttribute('readonly', 'readonly');
-      tmp.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;padding:0;';
+      tmp.style.cssText =
+        'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;padding:0;';
       document.body.appendChild(tmp);
       tmp.focus();
-      setTimeout(() => { try { tmp.blur(); tmp.remove(); } catch {} }, 50);
-      const _dropReadonly = () => { try { input.removeAttribute('readonly'); } catch {} };
+      setTimeout(() => {
+        try {
+          tmp.blur();
+          tmp.remove();
+        } catch {}
+      }, 50);
+      const _dropReadonly = () => {
+        try {
+          input.removeAttribute('readonly');
+        } catch {}
+      };
       setTimeout(() => {
         if (document.activeElement === input) {
           input.addEventListener('pointerdown', _dropReadonly, { once: true });
@@ -651,13 +864,18 @@ async function _executeCompare(message) {
       pane.querySelector('.pane-grade-badge')?.remove();
     }
     const fb = document.getElementById('cmp-badge-' + i);
-    if (fb) { fb.textContent = ''; fb.style.color = ''; }
+    if (fb) {
+      fb.textContent = '';
+      fb.style.color = '';
+    }
     const titleEl = document.getElementById('cmp-title-' + i);
     if (titleEl) {
       const label = state._blindMode
         ? 'Model ' + _slotChar(i)
-        : ((state._selectedModels[i] && state._selectedModels[i].name) || 'Model ' + _slotChar(i));
-      titleEl.innerHTML = escapeHtml(label) + ' <span class="pane-title-caret">&#x25BE;</span>';
+        : (state._selectedModels[i] && state._selectedModels[i].name) ||
+          'Model ' + _slotChar(i);
+      titleEl.innerHTML =
+        escapeHtml(label) + ' <span class="pane-title-caret">&#x25BE;</span>';
     }
   }
 
@@ -665,9 +883,15 @@ async function _executeCompare(message) {
   state._lastPrompt = message;
   _setSendBtn('stop');
   // Disable header buttons during streaming
-  document.querySelectorAll('#compare-shuffle-btn, #compare-check-btn, #compare-add-btn').forEach(b => {
-    b.disabled = true; b.style.opacity = '0.25'; b.style.pointerEvents = 'none';
-  });
+  document
+    .querySelectorAll(
+      '#compare-shuffle-btn, #compare-check-btn, #compare-add-btn',
+    )
+    .forEach((b) => {
+      b.disabled = true;
+      b.style.opacity = '0.25';
+      b.style.pointerEvents = 'none';
+    });
 
   // ── Search mode: direct API calls, no SSE streaming ──
   if (state._compareMode === 'search') {
@@ -684,13 +908,15 @@ async function _executeCompare(message) {
         if (!hist) continue;
         const userMsg = document.createElement('div');
         userMsg.className = 'msg msg-user';
-        userMsg.innerHTML = '<div class="role">You</div><div class="body"></div>';
+        userMsg.innerHTML =
+          '<div class="role">You</div><div class="body"></div>';
         userMsg.querySelector('.body').textContent = message;
         hist.appendChild(userMsg);
 
         const aiMsg = document.createElement('div');
         aiMsg.className = 'msg msg-ai';
-        aiMsg.innerHTML = '<div class="role">Search</div><div class="body"></div>';
+        aiMsg.innerHTML =
+          '<div class="role">Search</div><div class="body"></div>';
         const aiBody = aiMsg.querySelector('.body');
         if (spinnerModule) {
           const spinner = spinnerModule.create('Searching...', 'right');
@@ -703,7 +929,9 @@ async function _executeCompare(message) {
 
       // Fire searches — parallel or sequential based on _parallel setting
       const t0 = performance.now();
-      state._abortControllers = state._selectedModels.map(() => new AbortController());
+      state._abortControllers = state._selectedModels.map(
+        () => new AbortController(),
+      );
 
       async function _searchOne(m, i) {
         const fd = new FormData();
@@ -711,23 +939,37 @@ async function _executeCompare(message) {
         fd.append('provider', m.model);
         fd.append('count', '10');
         try {
-          const res = await fetch(`${state.API_BASE}/api/search/query`, { method: 'POST', body: fd, signal: state._abortControllers[i].signal });
+          const res = await fetch(`${state.API_BASE}/api/search/query`, {
+            method: 'POST',
+            body: fd,
+            signal: state._abortControllers[i].signal,
+          });
           const data = await res.json();
           return { idx: i, data };
         } catch (err) {
-          return { idx: i, data: { results: [], error: err.name === 'AbortError' ? 'Stopped' : err.message } };
+          return {
+            idx: i,
+            data: {
+              results: [],
+              error: err.name === 'AbortError' ? 'Stopped' : err.message,
+            },
+          };
         }
       }
 
       let results;
       const _seqSynthDone = new Set();
       if (state._parallel) {
-        results = await Promise.all(state._selectedModels.map((m, i) => _searchOne(m, i)));
+        results = await Promise.all(
+          state._selectedModels.map((m, i) => _searchOne(m, i)),
+        );
       } else {
         // Sequential — run one at a time, dim waiting panes
         results = [];
         const panes = document.querySelectorAll('.compare-pane');
-        panes.forEach((p, i) => { if (i > 0) p.style.opacity = '0.4'; });
+        panes.forEach((p, i) => {
+          if (i > 0) p.style.opacity = '0.4';
+        });
         for (let i = 0; i < state._selectedModels.length; i++) {
           const pane = panes[i];
           if (pane) pane.style.opacity = '1';
@@ -741,21 +983,34 @@ async function _executeCompare(message) {
               const aiBody = aiMsg.querySelector('.body');
               aiBody.innerHTML = '';
               if (data.error) {
-                aiBody.innerHTML = '<div style="color:var(--color-error);font-size:0.85em;">Error: ' + escapeHtml(data.error) + '</div>';
+                aiBody.innerHTML =
+                  '<div style="color:var(--color-error);font-size:0.85em;">Error: ' +
+                  escapeHtml(data.error) +
+                  '</div>';
               } else if (!data.results || data.results.length === 0) {
-                aiBody.innerHTML = '<div style="color:color-mix(in srgb, var(--fg) 50%, transparent);font-size:0.85em;font-style:italic;">No results found</div>';
+                aiBody.innerHTML =
+                  '<div style="color:color-mix(in srgb, var(--fg) 50%, transparent);font-size:0.85em;font-style:italic;">No results found</div>';
               } else {
                 aiBody.appendChild(_renderSearchResults(data));
               }
-              const footer = document.createElement('div'); footer.className = 'msg-footer';
-              const span = document.createElement('span'); span.className = 'response-metrics';
+              const footer = document.createElement('div');
+              footer.className = 'msg-footer';
+              const span = document.createElement('span');
+              span.className = 'response-metrics';
               const parts = [];
               if (data.results) parts.push(data.results.length + ' results');
               if (data.time) parts.push(data.time + 's');
-              span.textContent = parts.join(' | '); footer.appendChild(span); aiMsg.appendChild(footer);
+              span.textContent = parts.join(' | ');
+              footer.appendChild(span);
+              aiMsg.appendChild(footer);
               hist.scrollTop = hist.scrollHeight;
-              const _pe = document.querySelector(`.compare-pane[data-pane="${idx}"]`);
-              if (_pe) _pe.querySelectorAll('.pane-needs-response').forEach(b => b.style.display = '');
+              const _pe = document.querySelector(
+                `.compare-pane[data-pane="${idx}"]`,
+              );
+              if (_pe)
+                _pe
+                  .querySelectorAll('.pane-needs-response')
+                  .forEach((b) => (b.style.display = ''));
             }
           }
           // Sequential: run synthesis for this pane immediately before moving to next
@@ -767,21 +1022,39 @@ async function _executeCompare(message) {
               if (seqHist) {
                 const synthMsg = document.createElement('div');
                 synthMsg.className = 'msg msg-ai';
-                synthMsg.innerHTML = '<div class="role">Analysis</div><div class="body"></div>';
+                synthMsg.innerHTML =
+                  '<div class="role">Analysis</div><div class="body"></div>';
                 const synthBody = synthMsg.querySelector('.body');
                 let spinner = null;
-                if (spinnerModule) { spinner = spinnerModule.create('Analyzing...', 'right'); synthBody.appendChild(spinner.createElement()); spinner.start(); }
+                if (spinnerModule) {
+                  spinner = spinnerModule.create('Analyzing...', 'right');
+                  synthBody.appendChild(spinner.createElement());
+                  spinner.start();
+                }
                 seqHist.appendChild(synthMsg);
                 seqHist.scrollTop = seqHist.scrollHeight;
-                const resultsText = data.results.map((r, ri) => `[${ri + 1}] ${r.title}\n${r.snippet || ''}\nURL: ${r.url}`).join('\n\n');
+                const resultsText = data.results
+                  .map(
+                    (r, ri) =>
+                      `[${ri + 1}] ${r.title}\n${r.snippet || ''}\nURL: ${r.url}`,
+                  )
+                  .join('\n\n');
                 const synthPrompt = `Analyze these search results for the query "${message}". Summarize the key findings, note any consensus or conflicting information, and provide a brief synthesis.\n\nSearch Results:\n${resultsText}`;
-                await _runSynthForPane(modelToUse, synthPrompt, synthBody, spinner, seqHist);
+                await _runSynthForPane(
+                  modelToUse,
+                  synthPrompt,
+                  synthBody,
+                  spinner,
+                  seqHist,
+                );
               }
             }
           }
         }
         // Reset opacity
-        panes.forEach(p => { p.style.opacity = ''; });
+        panes.forEach((p) => {
+          p.style.opacity = '';
+        });
       }
       // Render results into each pane
       for (const { idx, data } of results) {
@@ -793,9 +1066,13 @@ async function _executeCompare(message) {
         aiBody.innerHTML = '';
 
         if (data.error) {
-          aiBody.innerHTML = '<div style="color:var(--color-error);font-size:0.85em;">Error: ' + escapeHtml(data.error) + '</div>';
+          aiBody.innerHTML =
+            '<div style="color:var(--color-error);font-size:0.85em;">Error: ' +
+            escapeHtml(data.error) +
+            '</div>';
         } else if (!data.results || data.results.length === 0) {
-          aiBody.innerHTML = '<div style="color:color-mix(in srgb, var(--fg) 50%, transparent);font-size:0.85em;font-style:italic;">No results found</div>';
+          aiBody.innerHTML =
+            '<div style="color:color-mix(in srgb, var(--fg) 50%, transparent);font-size:0.85em;font-style:italic;">No results found</div>';
         } else {
           aiBody.appendChild(_renderSearchResults(data));
         }
@@ -814,8 +1091,13 @@ async function _executeCompare(message) {
 
         hist.scrollTop = hist.scrollHeight;
         // Show reroll/copy buttons for search results
-        const _paneEl = document.querySelector(`.compare-pane[data-pane="${idx}"]`);
-        if (_paneEl) _paneEl.querySelectorAll('.pane-needs-response').forEach(b => b.style.display = '');
+        const _paneEl = document.querySelector(
+          `.compare-pane[data-pane="${idx}"]`,
+        );
+        if (_paneEl)
+          _paneEl
+            .querySelectorAll('.pane-needs-response')
+            .forEach((b) => (b.style.display = ''));
       }
 
       // ── Synthesis: send results to LLM for analysis (respects _parallel setting) ──
@@ -826,7 +1108,8 @@ async function _executeCompare(message) {
           const { idx, data } = results[i];
           // Skip panes already synthesized in sequential mode
           if (_seqSynthDone.has(idx)) continue;
-          if (data.error || !data.results || data.results.length === 0) continue;
+          if (data.error || !data.results || data.results.length === 0)
+            continue;
 
           const modelToUse = state._searchSynthModels?.[idx] || null;
           if (!modelToUse) continue;
@@ -837,7 +1120,8 @@ async function _executeCompare(message) {
           // Add synthesis message with spinner
           const synthMsg = document.createElement('div');
           synthMsg.className = 'msg msg-ai';
-          synthMsg.innerHTML = '<div class="role">Analysis</div><div class="body"></div>';
+          synthMsg.innerHTML =
+            '<div class="role">Analysis</div><div class="body"></div>';
           const synthBody = synthMsg.querySelector('.body');
           let spinner = null;
           if (spinnerModule) {
@@ -850,17 +1134,35 @@ async function _executeCompare(message) {
           hist.scrollTop = hist.scrollHeight;
 
           // Build synthesis prompt
-          const resultsText = data.results.map((r, ri) =>
-            `[${ri + 1}] ${r.title}\n${r.snippet || ''}\nURL: ${r.url}`
-          ).join('\n\n');
+          const resultsText = data.results
+            .map(
+              (r, ri) =>
+                `[${ri + 1}] ${r.title}\n${r.snippet || ''}\nURL: ${r.url}`,
+            )
+            .join('\n\n');
 
           const synthPrompt = `Analyze these search results for the query "${message}". Summarize the key findings, note any consensus or conflicting information, and provide a brief synthesis.\n\nSearch Results:\n${resultsText}`;
 
-          synthTasks.push({ idx, modelToUse, synthBody, synthMsg, spinner, hist, synthPrompt });
+          synthTasks.push({
+            idx,
+            modelToUse,
+            synthBody,
+            synthMsg,
+            spinner,
+            hist,
+            synthPrompt,
+          });
         }
 
         // Run synthesis streams (parallel or sequential based on _parallel flag)
-        const runSynthesis = async (task) => _runSynthForPane(task.modelToUse, task.synthPrompt, task.synthBody, task.spinner, task.hist);
+        const runSynthesis = async (task) =>
+          _runSynthForPane(
+            task.modelToUse,
+            task.synthPrompt,
+            task.synthBody,
+            task.spinner,
+            task.hist,
+          );
 
         if (state._parallel) {
           await Promise.all(synthTasks.map(runSynthesis));
@@ -883,7 +1185,9 @@ async function _executeCompare(message) {
   }
 
   // ── Chat / Image mode ──
-  const isFollowUp = document.getElementById('cmp-history-0')?.querySelector('.msg-ai');
+  const isFollowUp = document
+    .getElementById('cmp-history-0')
+    ?.querySelector('.msg-ai');
 
   try {
     const n = state._selectedModels.length;
@@ -900,7 +1204,10 @@ async function _executeCompare(message) {
     const aiElements = [];
     for (let i = 0; i < n; i++) {
       const hist = document.getElementById('cmp-history-' + i);
-      if (!hist) { aiElements.push(null); continue; }
+      if (!hist) {
+        aiElements.push(null);
+        continue;
+      }
 
       const userMsg = document.createElement('div');
       userMsg.className = 'msg msg-user';
@@ -914,9 +1221,10 @@ async function _executeCompare(message) {
       const aiBody = aiMsg.querySelector('.body');
       if (spinnerModule) {
         // In sequential mode, only first pane says "Processing", rest say "Waiting"
-        const label = (!state._parallel && i > 0)
-          ? 'Waiting for Model ' + _slotChar(i - 1) + '...'
-          : 'Processing...';
+        const label =
+          !state._parallel && i > 0
+            ? 'Waiting for Model ' + _slotChar(i - 1) + '...'
+            : 'Processing...';
         const spinner = spinnerModule.create(label, 'right');
         aiBody.appendChild(spinner.createElement());
         spinner.start();
@@ -930,9 +1238,15 @@ async function _executeCompare(message) {
     // ── Auto-extend timeout ──
     const researchChk = document.getElementById('research-toggle');
     const webChkT = document.getElementById('web-toggle');
-    const noTimeLimit = state._compareMode === 'research' || (researchChk && researchChk.checked);
-    const needsLongTimeout = state._compareMode === 'agent' || (webChkT && webChkT.checked);
-    const runTimeout = noTimeLimit ? 999999 : needsLongTimeout ? Math.max(state._timeout, 300) : state._timeout;
+    const noTimeLimit =
+      state._compareMode === 'research' || (researchChk && researchChk.checked);
+    const needsLongTimeout =
+      state._compareMode === 'agent' || (webChkT && webChkT.checked);
+    const runTimeout = noTimeLimit
+      ? 999999
+      : needsLongTimeout
+        ? Math.max(state._timeout, 300)
+        : state._timeout;
 
     // ── Pre-search if web toggle is on (share same results across all panes) ──
     let sharedSearchContext = null;
@@ -945,14 +1259,20 @@ async function _executeCompare(message) {
       try {
         const fd = new FormData();
         fd.append('query', message);
-        const searchRes = await fetch(`${state.API_BASE}/api/search`, { method: 'POST', body: fd });
+        const searchRes = await fetch(`${state.API_BASE}/api/search`, {
+          method: 'POST',
+          body: fd,
+        });
         if (searchRes.ok) {
           const searchData = await searchRes.json();
           if (searchData.context) sharedSearchContext = searchData.context;
           if (searchData.sources) sharedSearchSources = searchData.sources;
         }
       } catch (err) {
-        console.warn('Compare pre-search failed, panes will search individually:', err);
+        console.warn(
+          'Compare pre-search failed, panes will search individually:',
+          err,
+        );
       }
     }
 
@@ -967,15 +1287,24 @@ async function _executeCompare(message) {
 
     if (state._parallel) {
       // Run all panes at once
-      await Promise.all(state._paneSessionIds.map((sid, i) =>
-        streamToPane(i, sid, message, aiElements[i], { searchContext: sharedSearchContext, timeout: runTimeout })
-      ));
+      await Promise.all(
+        state._paneSessionIds.map((sid, i) =>
+          streamToPane(i, sid, message, aiElements[i], {
+            searchContext: sharedSearchContext,
+            timeout: runTimeout,
+          }),
+        ),
+      );
     } else {
       // Run one pane at a time (sequential) — active pane full opacity, others dimmed
       const allPanes = document.querySelectorAll('.compare-pane');
-      allPanes.forEach(p => { p.style.transition = 'opacity 0.4s ease'; });
+      allPanes.forEach((p) => {
+        p.style.transition = 'opacity 0.4s ease';
+      });
       // Dim all except first
-      allPanes.forEach((p, idx) => { p.style.opacity = idx === 0 ? '1' : '0.35'; });
+      allPanes.forEach((p, idx) => {
+        p.style.opacity = idx === 0 ? '1' : '0.35';
+      });
 
       for (let i = 0; i < state._paneSessionIds.length; i++) {
         // Update spinner
@@ -983,7 +1312,13 @@ async function _executeCompare(message) {
           aiElements[i]._spinner.updateLabel('Processing...');
         }
 
-        await streamToPane(i, state._paneSessionIds[i], message, aiElements[i], { searchContext: sharedSearchContext, timeout: runTimeout });
+        await streamToPane(
+          i,
+          state._paneSessionIds[i],
+          message,
+          aiElements[i],
+          { searchContext: sharedSearchContext, timeout: runTimeout },
+        );
 
         // Swap opacity: dim current, brighten next
         if (allPanes[i]) allPanes[i].style.opacity = '0.35';
@@ -993,7 +1328,10 @@ async function _executeCompare(message) {
       }
 
       // Restore all pane opacities when done
-      allPanes.forEach(p => { p.style.opacity = ''; p.style.transition = ''; });
+      allPanes.forEach((p) => {
+        p.style.opacity = '';
+        p.style.transition = '';
+      });
     }
 
     // Re-focus main input for follow-up
@@ -1001,7 +1339,6 @@ async function _executeCompare(message) {
       const ta = document.getElementById('message');
       if (ta) ta.focus();
     }
-
   } catch (err) {
     console.error('Compare error:', err);
     if (uiModule) uiModule.showError('Compare failed: ' + err.message);
@@ -1009,9 +1346,15 @@ async function _executeCompare(message) {
     state._streaming = false;
     _setSendBtn('send');
     // Re-enable header buttons
-    document.querySelectorAll('#compare-shuffle-btn, #compare-check-btn, #compare-add-btn').forEach(b => {
-      b.disabled = false; b.style.opacity = '0.7'; b.style.pointerEvents = '';
-    });
+    document
+      .querySelectorAll(
+        '#compare-shuffle-btn, #compare-check-btn, #compare-add-btn',
+      )
+      .forEach((b) => {
+        b.disabled = false;
+        b.style.opacity = '0.7';
+        b.style.pointerEvents = '';
+      });
   }
 }
 
@@ -1032,27 +1375,41 @@ function _buildComparisonMarkdown() {
   if (!grid) return null;
   const panes = grid.querySelectorAll('.compare-pane');
   if (!panes.length) return null;
-  const prompt = state._lastPrompt || '(no prompt yet — run a comparison first)';
+  const prompt =
+    state._lastPrompt || '(no prompt yet — run a comparison first)';
   const expected = state._expectedAnswer || '';
   const date = new Date().toISOString().slice(0, 19).replace('T', ' ');
   let md = '# Compare\n\n';
   md += '**When:** ' + date + '\n';
-  md += '**Type:** ' + (state._compareMode || 'chat') + (state._blindMode ? ' (blind)' : '') + '\n';
+  md +=
+    '**Type:** ' +
+    (state._compareMode || 'chat') +
+    (state._blindMode ? ' (blind)' : '') +
+    '\n';
   md += '**Prompt:**\n\n```\n' + prompt + '\n```\n\n';
   if (expected) md += '**Expected answer:** `' + expected + '`\n\n';
   panes.forEach((pane, i) => {
     const m = state._selectedModels[i];
-    const name = m ? (m.name || m.model) + (m.endpointName ? ' (' + m.endpointName + ')' : '') : 'Model ' + (i + 1);
+    const name = m
+      ? (m.name || m.model) +
+        (m.endpointName ? ' (' + m.endpointName + ')' : '')
+      : 'Model ' + (i + 1);
     const body = pane.querySelector('.compare-text-content, .msg-body, .body');
     const text = body ? (body.innerText || body.textContent || '').trim() : '';
     const metrics = state._paneMetrics[i];
     const grade = pane.querySelector('.pane-grade-badge');
-    const gradeMark = grade ? (grade.classList.contains('pass') ? ' ✓' : ' ✗') : '';
+    const gradeMark = grade
+      ? grade.classList.contains('pass')
+        ? ' ✓'
+        : ' ✗'
+      : '';
     md += '## ' + name + gradeMark + '\n\n';
     if (metrics) {
       const bits = [];
-      if (metrics.output_tokens != null) bits.push(metrics.output_tokens + ' tokens');
-      if (metrics.tokens_per_second != null) bits.push(metrics.tokens_per_second + ' tok/s');
+      if (metrics.output_tokens != null)
+        bits.push(metrics.output_tokens + ' tokens');
+      if (metrics.tokens_per_second != null)
+        bits.push(metrics.tokens_per_second + ' tok/s');
       if (metrics.response_time != null) bits.push(metrics.response_time + 's');
       if (bits.length) md += '_' + bits.join(' · ') + '_\n\n';
     }
@@ -1065,31 +1422,54 @@ function _buildComparisonMarkdown() {
 let _exportMenuEl = null;
 let _closeExportMenu = () => {};
 function _toggleExportMenu(btn) {
-  if (_exportMenuEl) { _closeExportMenu(); return; }
+  if (_exportMenuEl) {
+    _closeExportMenu();
+    return;
+  }
   const r = btn.getBoundingClientRect();
   const m = document.createElement('div');
   m.className = 'compare-export-menu';
-  m.style.cssText = 'position:fixed;z-index:10001;top:' + (r.bottom + 4) + 'px;left:' + r.left + 'px;background:var(--panel,var(--bg));border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;font-size:12px;display:flex;flex-direction:column;min-width:170px;';
+  m.style.cssText =
+    'position:fixed;z-index:10001;top:' +
+    (r.bottom + 4) +
+    'px;left:' +
+    r.left +
+    'px;background:var(--panel,var(--bg));border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;font-size:12px;display:flex;flex-direction:column;min-width:170px;';
   const opts = [
     { label: 'Copy as Markdown', fn: () => _exportCopyMarkdown(btn) },
-    { label: 'Download .md',     fn: () => _exportDownloadMarkdown() },
+    { label: 'Download .md', fn: () => _exportDownloadMarkdown() },
     { label: 'Print / Save PDF', fn: () => _exportPrint() },
   ];
   for (const o of opts) {
     const item = document.createElement('button');
     item.type = 'button';
     item.textContent = o.label;
-    item.style.cssText = 'background:none;border:none;color:var(--fg);text-align:left;padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit;font-size:12px;';
-    item.addEventListener('mouseenter', () => { item.style.background = 'color-mix(in srgb, var(--fg) 8%, transparent)'; });
-    item.addEventListener('mouseleave', () => { item.style.background = 'none'; });
-    item.addEventListener('click', () => { _closeExportMenu(); o.fn(); });
+    item.style.cssText =
+      'background:none;border:none;color:var(--fg);text-align:left;padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit;font-size:12px;';
+    item.addEventListener('mouseenter', () => {
+      item.style.background = 'color-mix(in srgb, var(--fg) 8%, transparent)';
+    });
+    item.addEventListener('mouseleave', () => {
+      item.style.background = 'none';
+    });
+    item.addEventListener('click', () => {
+      _closeExportMenu();
+      o.fn();
+    });
     m.appendChild(item);
   }
   document.body.appendChild(m);
   _exportMenuEl = m;
-  _closeExportMenu = bindMenuDismiss(m, () => {
-    if (_exportMenuEl) { _exportMenuEl.remove(); _exportMenuEl = null; }
-  }, (ev) => !m.contains(ev.target));
+  _closeExportMenu = bindMenuDismiss(
+    m,
+    () => {
+      if (_exportMenuEl) {
+        _exportMenuEl.remove();
+        _exportMenuEl = null;
+      }
+    },
+    (ev) => !m.contains(ev.target),
+  );
 }
 
 async function _exportCopyMarkdown(_btn) {
@@ -1106,11 +1486,17 @@ async function _exportCopyMarkdown(_btn) {
       ta.value = md;
       ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
       document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); ta.remove();
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
     }
-    try { window.uiModule?.showToast?.('Copied comparison to clipboard'); } catch {}
+    try {
+      window.uiModule?.showToast?.('Copied comparison to clipboard');
+    } catch {}
   } catch (e) {
-    try { window.uiModule?.showToast?.('Copy failed'); } catch {}
+    try {
+      window.uiModule?.showToast?.('Copy failed');
+    } catch {}
   }
 }
 
@@ -1136,14 +1522,20 @@ function _exportPrint() {
   // the system print dialog — user can pick "Save as PDF" from there.
   const w = window.open('', '_blank');
   if (!w) return;
-  try { w.opener = null; } catch (_) {}
-  const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const html = '<!doctype html><meta charset="utf-8"><title>Compare export</title>' +
+  try {
+    w.opener = null;
+  } catch (_) {}
+  const escape = (s) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const html =
+    '<!doctype html><meta charset="utf-8"><title>Compare export</title>' +
     '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;max-width:780px;margin:32px auto;padding:0 24px;line-height:1.55;color:#222}' +
     'pre{background:#f5f5f5;border-radius:6px;padding:10px;white-space:pre-wrap}' +
     'h1{margin-top:0}h2{border-bottom:1px solid #ddd;padding-bottom:4px;margin-top:32px}' +
     'hr{border:none;border-top:1px solid #ccc;margin:24px 0}' +
-    '</style><body><pre style="background:none;padding:0">' + escape(md) + '</pre>' +
+    '</style><body><pre style="background:none;padding:0">' +
+    escape(md) +
+    '</pre>' +
     '<script>window.onload=()=>setTimeout(()=>window.print(),100)<\/script>';
   w.document.write(html);
   w.document.close();
@@ -1155,30 +1547,44 @@ async function _exportComparison(btn) {
   const panes = grid.querySelectorAll('.compare-pane');
   if (!panes.length) return;
 
-  const prompt = state._lastPrompt || '(no prompt yet — run a comparison first)';
+  const prompt =
+    state._lastPrompt || '(no prompt yet — run a comparison first)';
   const expected = state._expectedAnswer || '';
   const date = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
   let md = '# Compare\n\n';
   md += '**When:** ' + date + '\n';
-  md += '**Type:** ' + (state._compareMode || 'chat') + (state._blindMode ? ' (blind)' : '') + '\n';
+  md +=
+    '**Type:** ' +
+    (state._compareMode || 'chat') +
+    (state._blindMode ? ' (blind)' : '') +
+    '\n';
   md += '**Prompt:**\n\n```\n' + prompt + '\n```\n\n';
   if (expected) md += '**Expected answer:** `' + expected + '`\n\n';
 
   panes.forEach((pane, i) => {
     const m = state._selectedModels[i];
-    const name = m ? (m.name || m.model) + (m.endpointName ? ' (' + m.endpointName + ')' : '') : 'Model ' + (i + 1);
+    const name = m
+      ? (m.name || m.model) +
+        (m.endpointName ? ' (' + m.endpointName + ')' : '')
+      : 'Model ' + (i + 1);
     const body = pane.querySelector('.compare-text-content, .msg-body, .body');
     const text = body ? (body.innerText || body.textContent || '').trim() : '';
     const metrics = state._paneMetrics[i];
     const grade = pane.querySelector('.pane-grade-badge');
-    const gradeMark = grade ? (grade.classList.contains('pass') ? ' ✓' : ' ✗') : '';
+    const gradeMark = grade
+      ? grade.classList.contains('pass')
+        ? ' ✓'
+        : ' ✗'
+      : '';
 
     md += '## ' + name + gradeMark + '\n\n';
     if (metrics) {
       const bits = [];
-      if (metrics.output_tokens != null) bits.push(metrics.output_tokens + ' tokens');
-      if (metrics.tokens_per_second != null) bits.push(metrics.tokens_per_second + ' tok/s');
+      if (metrics.output_tokens != null)
+        bits.push(metrics.output_tokens + ' tokens');
+      if (metrics.tokens_per_second != null)
+        bits.push(metrics.tokens_per_second + ' tok/s');
       if (metrics.response_time != null) bits.push(metrics.response_time + 's');
       if (bits.length) md += '_' + bits.join(' · ') + '_\n\n';
     }
@@ -1193,17 +1599,25 @@ async function _exportComparison(btn) {
       await navigator.clipboard.writeText(md);
     } else {
       const ta = document.createElement('textarea');
-      ta.value = md; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); ta.remove();
+      ta.value = md;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
     }
     if (btn) {
       btn.innerHTML = '<span style="font-size:11px;">Copied!</span>';
-      setTimeout(() => { btn.innerHTML = origLabel; }, 1500);
+      setTimeout(() => {
+        btn.innerHTML = origLabel;
+      }, 1500);
     }
   } catch (e) {
     if (btn) {
-      btn.innerHTML = '<span style="font-size:11px;color:var(--color-error);">Failed</span>';
-      setTimeout(() => { btn.innerHTML = origLabel; }, 2000);
+      btn.innerHTML =
+        '<span style="font-size:11px;color:var(--color-error);">Failed</span>';
+      setTimeout(() => {
+        btn.innerHTML = origLabel;
+      }, 2000);
     }
   }
 }
@@ -1234,9 +1648,9 @@ function _setupEvalPicker() {
   btn.className = 'cmp-eval-btn';
   btn.title = 'Insert an evaluation prompt';
   btn.innerHTML =
-    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
-    + '<span class="cmp-eval-label">Eval prompts</span>'
-    + '<svg class="cmp-eval-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+    '<span class="cmp-eval-label">Eval prompts</span>' +
+    '<svg class="cmp-eval-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 
   const menu = document.createElement('div');
   menu.className = 'cmp-eval-menu hidden';
@@ -1246,20 +1660,25 @@ function _setupEvalPicker() {
     const mode = state._compareMode || 'chat';
     const label = btn.querySelector('.cmp-eval-label');
     if (label) {
-      label.textContent = ({
-        agent: 'Agent prompts',
-        chat: 'Chat prompts',
-        search: 'Search prompts',
-        research: 'Research prompts'
-      }[mode] || 'Eval prompts');
+      label.textContent =
+        {
+          agent: 'Agent prompts',
+          chat: 'Chat prompts',
+          search: 'Search prompts',
+          research: 'Research prompts',
+        }[mode] || 'Eval prompts';
     }
     // research/html aren't first-class compare types — fall back gracefully
-    const key = EVAL_PROMPTS[mode] ? mode
-      : (mode === 'research' ? 'search' : 'chat');
+    const key = EVAL_PROMPTS[mode]
+      ? mode
+      : mode === 'research'
+        ? 'search'
+        : 'chat';
     const list = EVAL_PROMPTS[key] || [];
 
     if (!list.length) {
-      menu.innerHTML = '<div class="cmp-eval-empty">No prompts for this type</div>';
+      menu.innerHTML =
+        '<div class="cmp-eval-empty">No prompts for this type</div>';
       return;
     }
     // Group by sub-category in original order
@@ -1267,7 +1686,10 @@ function _setupEvalPicker() {
     const groups = {};
     for (const p of list) {
       const sub = p.sub || 'Other';
-      if (!groups[sub]) { groups[sub] = []; order.push(sub); }
+      if (!groups[sub]) {
+        groups[sub] = [];
+        order.push(sub);
+      }
       groups[sub].push(p);
     }
     let html = '';
@@ -1275,14 +1697,25 @@ function _setupEvalPicker() {
       html += '<div class="cmp-eval-group-label">' + escapeHtml(sub) + '</div>';
       for (const p of groups[sub]) {
         const data = encodeURIComponent(p.prompt);
-        const ans = p.answer ? ' data-answer="' + encodeURIComponent(p.answer) + '"' : '';
-        const checkMark = p.answer ? '<span class="cmp-eval-item-tick" title="Has expected answer">✓</span>' : '';
-        html += '<button type="button" class="cmp-eval-item" data-prompt="' + data + '"' + ans + '>'
-          + escapeHtml(p.label) + checkMark + '</button>';
+        const ans = p.answer
+          ? ' data-answer="' + encodeURIComponent(p.answer) + '"'
+          : '';
+        const checkMark = p.answer
+          ? '<span class="cmp-eval-item-tick" title="Has expected answer">✓</span>'
+          : '';
+        html +=
+          '<button type="button" class="cmp-eval-item" data-prompt="' +
+          data +
+          '"' +
+          ans +
+          '>' +
+          escapeHtml(p.label) +
+          checkMark +
+          '</button>';
       }
     }
     menu.innerHTML = html;
-    menu.querySelectorAll('.cmp-eval-item').forEach(item => {
+    menu.querySelectorAll('.cmp-eval-item').forEach((item) => {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         const ta = document.getElementById('message');
@@ -1291,7 +1724,9 @@ function _setupEvalPicker() {
           ta.dispatchEvent(new Event('input', { bubbles: true }));
           ta.focus();
         }
-        const ans = item.dataset.answer ? decodeURIComponent(item.dataset.answer) : '';
+        const ans = item.dataset.answer
+          ? decodeURIComponent(item.dataset.answer)
+          : '';
         _showExpectedAnswer(ans);
         menu.classList.add('hidden');
       });
@@ -1326,9 +1761,9 @@ function _setupEvalPicker() {
   hintChip.className = 'cmp-eval-expected hidden';
   hintChip.id = 'cmp-eval-expected';
   hintChip.innerHTML =
-    '<span class="cmp-eval-expected-label">Expected:</span>'
-    + ' <strong class="cmp-eval-expected-value"></strong>'
-    + ' <button type="button" class="cmp-eval-expected-close" title="Dismiss">×</button>';
+    '<span class="cmp-eval-expected-label">Expected:</span>' +
+    ' <strong class="cmp-eval-expected-value"></strong>' +
+    ' <button type="button" class="cmp-eval-expected-close" title="Dismiss">×</button>';
   // Anchor the floating panel against the input bar (needs position:relative
   // — added via CSS rule on .chat-input-bar:has(.cmp-eval-expected) below).
   const inputBar = document.querySelector('.chat-input-bar');
@@ -1337,11 +1772,13 @@ function _setupEvalPicker() {
   } else {
     inputTop.appendChild(hintChip);
   }
-  hintChip.querySelector('.cmp-eval-expected-close').addEventListener('click', (e) => {
-    e.stopPropagation();
-    hintChip.classList.add('hidden');
-    state._expectedAnswer = '';
-  });
+  hintChip
+    .querySelector('.cmp-eval-expected-close')
+    .addEventListener('click', (e) => {
+      e.stopPropagation();
+      hintChip.classList.add('hidden');
+      state._expectedAnswer = '';
+    });
 
   function _showExpectedAnswer(answer) {
     state._expectedAnswer = answer || '';
@@ -1382,7 +1819,7 @@ function _setupEvalPicker() {
 /** Remove compare UI elements and restore original view. */
 function cleanupResults() {
   // Remove all compare elements
-  state._compareElements.forEach(el => {
+  state._compareElements.forEach((el) => {
     if (el._cleanup) el._cleanup();
     if (el._cleanupInput) el._cleanupInput();
     if (el.parentNode) el.remove();
@@ -1390,7 +1827,9 @@ function cleanupResults() {
   state._compareElements = [];
 
   // Remove any stray compare/probe overlays
-  document.querySelectorAll('.compare-probe-overlay').forEach(el => el.remove());
+  document
+    .querySelectorAll('.compare-probe-overlay')
+    .forEach((el) => el.remove());
 
   // Restore sidebar
   if (state._sidebarWasHidden) {
@@ -1399,7 +1838,10 @@ function cleanupResults() {
     state._sidebarWasHidden = false;
   }
   const _mobileNewRestore = document.getElementById('mobile-new-chat-btn');
-  if (_mobileNewRestore && _mobileNewRestore.dataset.cmpWasDisplay !== undefined) {
+  if (
+    _mobileNewRestore &&
+    _mobileNewRestore.dataset.cmpWasDisplay !== undefined
+  ) {
     _mobileNewRestore.style.display = _mobileNewRestore.dataset.cmpWasDisplay;
     delete _mobileNewRestore.dataset.cmpWasDisplay;
   }
@@ -1425,7 +1867,9 @@ function removeOverlays() {
 /** Shuffle pool editor — lets users exclude broken models from the dice. */
 async function showShufflePoolEditor() {
   let models;
-  try { models = await fetchModels(); } catch (e) {
+  try {
+    models = await fetchModels();
+  } catch (e) {
     if (uiModule) uiModule.showError('Failed to load models');
     return;
   }
@@ -1453,8 +1897,10 @@ async function showShufflePoolEditor() {
   body.style.padding = '12px 16px';
 
   const desc = document.createElement('p');
-  desc.style.cssText = 'color:color-mix(in srgb, var(--fg) 55%, transparent);font-size:0.85em;margin:0 0 12px;';
-  desc.textContent = 'Uncheck models to exclude them from random shuffle. They can still be picked manually.';
+  desc.style.cssText =
+    'color:color-mix(in srgb, var(--fg) 55%, transparent);font-size:0.85em;margin:0 0 12px;';
+  desc.textContent =
+    'Uncheck models to exclude them from random shuffle. They can still be picked manually.';
   body.appendChild(desc);
 
   const list = document.createElement('div');
@@ -1464,20 +1910,28 @@ async function showShufflePoolEditor() {
 
   // Group by type
   const groups = { chat: [], image: [] };
-  models.forEach(m => { if (groups[m.type]) groups[m.type].push(m); });
+  models.forEach((m) => {
+    if (groups[m.type]) groups[m.type].push(m);
+  });
 
   Object.entries(groups).forEach(([type, items]) => {
     if (items.length === 0) return;
     const heading = document.createElement('div');
-    heading.style.cssText = 'font-size:0.78em;font-weight:600;color:color-mix(in srgb, var(--fg) 50%, transparent);text-transform:uppercase;letter-spacing:0.5px;padding:8px 4px 4px;';
+    heading.style.cssText =
+      'font-size:0.78em;font-weight:600;color:color-mix(in srgb, var(--fg) 50%, transparent);text-transform:uppercase;letter-spacing:0.5px;padding:8px 4px 4px;';
     heading.textContent = type === 'chat' ? 'Chat Models' : 'Image Models';
     list.appendChild(heading);
 
-    items.forEach(m => {
+    items.forEach((m) => {
       const row = document.createElement('label');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 4px;cursor:pointer;font-size:0.85em;color:var(--fg);border-radius:4px;';
-      row.addEventListener('mouseenter', () => { row.style.background = 'color-mix(in srgb, var(--fg) 4%, transparent)'; });
-      row.addEventListener('mouseleave', () => { row.style.background = ''; });
+      row.style.cssText =
+        'display:flex;align-items:center;gap:8px;padding:5px 4px;cursor:pointer;font-size:0.85em;color:var(--fg);border-radius:4px;';
+      row.addEventListener('mouseenter', () => {
+        row.style.background = 'color-mix(in srgb, var(--fg) 4%, transparent)';
+      });
+      row.addEventListener('mouseleave', () => {
+        row.style.background = '';
+      });
       const chk = document.createElement('input');
       chk.type = 'checkbox';
       chk.checked = !excluded.includes(m.id);
@@ -1492,7 +1946,9 @@ async function showShufflePoolEditor() {
         setExcludedModels(exc);
       });
       const label = document.createElement('span');
-      label.textContent = m.endpointName ? m.name + ' (' + m.endpointName + ')' : m.name;
+      label.textContent = m.endpointName
+        ? m.name + ' (' + m.endpointName + ')'
+        : m.name;
       row.appendChild(chk);
       row.appendChild(label);
       list.appendChild(row);
@@ -1515,16 +1971,22 @@ async function showShufflePoolEditor() {
 
 registerCompareActions({ stopAll, resetCompare });
 registerStreamActions({ rerollPane, autoPreviewHtml: _autoPreviewHtml });
-registerPaneActions({ setSendBtn: _setSendBtn, deactivate, streamToPane, renderSearchResults: _renderSearchResults, fetchModels });
+registerPaneActions({
+  setSendBtn: _setSendBtn,
+  deactivate,
+  streamToPane,
+  renderSearchResults: _renderSearchResults,
+  fetchModels,
+});
 
 // ────────────────────────────────────────────────────────────────────────────
 // ── Public API ──
 // ────────────────────────────────────────────────────────────────────────────
 
-export { EVAL_PROMPTS, showScoreboard, handleCompareSubmit };
+export { EVAL_PROMPTS, handleCompareSubmit, showScoreboard };
 
 const compareModule = {
-  init,
+  init: initLegacy,
   toggleMode,
   handleCompareSubmit,
   isActive: isCompareActive,
@@ -1537,4 +1999,3 @@ const compareModule = {
 };
 
 export default compareModule;
-window.compareModule = compareModule;

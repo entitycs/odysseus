@@ -9,36 +9,61 @@ const MAX_RECENT = 12;
 
 let _popover = null;
 let _input = null;
-let _h = 0, _s = 100, _v = 100;   // HSV
-let _drag = null;                  // 'sl' | 'hue' | null
+let _h = 0,
+  _s = 100,
+  _v = 100; // HSV
+let _drag = null; // 'sl' | 'hue' | null
 let _onOutside = null;
 
+export function init() {
+  _NATIVE_VALUE_DESC = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    'value',
+  );
+}
+
 // ── Color math ────────────────────────────────────────────────────────
-function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
 
 function hexToRgb(hex) {
   hex = String(hex || '').replace('#', '');
-  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+  if (hex.length === 3)
+    hex = hex
+      .split('')
+      .map((c) => c + c)
+      .join('');
   if (!/^[0-9a-f]{6}$/i.test(hex)) return { r: 0, g: 0, b: 0 };
   const n = parseInt(hex, 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
 function rgbToHex(r, g, b) {
-  return '#' + [r, g, b].map(v =>
-    Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')
-  ).join('');
+  return (
+    '#' +
+    [r, g, b]
+      .map((v) =>
+        Math.round(clamp(v, 0, 255))
+          .toString(16)
+          .padStart(2, '0'),
+      )
+      .join('')
+  );
 }
 
 function rgbToHsv(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b);
   const d = max - min;
   let h;
   const s = max === 0 ? 0 : d / max;
   const v = max;
   if (d === 0) h = 0;
-  else if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
+  else if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
   else if (max === g) h = (b - r) / d + 2;
   else h = (r - g) / d + 4;
   return { h: h * 60, s: s * 100, v: v * 100 };
@@ -46,7 +71,9 @@ function rgbToHsv(r, g, b) {
 
 function hsvToRgb(h, s, v) {
   h = ((h % 360) + 360) % 360;
-  h /= 60; s /= 100; v /= 100;
+  h /= 60;
+  s /= 100;
+  v /= 100;
   const i = Math.floor(h);
   const f = h - i;
   const p = v * (1 - s);
@@ -54,43 +81,87 @@ function hsvToRgb(h, s, v) {
   const t = v * (1 - (1 - f) * s);
   let r, g, b;
   switch (i % 6) {
-    case 0: r = v; g = t; b = p; break;
-    case 1: r = q; g = v; b = p; break;
-    case 2: r = p; g = v; b = t; break;
-    case 3: r = p; g = q; b = v; break;
-    case 4: r = t; g = p; b = v; break;
-    case 5: r = v; g = p; b = q; break;
+    case 0:
+      r = v;
+      g = t;
+      b = p;
+      break;
+    case 1:
+      r = q;
+      g = v;
+      b = p;
+      break;
+    case 2:
+      r = p;
+      g = v;
+      b = t;
+      break;
+    case 3:
+      r = p;
+      g = q;
+      b = v;
+      break;
+    case 4:
+      r = t;
+      g = p;
+      b = v;
+      break;
+    case 5:
+      r = v;
+      g = p;
+      b = q;
+      break;
   }
-  return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+  return {
+    r: Math.round(r * 255),
+    g: Math.round(g * 255),
+    b: Math.round(b * 255),
+  };
 }
 
-function hsvToHex(h, s, v) { const { r, g, b } = hsvToRgb(h, s, v); return rgbToHex(r, g, b); }
+function hsvToHex(h, s, v) {
+  const { r, g, b } = hsvToRgb(h, s, v);
+  return rgbToHex(r, g, b);
+}
 
-function hexToHsv(hex) { const { r, g, b } = hexToRgb(hex); return rgbToHsv(r, g, b); }
+function hexToHsv(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHsv(r, g, b);
+}
 
 // ── Storage ───────────────────────────────────────────────────────────
 function getRecents() {
-  try { return JSON.parse(localStorage.getItem(LS_RECENT) || '[]'); }
-  catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(LS_RECENT) || '[]');
+  } catch {
+    return [];
+  }
 }
 
 function addRecent(hex) {
   if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
-  let recents = getRecents().filter(c => c.toLowerCase() !== hex.toLowerCase());
+  let recents = getRecents().filter(
+    (c) => c.toLowerCase() !== hex.toLowerCase(),
+  );
   recents.unshift(hex.toLowerCase());
   recents = recents.slice(0, MAX_RECENT);
-  try { localStorage.setItem(LS_RECENT, JSON.stringify(recents)); } catch {}
+  try {
+    localStorage.setItem(LS_RECENT, JSON.stringify(recents));
+  } catch {}
 }
 
 // ── Suggestions based on current color (5 harmony swatches) ──────────
 function computeSuggestions() {
   // Complement, analogous ±30°, split-complement (+150), tone shift
   return [
-    { hex: hsvToHex(_h + 180, _s, _v),                                   label: 'Complement' },
-    { hex: hsvToHex(_h + 30, _s, _v),                                    label: 'Analogous +30°' },
-    { hex: hsvToHex(_h - 30, _s, _v),                                    label: 'Analogous -30°' },
-    { hex: hsvToHex(_h + 150, _s, _v),                                   label: 'Split-complement' },
-    { hex: hsvToHex(_h, _s, clamp(_v > 50 ? _v - 30 : _v + 30, 10, 95)), label: 'Tone shift' },
+    { hex: hsvToHex(_h + 180, _s, _v), label: 'Complement' },
+    { hex: hsvToHex(_h + 30, _s, _v), label: 'Analogous +30°' },
+    { hex: hsvToHex(_h - 30, _s, _v), label: 'Analogous -30°' },
+    { hex: hsvToHex(_h + 150, _s, _v), label: 'Split-complement' },
+    {
+      hex: hsvToHex(_h, _s, clamp(_v > 50 ? _v - 30 : _v + 30, 10, 95)),
+      label: 'Tone shift',
+    },
   ];
 }
 
@@ -138,12 +209,12 @@ function syncUI() {
   const preview = _popover.querySelector('.cp-preview');
 
   const pureHue = hsvToHex(_h, 100, 100);
-  sl.style.background = pureHue;   // base hue — white/black layers stacked on top via CSS
+  sl.style.background = pureHue; // base hue — white/black layers stacked on top via CSS
 
-  slH.style.left = (_s) + '%';
-  slH.style.top = (100 - _v) + '%';
+  slH.style.left = _s + '%';
+  slH.style.top = 100 - _v + '%';
 
-  hueH.style.left = (_h / 360 * 100) + '%';
+  hueH.style.left = (_h / 360) * 100 + '%';
 
   const current = hsvToHex(_h, _s, _v);
   preview.style.background = current;
@@ -152,29 +223,39 @@ function syncUI() {
   // Suggestions
   const sContainer = _popover.querySelector('.cp-suggestions');
   const sugs = computeSuggestions();
-  sContainer.innerHTML = sugs.map(s =>
-    `<button class="cp-swatch" title="${s.label}: ${s.hex}" data-hex="${s.hex}" style="background:${s.hex}"></button>`
-  ).join('');
+  sContainer.innerHTML = sugs
+    .map(
+      (s) =>
+        `<button class="cp-swatch" title="${s.label}: ${s.hex}" data-hex="${s.hex}" style="background:${s.hex}"></button>`,
+    )
+    .join('');
 
   // Recents
   const rContainer = _popover.querySelector('.cp-recent');
   const recs = getRecents();
   rContainer.innerHTML = recs.length
-    ? recs.map(h => `<button class="cp-swatch" title="${h}" data-hex="${h}" style="background:${h}"></button>`).join('')
+    ? recs
+        .map(
+          (h) =>
+            `<button class="cp-swatch" title="${h}" data-hex="${h}" style="background:${h}"></button>`,
+        )
+        .join('')
     : '<div class="cp-recent-empty">(none yet)</div>';
 }
 
 function applyToInput(pushChange) {
   if (!_input) return;
   const hex = hsvToHex(_h, _s, _v);
-  _input.value = hex;  // setter also updates style.background
+  _input.value = hex; // setter also updates style.background
   if (pushChange) _input.dispatchEvent(new Event('input', { bubbles: true }));
   syncUI();
 }
 
 function setFromHex(hex) {
   const v = hexToHsv(hex);
-  _h = v.h; _s = v.s; _v = v.v;
+  _h = v.h;
+  _s = v.s;
+  _v = v.v;
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────
@@ -184,7 +265,9 @@ let _windowPointerInstalled = false;
 function _installWindowPointer() {
   if (_windowPointerInstalled) return;
   _windowPointerInstalled = true;
-  window.addEventListener('pointermove', (e) => { if (_drag) handleDrag(e); });
+  window.addEventListener('pointermove', (e) => {
+    if (_drag) handleDrag(e);
+  });
   window.addEventListener('pointerup', () => {
     if (_drag) {
       _drag = null;
@@ -217,8 +300,13 @@ function wireHandlers(p) {
     }
   });
   hex.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { commitCurrent(); close(); }
-    if (e.key === 'Escape') { close(); }
+    if (e.key === 'Enter') {
+      commitCurrent();
+      close();
+    }
+    if (e.key === 'Escape') {
+      close();
+    }
   });
 
   p.addEventListener('click', (e) => {
@@ -245,14 +333,21 @@ function wireHandlers(p) {
           applyToInput(true);
           commitCurrent();
         }
-      } catch (_) { /* user cancelled */ }
+      } catch (_) {
+        /* user cancelled */
+      }
       // Re-arm outside-click handler after a frame so the eyedropper's
       // own pick-click doesn't immediately re-close us.
       if (wasOnOutside && _popover) {
         requestAnimationFrame(() => {
           if (!_popover) return;
           _onOutside = wasOnOutside;
-          _onEsc = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+          _onEsc = (e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              close();
+            }
+          };
           document.addEventListener('click', _onOutside, true);
           document.addEventListener('keydown', _onEsc, true);
         });
@@ -295,8 +390,10 @@ function position(p, anchor) {
   const pRect = p.getBoundingClientRect();
   let left = rect.left;
   let top = rect.bottom + 6;
-  if (left + pRect.width > window.innerWidth - 8) left = window.innerWidth - pRect.width - 8;
-  if (top + pRect.height > window.innerHeight - 8) top = rect.top - pRect.height - 6;
+  if (left + pRect.width > window.innerWidth - 8)
+    left = window.innerWidth - pRect.width - 8;
+  if (top + pRect.height > window.innerHeight - 8)
+    top = rect.top - pRect.height - 6;
   if (left < 8) left = 8;
   if (top < 8) top = 8;
   p.style.left = left + 'px';
@@ -346,18 +443,21 @@ function open(inputEl) {
   syncUI();
 
   _onOutside = (e) => {
-    if (_drag) return;                        // ignore during drag
+    if (_drag) return; // ignore during drag
     if (!_popover) return;
     if (_popover.contains(e.target)) return;
     if (e.target === _input) return;
     // If the click landed on a modal close button (X), swallow it so the
     // popover-close doesn't also dismiss the enclosing modal. The user
     // wants their first click to just close the color picker.
-    const closeBtn = e.target.closest && e.target.closest('.close-btn, [aria-label*="lose" i]');
+    const closeBtn =
+      e.target.closest &&
+      e.target.closest('.close-btn, [aria-label*="lose" i]');
     if (closeBtn) {
       e.preventDefault();
       e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      if (typeof e.stopImmediatePropagation === 'function')
+        e.stopImmediatePropagation();
     }
     close();
   };
@@ -367,7 +467,8 @@ function open(inputEl) {
       // modal's own Esc handler only fires on the next press.
       e.preventDefault();
       e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      if (typeof e.stopImmediatePropagation === 'function')
+        e.stopImmediatePropagation();
       close();
     }
   };
@@ -390,7 +491,7 @@ function close() {
 
 // ── Attach to inputs ──────────────────────────────────────────────────
 // Standard setter we need to call after wrapping .value with a custom setter.
-const _NATIVE_VALUE_DESC = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+let _NATIVE_VALUE_DESC;
 
 function _syncSwatch(el) {
   const v = _NATIVE_VALUE_DESC.get.call(el);
@@ -413,7 +514,9 @@ export function attachColorPicker(inputEl) {
   // Wrap .value so ANY assignment (from theme.js applyColors etc.) auto-updates the swatch bg.
   Object.defineProperty(inputEl, 'value', {
     configurable: true,
-    get() { return _NATIVE_VALUE_DESC.get.call(this); },
+    get() {
+      return _NATIVE_VALUE_DESC.get.call(this);
+    },
     set(v) {
       _NATIVE_VALUE_DESC.set.call(this, v);
       _syncSwatch(this);

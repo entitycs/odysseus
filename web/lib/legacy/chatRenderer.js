@@ -60,7 +60,7 @@ export function init() {
       toggle.dataset.arrow = expanded ? 'right' : 'down';
     }
   };
-
+  loadExecFenceRegex();
   // Event delegation for sources toggle (capture phase, handles SVG targets)
   document.addEventListener(
     'click',
@@ -634,7 +634,7 @@ async function loadExecFenceRegex() {
     );
   }
 }
-loadExecFenceRegex();
+
 // XML-style tool calls: <minimax:tool_call>, <tool_call>, <function_call>, bare <invoke>
 const XML_TOOL_CALL_RE =
   /<(?:[\w]+:)?(?:tool_call|function_call)>[\s\S]*?<\/(?:[\w]+:)?(?:tool_call|function_call)>/gi;
