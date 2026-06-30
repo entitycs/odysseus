@@ -32,6 +32,9 @@ import workspaceModule from '$lib/legacy/workspace.js';
 import '$lib/legacy/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import '$lib/legacy/tileManager.js';
+import { syncGroupIndicator } from '$lib/chat/group';
+import { serializeChatTranscript, startFreshChat } from '$lib/chat/helpers';
+import { applyTextEmojis, deEmojify } from '$lib/emoji';
 // IMPORTANT: import cookbook.js with NO ?v= query — the same plain specifier
 // every other importer (cookbook-hwfit.js / cookbook-diagnosis.js) uses. A query
 // mismatch makes the browser load cookbook.js twice as separate modules (two
@@ -49,9 +52,12 @@ import { initSidebarLayout, syncRailSide } from '$lib/legacy/sidebar-layout.js';
 import spinnerModule from '$lib/legacy/spinner.js';
 import themeModule from '$lib/legacy/theme.js';
 import ttsModule from '$lib/legacy/tts-ai.js';
+import { updatePlusDot } from '$lib/overflow';
+import { loadToolPref, saveToolPref, showToolToggleToast } from '$lib/tool';
 
-let API_BASE;
+let API_BASE = '';
 
+// let el;
 export function init() {
   API_BASE = window.location.origin;
   window.themeModule = themeModule;
@@ -80,11 +86,13 @@ export function init() {
   } else {
     startOdysseusApp();
   }
+  // el = uiModule.el;
 }
 
+function el(id) {
+  return document.getElementById(id);
+}
 // Search settings
-
-const el = uiModule.el;
 
 // Default chat config — refreshed on every new-chat action so settings
 // changes take effect immediately (previously cached once at page load and
@@ -154,20 +162,21 @@ async function _createDirectChatFromPreferredModel() {
 // EVENT LISTENERS INITIALIZATION
 // ============================================
 function initializeEventListeners() {
-  // Chat form submission
-  //  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
+  /** moved to +.svelte */
+  // // Chat form submission
+  // //  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
 
-  // File attachments (inside overflow menu)
-  const _overflowAttach = el('overflow-attach-btn');
-  if (_overflowAttach)
-    _overflowAttach.addEventListener('click', fileHandlerModule.openPicker);
-  el('file-input').addEventListener('change', (e) => {
-    for (const f of e.target.files) fileHandlerModule.addFiles([f]);
-    fileHandlerModule.renderAttachStrip();
-    // Refocus textarea after file picker closes (mobile keyboard)
-    const ta = el('message');
-    if (ta) setTimeout(() => ta.focus(), 100);
-  });
+  // // File attachments (inside overflow menu)
+  // const _overflowAttach = document.getElementById('overflow-attach-btn');
+  // if (_overflowAttach)
+  //   _overflowAttach.addEventListener('click', fileHandlerModule.openPicker);
+  // document.getElementById('file-input').addEventListener('change', (e) => {
+  //   for (const f of e.target.files) fileHandlerModule.addFiles([f]);
+  //   fileHandlerModule.renderAttachStrip();
+  //   // Refocus textarea after file picker closes (mobile keyboard)
+  //   const ta = document.getElementById('message');
+  //   if (ta) setTimeout(() => ta.focus(), 100);
+  // });
 
   // Paste handler
   window.addEventListener('paste', async (e) => {
@@ -185,84 +194,85 @@ function initializeEventListeners() {
     if (changed) fileHandlerModule.renderAttachStrip();
   });
 
-  // Message count in the header — recount on any DOM change in
-  // #chat-history and write "· N msgs" next to the title. Counts top-
-  // level .msg elements (one per user/assistant turn); excludes the
-  // welcome screen since it isn't inside chat-history.
-  const _metaCountEl = el('current-meta-count');
-  const _chatHistEl = el('chat-history');
-  if (_metaCountEl && _chatHistEl) {
-    let _countScheduled = false;
-    const _updateMsgCount = () => {
-      _countScheduled = false;
-      const n = _chatHistEl.querySelectorAll(':scope > .msg').length;
-      _metaCountEl.textContent = n ? `· ${n} msg${n === 1 ? '' : 's'}` : '';
-    };
-    const _scheduleCount = () => {
-      if (_countScheduled) return;
-      _countScheduled = true;
-      requestAnimationFrame(_updateMsgCount);
-    };
-    new MutationObserver(_scheduleCount).observe(_chatHistEl, {
-      childList: true,
-    });
-    _updateMsgCount();
-  }
+  /** moved to +.svelte */
+  // // Message count in the header — recount on any DOM change in
+  // // #chat-history and write "· N msgs" next to the title. Counts top-
+  // // level .msg elements (one per user/assistant turn); excludes the
+  // // welcome screen since it isn't inside chat-history.
+  // const _metaCountEl = document.getElementById('current-meta-count');
+  // const _chatHistEl = document.getElementById('chat-history');
+  // if (_metaCountEl && _chatHistEl) {
+  //   let _countScheduled = false;
+  //   const _updateMsgCount = () => {
+  //     _countScheduled = false;
+  //     const n = _chatHistEl.querySelectorAll(':scope > .msg').length;
+  //     _metaCountEl.textContent = n ? `· ${n} msg${n === 1 ? '' : 's'}` : '';
+  //   };
+  //   const _scheduleCount = () => {
+  //     if (_countScheduled) return;
+  //     _countScheduled = true;
+  //     requestAnimationFrame(_updateMsgCount);
+  //   };
+  //   new MutationObserver(_scheduleCount).observe(_chatHistEl, {
+  //     childList: true,
+  //   });
+  //   _updateMsgCount();
+  // }
 
-  // Scrolling
-  el('chat-history').addEventListener(
-    'scroll',
-    uiModule.debounce(() => {
-      const box = el('chat-history');
-      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-      uiModule.setAutoScroll(atBottom);
-    }, 100),
-  );
-  // Close all footer popups immediately on any scroll
-  el('chat-history').addEventListener(
-    'scroll',
-    () => {
-      document
-        .querySelectorAll('.ctx-popup, .memory-used-detail, .msg-overflow-menu')
-        .forEach((p) => p.remove());
-      document.querySelectorAll('.memory-used-pill').forEach((p) => {
-        p._openDetail = null;
-      });
-    },
-    { passive: true },
-  );
+  // // Scrolling
+  // document.getElementById('chat-history').addEventListener(
+  //   'scroll',
+  //   uiModule.debounce(() => {
+  //     const box = document.getElementById('chat-history');
+  //     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  //     uiModule.setAutoScroll(atBottom);
+  //   }, 100),
+  // );
+  // // Close all footer popups immediately on any scroll
+  // document.getElementById('chat-history').addEventListener(
+  //   'scroll',
+  //   () => {
+  //     document
+  //       .querySelectorAll('.ctx-popup, .memory-used-detail, .msg-overflow-menu')
+  //       .forEach((p) => p.remove());
+  //     document.querySelectorAll('.memory-used-pill').forEach((p) => {
+  //       p._openDetail = null;
+  //     });
+  //   },
+  //   { passive: true },
+  // );
 
-  el('chat-history').addEventListener('wheel', (e) => {
-    // Only disable auto-scroll when user scrolls UP (deltaY < 0)
-    if (e.deltaY < 0) uiModule.setAutoScroll(false);
-  });
-  let _touchThrottled = false;
-  el('chat-history').addEventListener(
-    'touchmove',
-    () => {
-      if (_touchThrottled) return;
-      _touchThrottled = true;
-      uiModule.setAutoScroll(false);
-      requestAnimationFrame(() => {
-        _touchThrottled = false;
-      });
-    },
-    { passive: true },
-  );
+  // document.getElementById('chat-history').addEventListener('wheel', (e) => {
+  //   // Only disable auto-scroll when user scrolls UP (deltaY < 0)
+  //   if (e.deltaY < 0) uiModule.setAutoScroll(false);
+  // });
+  // let _touchThrottled = false;
+  // document.getElementById('chat-history').addEventListener(
+  //   'touchmove',
+  //   () => {
+  //     if (_touchThrottled) return;
+  //     _touchThrottled = true;
+  //     uiModule.setAutoScroll(false);
+  //     requestAnimationFrame(() => {
+  //       _touchThrottled = false;
+  //     });
+  //   },
+  //   { passive: true },
+  // );
 
-  // Internal #session-id links from AI search results
-  el('chat-history').addEventListener('click', (e) => {
-    const link = e.target.closest('a.chat-link');
-    if (!link) return;
-    const href = link.getAttribute('href');
-    if (href && href.startsWith('#') && sessionModule) {
-      e.preventDefault();
-      sessionModule.selectSession(href.slice(1));
-    }
-  });
+  // // Internal #session-id links from AI search results
+  // document.getElementById('chat-history').addEventListener('click', (e) => {
+  //   const link = e.target.closest('a.chat-link');
+  //   if (!link) return;
+  //   const href = link.getAttribute('href');
+  //   if (href && href.startsWith('#') && sessionModule) {
+  //     e.preventDefault();
+  //     sessionModule.selectSession(href.slice(1));
+  //   }
+  // });
 
   // Export dropdown button
-  const exportDlBtn = el('export-dl-btn');
+  const exportDlBtn = document.getElementById('export-dl-btn');
   // ── Unified popup dismissal ──
   // Lightweight popups (header dropdowns, kebab menus, pickers) should vanish
   // on any "other action" — opening the sidebar, opening a tool window, etc.
@@ -302,7 +312,7 @@ function initializeEventListeners() {
     }
   });
 
-  const exportMenu = el('export-dropdown-menu');
+  const exportMenu = document.getElementById('export-dropdown-menu');
   if (exportDlBtn && exportMenu) {
     exportDlBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -330,7 +340,7 @@ function initializeEventListeners() {
     // Opening the sidebar should dismiss any open popup. Many code paths open
     // the sidebar (toggle button, swipe, keyboard, rail), so watch its class
     // for a hidden→visible transition rather than hooking each one.
-    const _sidebarEl = el('sidebar');
+    const _sidebarEl = document.getElementById('sidebar');
     if (_sidebarEl) {
       let _wasHidden = _sidebarEl.classList.contains('hidden');
       new MutationObserver(() => {
@@ -340,7 +350,7 @@ function initializeEventListeners() {
       }).observe(_sidebarEl, { attributes: true, attributeFilter: ['class'] });
     }
     // Clicking session name also opens dropdown
-    const currentMeta = el('current-meta');
+    const currentMeta = document.getElementById('current-meta');
     if (currentMeta) {
       currentMeta.style.cursor = 'pointer';
       currentMeta.addEventListener('click', (e) => {
@@ -350,63 +360,64 @@ function initializeEventListeners() {
     }
   }
 
-  // Serialize the current chat history into a plain-text transcript.
-  // Includes user messages, assistant rounds, and agent tool calls in DOM order.
-  function _serializeChatTranscript() {
-    const box = document.getElementById('chat-history');
-    if (!box) return '';
-    const parts = [];
-    for (const child of box.children) {
-      if (child.classList?.contains('msg')) {
-        const isUser = child.classList.contains('msg-user');
-        let label;
-        if (isUser) {
-          label = 'User';
-        } else {
-          const roleEl = child.querySelector('.role');
-          const ts = roleEl?.querySelector('.role-timestamp');
-          let raw = roleEl ? roleEl.textContent : '';
-          if (ts) raw = raw.replace(ts.textContent, '');
-          label = (raw || '').trim() || 'Assistant';
-        }
-        const body = child.querySelector('.body');
-        // Prefer dataset.raw (original markdown) over innerText (rendered HTML as text)
-        // to avoid extra newlines and formatting artifacts.
-        const text = body
-          ? (
-              body.dataset.raw ||
-              body.innerText ||
-              body.textContent ||
-              ''
-            ).trim()
-          : '';
-        if (text) parts.push(`${label}: ${text}`);
-      } else if (child.classList?.contains('agent-thread')) {
-        const lines = ['[Tool calls]'];
-        for (const n of child.querySelectorAll('.agent-thread-node')) {
-          const tool =
-            n.querySelector('.agent-thread-tool')?.textContent?.trim() ||
-            'tool';
-          const cmd =
-            n.querySelector('.agent-thread-cmd')?.textContent?.trim() || '';
-          const output =
-            n.querySelector('.agent-tool-output pre')?.textContent?.trim() ||
-            '';
-          const status = n.classList.contains('error') ? 'failed' : 'done';
-          let line = `- ${tool} [${status}]`;
-          if (cmd) line += `\n  cmd: ${cmd}`;
-          if (output) {
-            const truncated =
-              output.length > 2000 ? output.slice(0, 2000) + '…' : output;
-            line += `\n  out: ${truncated}`;
-          }
-          lines.push(line);
-        }
-        parts.push(lines.join('\n'));
-      }
-    }
-    return parts.join('\n\n');
-  }
+  /** moved to +.svelte */
+  // // Serialize the current chat history into a plain-text transcript.
+  // // Includes user messages, assistant rounds, and agent tool calls in DOM order.
+  // function _serializeChatTranscript() {
+  //   const box = document.getElementById('chat-history');
+  //   if (!box) return '';
+  //   const parts = [];
+  //   for (const child of box.children) {
+  //     if (child.classList?.contains('msg')) {
+  //       const isUser = child.classList.contains('msg-user');
+  //       let label;
+  //       if (isUser) {
+  //         label = 'User';
+  //       } else {
+  //         const roleEl = child.querySelector('.role');
+  //         const ts = roleEl?.querySelector('.role-timestamp');
+  //         let raw = roleEl ? roleEl.textContent : '';
+  //         if (ts) raw = raw.replace(ts.textContent, '');
+  //         label = (raw || '').trim() || 'Assistant';
+  //       }
+  //       const body = child.querySelector('.body');
+  //       // Prefer dataset.raw (original markdown) over innerText (rendered HTML as text)
+  //       // to avoid extra newlines and formatting artifacts.
+  //       const text = body
+  //         ? (
+  //             body.dataset.raw ||
+  //             body.innerText ||
+  //             body.textContent ||
+  //             ''
+  //           ).trim()
+  //         : '';
+  //       if (text) parts.push(`${label}: ${text}`);
+  //     } else if (child.classList?.contains('agent-thread')) {
+  //       const lines = ['[Tool calls]'];
+  //       for (const n of child.querySelectorAll('.agent-thread-node')) {
+  //         const tool =
+  //           n.querySelector('.agent-thread-tool')?.textContent?.trim() ||
+  //           'tool';
+  //         const cmd =
+  //           n.querySelector('.agent-thread-cmd')?.textContent?.trim() || '';
+  //         const output =
+  //           n.querySelector('.agent-tool-output pre')?.textContent?.trim() ||
+  //           '';
+  //         const status = n.classList.contains('error') ? 'failed' : 'done';
+  //         let line = `- ${tool} [${status}]`;
+  //         if (cmd) line += `\n  cmd: ${cmd}`;
+  //         if (output) {
+  //           const truncated =
+  //             output.length > 2000 ? output.slice(0, 2000) + '…' : output;
+  //           line += `\n  out: ${truncated}`;
+  //         }
+  //         lines.push(line);
+  //       }
+  //       parts.push(lines.join('\n'));
+  //     }
+  //   }
+  //   return parts.join('\n\n');
+  // }
 
   // Export: Copy all messages
   const exportCopyBtn = el('export-copy-btn');
@@ -414,7 +425,7 @@ function initializeEventListeners() {
     exportCopyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       exportMenu.classList.remove('open');
-      const transcript = _serializeChatTranscript();
+      const transcript = serializeChatTranscript();
       // A new/empty chat has nothing to copy — don't write an empty string and
       // falsely report "Copied".
       if (!transcript.trim()) {
@@ -424,37 +435,37 @@ function initializeEventListeners() {
       await uiModule.copyToClipboard(transcript);
     });
   }
-
-  // Export: PDF
-  const exportPdfBtn = el('export-pdf-btn');
-  if (exportPdfBtn) {
-    exportPdfBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      exportMenu.classList.remove('open');
-      const meta = sessionModule
-        .getSessions()
-        .find((s) => s.id === sessionModule.getCurrentSessionId());
-      const sessionName = meta ? meta.name : 'Odysseus Chat';
-      const originalTitle = document.title;
-      document.title = sessionName;
-      const chatHistory = document.getElementById('chat-history');
-      if (chatHistory) chatHistory.dataset.printTitle = sessionName;
-      document
-        .querySelectorAll('#chat-history details:not([open])')
-        .forEach((d) => {
-          d.setAttribute('open', '');
-          d.dataset.printOpened = '1';
-        });
-      window.print();
-      document.title = originalTitle;
-      document
-        .querySelectorAll('#chat-history details[data-print-opened]')
-        .forEach((d) => {
-          d.removeAttribute('open');
-          d.removeAttribute('data-print-opened');
-        });
-    });
-  }
+  /** moved to +.svelte */
+  // // Export: PDF
+  // const exportPdfBtn = el('export-pdf-btn');
+  // if (exportPdfBtn) {
+  //   exportPdfBtn.addEventListener('click', (e) => {
+  //     e.stopPropagation();
+  //     exportMenu.classList.remove('open');
+  //     const meta = sessionModule
+  //       .getSessions()
+  //       .find((s) => s.id === sessionModule.getCurrentSessionId());
+  //     const sessionName = meta ? meta.name : 'Odysseus Chat';
+  //     const originalTitle = document.title;
+  //     document.title = sessionName;
+  //     const chatHistory = document.getElementById('chat-history');
+  //     if (chatHistory) chatHistory.dataset.printTitle = sessionName;
+  //     document
+  //       .querySelectorAll('#chat-history details:not([open])')
+  //       .forEach((d) => {
+  //         d.setAttribute('open', '');
+  //         d.dataset.printOpened = '1';
+  //       });
+  //     window.print();
+  //     document.title = originalTitle;
+  //     document
+  //       .querySelectorAll('#chat-history details[data-print-opened]')
+  //       .forEach((d) => {
+  //         d.removeAttribute('open');
+  //         d.removeAttribute('data-print-opened');
+  //       });
+  //   });
+  // }
 
   // Export: Save to Docs
   const exportDocBtn = el('export-doc-btn');
@@ -464,7 +475,7 @@ function initializeEventListeners() {
       exportMenu.classList.remove('open');
       try {
         const sessionId = sessionModule.getCurrentSessionId();
-        const texts = _serializeChatTranscript();
+        const texts = serializeChatTranscript();
         const meta = sessionModule
           .getSessions()
           .find((s) => s.id === sessionId);
@@ -801,46 +812,46 @@ function initializeEventListeners() {
   });
 
   // Mobile bottom-sheet swipe-to-dismiss is handled by ui.js (header-only)
-
-  // ── Helper: start a fresh chat (deselect current, clear history, show welcome) ──
-  function _startFreshChat() {
-    try {
-      const prevId =
-        sessionModule && sessionModule.getCurrentSessionId
-          ? sessionModule.getCurrentSessionId()
-          : null;
-      if (chatModule && chatModule.detachCurrentStream)
-        chatModule.detachCurrentStream(prevId);
-      else if (chatModule && chatModule.abortCurrentRequest)
-        chatModule.abortCurrentRequest();
-    } catch (e) {
-      console.warn('fresh chat stream detach failed:', e);
-    }
-    if (sessionModule) sessionModule.setCurrentSessionId(null);
-    const box = el('chat-history');
-    if (box) box.innerHTML = '';
-    if (chatModule && chatModule.showWelcomeScreen) {
-      chatModule.showWelcomeScreen();
-    }
-    // Close document panel if open
-    if (documentModule && documentModule.closePanel)
-      documentModule.closePanel();
-    if (researchPanelModule && researchPanelModule.isOpen())
-      researchPanelModule.closePanel();
-    // Reset research overflow dot (but don't touch research state — caller manages that)
-    const _overflowRes = el('overflow-research-btn');
-    if (_overflowRes) _overflowRes.classList.remove('active');
-    if (typeof updatePlusDot === 'function') updatePlusDot();
-    // Reset agent mode to Chat
-    const modeToggle = el('agent-mode-toggle');
-    if (modeToggle && modeToggle.checked) {
-      modeToggle.checked = false;
-      modeToggle.dispatchEvent(new Event('change'));
-    }
-    // Clear character/persona
-    if (presetsModule && presetsModule.deactivateCharacter)
-      presetsModule.deactivateCharacter();
-  }
+  /** moved to +.svelte */
+  // // ── Helper: start a fresh chat (deselect current, clear history, show welcome) ──
+  // function _startFreshChat() {
+  //   try {
+  //     const prevId =
+  //       sessionModule && sessionModule.getCurrentSessionId
+  //         ? sessionModule.getCurrentSessionId()
+  //         : null;
+  //     if (chatModule && chatModule.detachCurrentStream)
+  //       chatModule.detachCurrentStream(prevId);
+  //     else if (chatModule && chatModule.abortCurrentRequest)
+  //       chatModule.abortCurrentRequest();
+  //   } catch (e) {
+  //     console.warn('fresh chat stream detach failed:', e);
+  //   }
+  //   if (sessionModule) sessionModule.setCurrentSessionId(null);
+  //   const box = el('chat-history');
+  //   if (box) box.innerHTML = '';
+  //   if (chatModule && chatModule.showWelcomeScreen) {
+  //     chatModule.showWelcomeScreen();
+  //   }
+  //   // Close document panel if open
+  //   if (documentModule && documentModule.closePanel)
+  //     documentModule.closePanel();
+  //   if (researchPanelModule && researchPanelModule.isOpen())
+  //     researchPanelModule.closePanel();
+  //   // Reset research overflow dot (but don't touch research state — caller manages that)
+  //   const _overflowRes = el('overflow-research-btn');
+  //   if (_overflowRes) _overflowRes.classList.remove('active');
+  //   if (typeof updatePlusDot === 'function') updatePlusDot();
+  //   // Reset agent mode to Chat
+  //   const modeToggle = el('agent-mode-toggle');
+  //   if (modeToggle && modeToggle.checked) {
+  //     modeToggle.checked = false;
+  //     modeToggle.dispatchEvent(new Event('change'));
+  //   }
+  //   // Clear character/persona
+  //   if (presetsModule && presetsModule.deactivateCharacter)
+  //     presetsModule.deactivateCharacter();
+  // }
 
   /** Sync Research indicator button + overflow + tool sidebar active state. */
   function _syncResearchIndicator(active) {
@@ -876,101 +887,102 @@ function initializeEventListeners() {
     document.dispatchEvent(new CustomEvent('overflow-state-change'));
   }
 
-  /** Sync Group Chat indicator button + overflow. */
-  function _syncGroupIndicator(active) {
-    const btn = el('group-toggle-btn');
-    const overflow = el('overflow-group-btn');
-    const chk = el('group-toggle');
-    if (btn) {
-      btn.style.display = active ? '' : 'none';
-      btn.classList.toggle('active', active);
-    }
-    if (overflow) {
-      overflow.classList.toggle('active', active);
-      overflow.style.display = active ? 'none' : '';
-    }
-    if (chk) chk.checked = active;
-    // Hide/show model picker
-    const _mpw = el('model-picker-wrap');
-    if (_mpw) _mpw.style.display = active ? 'none' : '';
-    // Mutual exclusion: group disables research + web search
-    if (active) {
-      _syncResearchIndicator(false);
-      const _webChk = el('web-toggle');
-      if (_webChk && _webChk.checked) {
-        _webChk.checked = false;
-        saveToolPref('web', loadToggleState().mode || 'chat', false);
-      }
-    }
-    const s = loadToggleState();
-    s.group = active;
-    saveToggleState(s);
-    updatePlusDot();
-    document.dispatchEvent(new CustomEvent('overflow-state-change'));
+  /** moved to chat/group.ts */
+  // /** Sync Group Chat indicator button + overflow. */
+  // function _syncGroupIndicator(active) {
+  //   const btn = el('group-toggle-btn');
+  //   const overflow = el('overflow-group-btn');
+  //   const chk = el('group-toggle');
+  //   if (btn) {
+  //     btn.style.display = active ? '' : 'none';
+  //     btn.classList.toggle('active', active);
+  //   }
+  //   if (overflow) {
+  //     overflow.classList.toggle('active', active);
+  //     overflow.style.display = active ? 'none' : '';
+  //   }
+  //   if (chk) chk.checked = active;
+  //   // Hide/show model picker
+  //   const _mpw = el('model-picker-wrap');
+  //   if (_mpw) _mpw.style.display = active ? 'none' : '';
+  //   // Mutual exclusion: group disables research + web search
+  //   if (active) {
+  //     _syncResearchIndicator(false);
+  //     const _webChk = el('web-toggle');
+  //     if (_webChk && _webChk.checked) {
+  //       _webChk.checked = false;
+  //       saveToolPref('web', loadToggleState().mode || 'chat', false);
+  //     }
+  //   }
+  //   const s = loadToggleState();
+  //   s.group = active;
+  //   saveToggleState(s);
+  //   updatePlusDot();
+  //   document.dispatchEvent(new CustomEvent('overflow-state-change'));
 
-    // Update welcome screen for research mode
-    const ws = el('welcome-screen');
-    const welcomeName = document.querySelector('.welcome-name');
-    const welcomeSub = el('welcome-sub');
-    const tipEl = el('welcome-tip');
-    const _resIco =
-      '<svg class="welcome-boat" style="position:relative;top:0.5px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
-    if (active) {
-      if (welcomeName) {
-        if (!welcomeName.dataset.researchOrigHtml)
-          welcomeName.dataset.researchOrigHtml = welcomeName.innerHTML;
-        welcomeName.innerHTML = _resIco + 'Deep Research';
-      }
-      if (welcomeSub) {
-        if (!welcomeSub.dataset.researchOrigText)
-          welcomeSub.dataset.researchOrigText = welcomeSub.textContent;
-        welcomeSub.textContent =
-          'Deep multi-step research with source gathering and synthesis.';
-      }
-      if (tipEl) {
-        if (!tipEl.dataset.researchOrigTip)
-          tipEl.dataset.researchOrigTip = tipEl.textContent;
-        tipEl.textContent = '';
-        tipEl.style.display = 'none';
-      }
-      // Hide Nobody toggle during research mode
-      const _incBtn = el('incognito-btn');
-      if (_incBtn) {
-        _incBtn.dataset.researchOrigDisplay = _incBtn.style.display;
-        _incBtn.style.display = 'none';
-      }
-      // Close document panel if open
-      if (window.documentModule && window.documentModule.isPanelOpen()) {
-        window.documentModule.closePanel();
-      }
-    } else {
-      if (welcomeName && welcomeName.dataset.researchOrigHtml) {
-        welcomeName.innerHTML = welcomeName.dataset.researchOrigHtml;
-        delete welcomeName.dataset.researchOrigHtml;
-      }
-      if (welcomeSub && welcomeSub.dataset.researchOrigText) {
-        welcomeSub.textContent = welcomeSub.dataset.researchOrigText;
-        delete welcomeSub.dataset.researchOrigText;
-      }
-      if (tipEl && tipEl.dataset.researchOrigTip) {
-        tipEl.textContent = tipEl.dataset.researchOrigTip;
-        tipEl.style.opacity = '';
-        tipEl.style.display = '';
-        delete tipEl.dataset.researchOrigTip;
-      }
-      // Restore Nobody toggle
-      const _incBtn2 = el('incognito-btn');
-      if (_incBtn2 && _incBtn2.dataset.researchOrigDisplay !== undefined) {
-        _incBtn2.style.display = _incBtn2.dataset.researchOrigDisplay;
-        delete _incBtn2.dataset.researchOrigDisplay;
-      }
-    }
-    if (ws) {
-      ws.style.animation = 'none';
-      ws.offsetHeight;
-      ws.style.animation = 'welcome-enter 0.3s ease-out both';
-    }
-  }
+  //   // Update welcome screen for research mode
+  //   const ws = el('welcome-screen');
+  //   const welcomeName = document.querySelector('.welcome-name');
+  //   const welcomeSub = el('welcome-sub');
+  //   const tipEl = el('welcome-tip');
+  //   const _resIco =
+  //     '<svg class="welcome-boat" style="position:relative;top:0.5px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
+  //   if (active) {
+  //     if (welcomeName) {
+  //       if (!welcomeName.dataset.researchOrigHtml)
+  //         welcomeName.dataset.researchOrigHtml = welcomeName.innerHTML;
+  //       welcomeName.innerHTML = _resIco + 'Deep Research';
+  //     }
+  //     if (welcomeSub) {
+  //       if (!welcomeSub.dataset.researchOrigText)
+  //         welcomeSub.dataset.researchOrigText = welcomeSub.textContent;
+  //       welcomeSub.textContent =
+  //         'Deep multi-step research with source gathering and synthesis.';
+  //     }
+  //     if (tipEl) {
+  //       if (!tipEl.dataset.researchOrigTip)
+  //         tipEl.dataset.researchOrigTip = tipEl.textContent;
+  //       tipEl.textContent = '';
+  //       tipEl.style.display = 'none';
+  //     }
+  //     // Hide Nobody toggle during research mode
+  //     const _incBtn = el('incognito-btn');
+  //     if (_incBtn) {
+  //       _incBtn.dataset.researchOrigDisplay = _incBtn.style.display;
+  //       _incBtn.style.display = 'none';
+  //     }
+  //     // Close document panel if open
+  //     if (window.documentModule && window.documentModule.isPanelOpen()) {
+  //       window.documentModule.closePanel();
+  //     }
+  //   } else {
+  //     if (welcomeName && welcomeName.dataset.researchOrigHtml) {
+  //       welcomeName.innerHTML = welcomeName.dataset.researchOrigHtml;
+  //       delete welcomeName.dataset.researchOrigHtml;
+  //     }
+  //     if (welcomeSub && welcomeSub.dataset.researchOrigText) {
+  //       welcomeSub.textContent = welcomeSub.dataset.researchOrigText;
+  //       delete welcomeSub.dataset.researchOrigText;
+  //     }
+  //     if (tipEl && tipEl.dataset.researchOrigTip) {
+  //       tipEl.textContent = tipEl.dataset.researchOrigTip;
+  //       tipEl.style.opacity = '';
+  //       tipEl.style.display = '';
+  //       delete tipEl.dataset.researchOrigTip;
+  //     }
+  //     // Restore Nobody toggle
+  //     const _incBtn2 = el('incognito-btn');
+  //     if (_incBtn2 && _incBtn2.dataset.researchOrigDisplay !== undefined) {
+  //       _incBtn2.style.display = _incBtn2.dataset.researchOrigDisplay;
+  //       delete _incBtn2.dataset.researchOrigDisplay;
+  //     }
+  //   }
+  //   if (ws) {
+  //     ws.style.animation = 'none';
+  //     ws.offsetHeight;
+  //     ws.style.animation = 'welcome-enter 0.3s ease-out both';
+  //   }
+  // }
 
   // ── Close compare if active (used by all tool/sidebar activations) ──
   // Returns true if compare was active (page will reload), caller should return early
@@ -997,7 +1009,7 @@ function initializeEventListeners() {
         if (resChk && resChk.checked) {
           _syncResearchIndicator(false);
         }
-        _startFreshChat();
+        startFreshChat();
         compareModule.toggleMode();
       }
     });
@@ -1788,33 +1800,33 @@ function initializeEventListeners() {
     { btnId: 'bash-toggle-btn', checkboxId: 'bash-toggle', stateKey: 'bash' },
   ];
 
-  function _modeKey(stateKey, mode) {
-    return `${stateKey}_${mode}`;
-  }
+  /** moved to tools.ts */
+  //   function _modeKey(stateKey, mode) {
+  //   return `${stateKey}_${mode}`;
+  // }
+  // function loadToolPref(stateKey, mode) {
+  //   const state = loadToggleState();
+  //   const key = _modeKey(stateKey, mode);
+  //   if (Object.hasOwn(state, key)) return !!state[key];
+  //   return mode === 'agent'; // default: ON in agent, OFF in chat
+  // }
 
-  function loadToolPref(stateKey, mode) {
-    const state = loadToggleState();
-    const key = _modeKey(stateKey, mode);
-    if (Object.hasOwn(state, key)) return !!state[key];
-    return mode === 'agent'; // default: ON in agent, OFF in chat
-  }
+  // function saveToolPref(stateKey, mode, value) {
+  //   const state = loadToggleState();
+  //   state[_modeKey(stateKey, mode)] = value;
+  //   saveToggleState(state);
+  // }
 
-  function saveToolPref(stateKey, mode, value) {
-    const state = loadToggleState();
-    state[_modeKey(stateKey, mode)] = value;
-    saveToggleState(state);
-  }
+  // const TOOL_TOGGLE_TOAST_LABELS = {
+  //   web: 'Web search',
+  //   bash: 'Shell',
+  // };
 
-  const TOOL_TOGGLE_TOAST_LABELS = {
-    web: 'Web search',
-    bash: 'Shell',
-  };
-
-  function showToolToggleToast(stateKey, active) {
-    const label = TOOL_TOGGLE_TOAST_LABELS[stateKey];
-    if (!label || !uiModule?.showToast) return;
-    uiModule.showToast(`${label} ${active ? 'on' : 'off'}`, 1800);
-  }
+  // function showToolToggleToast(stateKey, active) {
+  //   const label = TOOL_TOGGLE_TOAST_LABELS[stateKey];
+  //   if (!label || !uiModule?.showToast) return;
+  //   uiModule.showToast(`${label} ${active ? 'on' : 'off'}`, 1800);
+  // }
 
   function applyModeToToggles(mode) {
     MODE_TOOLS.forEach(({ btnId, checkboxId, stateKey }) => {
@@ -2029,86 +2041,88 @@ function initializeEventListeners() {
   // first external caller — group.js / sessions.js fire it before it has ever
   // run locally — finds it instead of silently no-op'ing (the "group indicator
   // sometimes doesn't appear" bug).
-  window._syncGroupIndicator = _syncGroupIndicator;
+  window._syncGroupIndicator = syncGroupIndicator;
   // Init RAG state on load
   {
     const st = loadToggleState();
     const ragState = st.rag || false;
     _syncRagIndicator(ragState);
   }
-
-  // ── Overflow "..." menu (Research) ──
-  function updatePlusDot() {
-    const plusBtn = el('overflow-plus-btn');
-    if (!plusBtn) return;
-    const menu = el('overflow-menu');
-    const anyActive = menu
-      ? Array.from(menu.querySelectorAll('.overflow-menu-item.active')).some(
-          (item) => item.style.display !== 'none',
-        )
-      : false;
-    plusBtn.classList.toggle('has-active', anyActive);
-  }
+  /** moved to +.svelte */
+  // // ── Overflow "..." menu (Research) ──
+  // function updatePlusDot() {
+  //   const plusBtn = el('overflow-plus-btn');
+  //   if (!plusBtn) return;
+  //   const menu = el('overflow-menu');
+  //   const anyActive = menu
+  //     ? Array.from(menu.querySelectorAll('.overflow-menu-item.active')).some(
+  //         (item) => item.style.display !== 'none',
+  //       )
+  //     : false;
+  //   plusBtn.classList.toggle('has-active', anyActive);
+  // }
   // External modules (compare) dispatch this when their overflow state changes
-  document.addEventListener('overflow-state-change', () => updatePlusDot());
+  /** moved to +.svelte */
+  // document.addEventListener('overflow-state-change', () => updatePlusDot());
 
-  // ── Prevent toolbar buttons from stealing focus (avoids mobile keyboard bounce) ──
-  const chatInputBar = document.querySelector('.chat-input-bar');
-  // ── Keep textarea focused when interacting with chat bar controls (mobile keyboard fix) ──
-  const _msgTextarea = el('message');
-  if (chatInputBar && _msgTextarea) {
-    let _refocusOnBlur = false;
-    function _flagRefocus(e) {
-      if (e.target.closest('textarea, input')) return;
-      // Don't refocus for attach — file picker needs full focus control
-      if (e.target.closest('#overflow-attach-btn')) return;
-      // Don't refocus for model picker button — focus should go to picker search input
-      if (e.target.closest('.model-picker-btn')) return;
-      // Don't refocus when tapping the +/chevron tools button — the user
-      // is explicitly trying to dismiss the keyboard and open the tools
-      // menu. Without this, the textarea blurs (keyboard down), then this
-      // handler re-focuses it (keyboard bounces back up).
-      if (e.target.closest('#overflow-plus-btn')) return;
-      if (document.activeElement === _msgTextarea) _refocusOnBlur = true;
-    }
-    chatInputBar.addEventListener('touchstart', _flagRefocus, {
-      passive: true,
-    });
-    // Overflow menu is position:fixed — may not bubble through chatInputBar on mobile
-    const _overflowMenu = el('overflow-menu');
-    if (_overflowMenu)
-      _overflowMenu.addEventListener('touchstart', _flagRefocus, {
-        passive: true,
-      });
-    // Model picker menu too
-    const _pickerMenu = document.getElementById('model-picker-menu');
-    if (_pickerMenu)
-      _pickerMenu.addEventListener('touchstart', _flagRefocus, {
-        passive: true,
-      });
-    // Attach strip (outside chat-input-bar)
-    const _attachStrip = el('attach-strip');
-    if (_attachStrip)
-      _attachStrip.addEventListener('touchstart', _flagRefocus, {
-        passive: true,
-      });
-    _msgTextarea.addEventListener('blur', () => {
-      if (_refocusOnBlur) {
-        _refocusOnBlur = false;
-        setTimeout(() => _msgTextarea.focus(), 0);
-      }
-    });
-    // Clear flag if touch ends without causing blur
-    document.addEventListener(
-      'touchend',
-      () => {
-        setTimeout(() => {
-          _refocusOnBlur = false;
-        }, 50);
-      },
-      { passive: true },
-    );
-  }
+  /** moved to +.svelte */
+  // // ── Prevent toolbar buttons from stealing focus (avoids mobile keyboard bounce) ──
+  // const chatInputBar = document.querySelector('.chat-input-bar');
+  // // ── Keep textarea focused when interacting with chat bar controls (mobile keyboard fix) ──
+  // const _msgTextarea = el('message');
+  // if (chatInputBar && _msgTextarea) {
+  //   let _refocusOnBlur = false;
+  //   function _flagRefocus(e) {
+  //     if (e.target.closest('textarea, input')) return;
+  //     // Don't refocus for attach — file picker needs full focus control
+  //     if (e.target.closest('#overflow-attach-btn')) return;
+  //     // Don't refocus for model picker button — focus should go to picker search input
+  //     if (e.target.closest('.model-picker-btn')) return;
+  //     // Don't refocus when tapping the +/chevron tools button — the user
+  //     // is explicitly trying to dismiss the keyboard and open the tools
+  //     // menu. Without this, the textarea blurs (keyboard down), then this
+  //     // handler re-focuses it (keyboard bounces back up).
+  //     if (e.target.closest('#overflow-plus-btn')) return;
+  //     if (document.activeElement === _msgTextarea) _refocusOnBlur = true;
+  //   }
+  //   chatInputBar.addEventListener('touchstart', _flagRefocus, {
+  //     passive: true,
+  //   });
+  //   // Overflow menu is position:fixed — may not bubble through chatInputBar on mobile
+  //   const _overflowMenu = el('overflow-menu');
+  //   if (_overflowMenu)
+  //     _overflowMenu.addEventListener('touchstart', _flagRefocus, {
+  //       passive: true,
+  //     });
+  //   // Model picker menu too
+  //   const _pickerMenu = document.getElementById('model-picker-menu');
+  //   if (_pickerMenu)
+  //     _pickerMenu.addEventListener('touchstart', _flagRefocus, {
+  //       passive: true,
+  //     });
+  //   // Attach strip (outside chat-input-bar)
+  //   const _attachStrip = el('attach-strip');
+  //   if (_attachStrip)
+  //     _attachStrip.addEventListener('touchstart', _flagRefocus, {
+  //       passive: true,
+  //     });
+  //   _msgTextarea.addEventListener('blur', () => {
+  //     if (_refocusOnBlur) {
+  //       _refocusOnBlur = false;
+  //       setTimeout(() => _msgTextarea.focus(), 0);
+  //     }
+  //   });
+  //   // Clear flag if touch ends without causing blur
+  //   document.addEventListener(
+  //     'touchend',
+  //     () => {
+  //       setTimeout(() => {
+  //         _refocusOnBlur = false;
+  //       }, 50);
+  //     },
+  //     { passive: true },
+  //   );
+  // }
 
   (function initOverflowMenu() {
     const plusBtn = el('overflow-plus-btn');
@@ -2550,53 +2564,53 @@ function initializeEventListeners() {
       }
     });
   }
+  /** moved to +.svelte */
+  // // ── Overflow Group Chat toggle ──
+  // const overflowGroupBtn = el('overflow-group-btn');
+  // if (overflowGroupBtn) {
+  //   overflowGroupBtn.addEventListener('click', async () => {
+  //     const chk = el('group-toggle');
+  //     const turningOn = chk ? !chk.checked : false;
+  //     if (turningOn) {
+  //       const picked = await groupModule.showModelPicker();
+  //       if (!picked || picked.length < 2) return;
+  //       groupModule.setActive(true); // Set early so updateModelPicker sees it
+  //       _syncGroupIndicator(true);
+  //       _startFreshChat();
+  //       // Clear any leftover splash screens
+  //       const _chatBox = document.getElementById('chat-history');
+  //       if (_chatBox) {
+  //         _chatBox.querySelectorAll('.tool-splash').forEach((s) => s.remove());
+  //         // Also hide welcome screen
+  //         if (chatModule && chatModule.hideWelcomeScreen)
+  //           chatModule.hideWelcomeScreen();
+  //       }
+  //       // Start group — create participant sessions immediately
+  //       const sid =
+  //         sessionModule.getCurrentSessionId() || 'group-' + Date.now();
+  //       await groupModule.startGroup(picked, sid);
+  //       // Re-hide picker after everything settles
+  //       const _mpw = el('model-picker-wrap');
+  //       if (_mpw) _mpw.style.display = 'none';
+  //       uiModule.showToast(`Group chat ready — ${picked.length} models`);
+  //     } else {
+  //       _syncGroupIndicator(false);
+  //       groupModule.stopGroup();
+  //       // Restore model picker
+  //       const _mpWrap2 = el('model-picker-wrap');
+  //       if (_mpWrap2) _mpWrap2.style.display = '';
+  //     }
+  //   });
+  // }
 
-  // ── Overflow Group Chat toggle ──
-  const overflowGroupBtn = el('overflow-group-btn');
-  if (overflowGroupBtn) {
-    overflowGroupBtn.addEventListener('click', async () => {
-      const chk = el('group-toggle');
-      const turningOn = chk ? !chk.checked : false;
-      if (turningOn) {
-        const picked = await groupModule.showModelPicker();
-        if (!picked || picked.length < 2) return;
-        groupModule.setActive(true); // Set early so updateModelPicker sees it
-        _syncGroupIndicator(true);
-        _startFreshChat();
-        // Clear any leftover splash screens
-        const _chatBox = document.getElementById('chat-history');
-        if (_chatBox) {
-          _chatBox.querySelectorAll('.tool-splash').forEach((s) => s.remove());
-          // Also hide welcome screen
-          if (chatModule && chatModule.hideWelcomeScreen)
-            chatModule.hideWelcomeScreen();
-        }
-        // Start group — create participant sessions immediately
-        const sid =
-          sessionModule.getCurrentSessionId() || 'group-' + Date.now();
-        await groupModule.startGroup(picked, sid);
-        // Re-hide picker after everything settles
-        const _mpw = el('model-picker-wrap');
-        if (_mpw) _mpw.style.display = 'none';
-        uiModule.showToast(`Group chat ready — ${picked.length} models`);
-      } else {
-        _syncGroupIndicator(false);
-        groupModule.stopGroup();
-        // Restore model picker
-        const _mpWrap2 = el('model-picker-wrap');
-        if (_mpWrap2) _mpWrap2.style.display = '';
-      }
-    });
-  }
-
-  // ── Group toggle button (chatbox indicator) — click to deactivate ──
-  const groupToggleBtn = el('group-toggle-btn');
-  if (groupToggleBtn) {
-    groupToggleBtn.addEventListener('click', () => {
-      _syncGroupIndicator(false);
-      groupModule.stopGroup();
-    });
-  }
+  // // ── Group toggle button (chatbox indicator) — click to deactivate ──
+  // const groupToggleBtn = el('group-toggle-btn');
+  // if (groupToggleBtn) {
+  //   groupToggleBtn.addEventListener('click', () => {
+  //     _syncGroupIndicator(false);
+  //     groupModule.stopGroup();
+  //   });
+  // }
 
   // ── Incognito mode toggle (on welcome screen) ──
   const incognitoBtn = el('incognito-btn');
@@ -2845,7 +2859,7 @@ function initializeEventListeners() {
     });
     // Text-only emojis toggle. Default is OFF so model-emitted shortcodes
     // like `:blush:` render through the normal monochrome emoji path.
-    applyTextEmojis(state['text-emojis'] === true);
+    applyTextEmojis(state['text-emojis'] === true, _DEOJ_SKIP);
     // Hide thinking sections toggle (show-thinking: checked=show, unchecked=hide)
     document.body.classList.toggle(
       'hide-thinking',
@@ -2910,491 +2924,493 @@ function initializeEventListeners() {
   if (_modelSortBtn)
     _modelSortBtn.addEventListener('click', syncRearrangeChecks);
   syncRearrangeChecks();
+  /** moved to emoji module */
+  // // ── Text-only emoji conversion ──
+  // // Regex matching most emoji codepoints (Emoji_Presentation + common sequences)
+  // const EMOJI_RE =
+  //   /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})(?:\uFE0F|\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}))*/gu;
+  /** moved to emoji module */
+  // // Common emoji → text description map
+  // const EMOJI_MAP = {
+  //   '😀': 'grinning',
+  //   '😃': 'smiley',
+  //   '😄': 'smile',
+  //   '😁': 'grin',
+  //   '😆': 'laughing',
+  //   '😅': 'sweat smile',
+  //   '🤣': 'rofl',
+  //   '😂': 'joy',
+  //   '🙂': 'slightly smiling',
+  //   '🙃': 'upside down',
+  //   '😉': 'wink',
+  //   '😊': 'blush',
+  //   '😇': 'innocent',
+  //   '🥰': 'smiling hearts',
+  //   '😍': 'heart eyes',
+  //   '🤩': 'star struck',
+  //   '😘': 'kissing heart',
+  //   '😗': 'kissing',
+  //   '😚': 'kissing closed eyes',
+  //   '😙': 'kissing smiling eyes',
+  //   '🥲': 'smiling tear',
+  //   '😋': 'yum',
+  //   '😛': 'tongue',
+  //   '😜': 'winking tongue',
+  //   '🤪': 'zany',
+  //   '😝': 'squinting tongue',
+  //   '🤑': 'money mouth',
+  //   '🤗': 'hugging',
+  //   '🤭': 'hand over mouth',
+  //   '🤫': 'shushing',
+  //   '🤔': 'thinking',
+  //   '🫡': 'saluting',
+  //   '🤐': 'zipper mouth',
+  //   '🤨': 'raised eyebrow',
+  //   '😐': 'neutral',
+  //   '😑': 'expressionless',
+  //   '😶': 'no mouth',
+  //   '🫥': 'dotted line face',
+  //   '😏': 'smirk',
+  //   '😒': 'unamused',
+  //   '🙄': 'eye roll',
+  //   '😬': 'grimacing',
+  //   '🤥': 'lying',
+  //   '😌': 'relieved',
+  //   '😔': 'pensive',
+  //   '😪': 'sleepy',
+  //   '🤤': 'drooling',
+  //   '😴': 'sleeping',
+  //   '😷': 'mask',
+  //   '🤒': 'thermometer',
+  //   '🤕': 'head bandage',
+  //   '🤢': 'nauseated',
+  //   '🤮': 'vomiting',
+  //   '🥵': 'hot',
+  //   '🥶': 'cold',
+  //   '🥴': 'woozy',
+  //   '😵': 'dizzy',
+  //   '🤯': 'exploding head',
+  //   '🤠': 'cowboy',
+  //   '🥳': 'party',
+  //   '🥸': 'disguised',
+  //   '😎': 'sunglasses',
+  //   '🤓': 'nerd',
+  //   '🧐': 'monocle',
+  //   '😕': 'confused',
+  //   '🫤': 'diagonal mouth',
+  //   '😟': 'worried',
+  //   '🙁': 'slightly frowning',
+  //   '😮': 'open mouth',
+  //   '😯': 'hushed',
+  //   '😲': 'astonished',
+  //   '😳': 'flushed',
+  //   '🥺': 'pleading',
+  //   '🥹': 'holding back tears',
+  //   '😦': 'frowning open mouth',
+  //   '😧': 'anguished',
+  //   '😨': 'fearful',
+  //   '😰': 'anxious sweat',
+  //   '😥': 'sad relieved',
+  //   '😢': 'crying',
+  //   '😭': 'sobbing',
+  //   '😱': 'screaming',
+  //   '😖': 'confounded',
+  //   '😣': 'persevering',
+  //   '😞': 'disappointed',
+  //   '😓': 'downcast sweat',
+  //   '😩': 'weary',
+  //   '😫': 'tired',
+  //   '🥱': 'yawning',
+  //   '😤': 'triumph',
+  //   '😡': 'pouting',
+  //   '😠': 'angry',
+  //   '🤬': 'swearing',
+  //   '😈': 'smiling devil',
+  //   '👿': 'angry devil',
+  //   '💀': 'skull',
+  //   '☠️': 'skull crossbones',
+  //   '💩': 'poop',
+  //   '🤡': 'clown',
+  //   '👹': 'ogre',
+  //   '👺': 'goblin',
+  //   '👻': 'ghost',
+  //   '👽': 'alien',
+  //   '👾': 'space invader',
+  //   '🤖': 'robot',
+  //   '😺': 'smiling cat',
+  //   '😸': 'grinning cat',
+  //   '😹': 'tears of joy cat',
+  //   '😻': 'heart eyes cat',
+  //   '😼': 'wry cat',
+  //   '😽': 'kissing cat',
+  //   '🙀': 'weary cat',
+  //   '😿': 'crying cat',
+  //   '😾': 'pouting cat',
+  //   '🙈': 'see no evil',
+  //   '🙉': 'hear no evil',
+  //   '🙊': 'speak no evil',
+  //   '👋': 'wave',
+  //   '🤚': 'raised back of hand',
+  //   '🖐️': 'hand with fingers splayed',
+  //   '✋': 'raised hand',
+  //   '🖖': 'vulcan salute',
+  //   '🫱': 'rightward hand',
+  //   '🫲': 'leftward hand',
+  //   '👌': 'ok hand',
+  //   '🤌': 'pinched fingers',
+  //   '🤏': 'pinching hand',
+  //   '✌️': 'victory',
+  //   '🤞': 'crossed fingers',
+  //   '🫰': 'hand with index finger and thumb crossed',
+  //   '🤟': 'love you',
+  //   '🤘': 'rock on',
+  //   '🤙': 'call me',
+  //   '👈': 'point left',
+  //   '👉': 'point right',
+  //   '👆': 'point up',
+  //   '🖕': 'middle finger',
+  //   '👇': 'point down',
+  //   '☝️': 'index up',
+  //   '🫵': 'point at viewer',
+  //   '👍': 'thumbs up',
+  //   '👎': 'thumbs down',
+  //   '✊': 'raised fist',
+  //   '👊': 'fist bump',
+  //   '🤛': 'left fist',
+  //   '🤜': 'right fist',
+  //   '👏': 'clap',
+  //   '🙌': 'raising hands',
+  //   '🫶': 'heart hands',
+  //   '👐': 'open hands',
+  //   '🤲': 'palms up',
+  //   '🤝': 'handshake',
+  //   '🙏': 'pray',
+  //   '✍️': 'writing',
+  //   '💅': 'nail polish',
+  //   '🤳': 'selfie',
+  //   '💪': 'flexed biceps',
+  //   '❤️': 'red heart',
+  //   '🧡': 'orange heart',
+  //   '💛': 'yellow heart',
+  //   '💚': 'green heart',
+  //   '💙': 'blue heart',
+  //   '💜': 'purple heart',
+  //   '🖤': 'black heart',
+  //   '🤍': 'white heart',
+  //   '🩷': 'pink heart',
+  //   '🩵': 'light blue heart',
+  //   '🩶': 'grey heart',
+  //   '🤎': 'brown heart',
+  //   '💔': 'broken heart',
+  //   '❤️‍🔥': 'heart on fire',
+  //   '❤️‍🩹': 'mending heart',
+  //   '💕': 'two hearts',
+  //   '💞': 'revolving hearts',
+  //   '💓': 'heartbeat',
+  //   '💗': 'growing heart',
+  //   '💖': 'sparkling heart',
+  //   '💘': 'heart with arrow',
+  //   '💝': 'heart with ribbon',
+  //   '💟': 'heart decoration',
+  //   '🔥': 'fire',
+  //   '💯': '100',
+  //   '✨': 'sparkles',
+  //   '⭐': 'star',
+  //   '🌟': 'glowing star',
+  //   '💫': 'dizzy star',
+  //   '🎉': 'party popper',
+  //   '🎊': 'confetti ball',
+  //   '🎈': 'balloon',
+  //   '🎁': 'gift',
+  //   '🏆': 'trophy',
+  //   '🥇': '1st place',
+  //   '🥈': '2nd place',
+  //   '🥉': '3rd place',
+  //   '⚡': 'zap',
+  //   '💡': 'light bulb',
+  //   '🔑': 'key',
+  //   '🔒': 'locked',
+  //   '🔓': 'unlocked',
+  //   '🔔': 'bell',
+  //   '🔕': 'bell off',
+  //   '📢': 'loudspeaker',
+  //   '📣': 'megaphone',
+  //   '💬': 'speech bubble',
+  //   '💭': 'thought bubble',
+  //   '🗯️': 'anger bubble',
+  //   '✅': 'check mark',
+  //   '❌': 'cross mark',
+  //   '❓': 'question',
+  //   '❗': 'exclamation',
+  //   '⚠️': 'warning',
+  //   '🚫': 'prohibited',
+  //   '⛔': 'no entry',
+  //   '🔴': 'red circle',
+  //   '🟢': 'green circle',
+  //   '🔵': 'blue circle',
+  //   '🟡': 'yellow circle',
+  //   '⚪': 'white circle',
+  //   '⚫': 'black circle',
+  //   '🟠': 'orange circle',
+  //   '🟣': 'purple circle',
+  //   '🟤': 'brown circle',
+  //   '📁': 'folder',
+  //   '📂': 'open folder',
+  //   '📄': 'document',
+  //   '📝': 'memo',
+  //   '📎': 'paperclip',
+  //   '📌': 'pin',
+  //   '📍': 'round pin',
+  //   '🔗': 'link',
+  //   '📊': 'bar chart',
+  //   '📈': 'chart up',
+  //   '📉': 'chart down',
+  //   '🔍': 'magnifying glass left',
+  //   '🔎': 'magnifying glass right',
+  //   '🌐': 'globe',
+  //   '🌍': 'globe europe',
+  //   '🌎': 'globe americas',
+  //   '🌏': 'globe asia',
+  //   '🕐': 'clock 1',
+  //   '🕑': 'clock 2',
+  //   '🕒': 'clock 3',
+  //   '🕓': 'clock 4',
+  //   '⏰': 'alarm clock',
+  //   '⏳': 'hourglass flowing',
+  //   '⌛': 'hourglass done',
+  //   '🚀': 'rocket',
+  //   '✈️': 'airplane',
+  //   '🚗': 'car',
+  //   '🚂': 'train',
+  //   '🚢': 'ship',
+  //   '🏠': 'house',
+  //   '🏢': 'building',
+  //   '🏗️': 'construction',
+  //   '🏭': 'factory',
+  //   '🎵': 'musical note',
+  //   '🎶': 'musical notes',
+  //   '🎤': 'microphone',
+  //   '🎧': 'headphones',
+  //   '📷': 'camera',
+  //   '📸': 'camera flash',
+  //   '🎬': 'clapperboard',
+  //   '📺': 'television',
+  //   '💻': 'laptop',
+  //   '🖥️': 'desktop',
+  //   '📱': 'mobile phone',
+  //   '☎️': 'telephone',
+  //   '🔧': 'wrench',
+  //   '🔨': 'hammer',
+  //   '⚙️': 'gear',
+  //   '🧲': 'magnet',
+  //   '🧪': 'test tube',
+  //   '🔬': 'microscope',
+  //   '📚': 'books',
+  //   '📖': 'open book',
+  //   '✏️': 'pencil',
+  //   '🖊️': 'pen',
+  //   '🖋️': 'fountain pen',
+  //   '🎯': 'bullseye',
+  //   '♟️': 'chess pawn',
+  //   '🎲': 'game die',
+  //   '🧩': 'puzzle piece',
+  //   '🍕': 'pizza',
+  //   '🍔': 'burger',
+  //   '🍟': 'fries',
+  //   '🌮': 'taco',
+  //   '🍣': 'sushi',
+  //   '🍩': 'donut',
+  //   '☕': 'coffee',
+  //   '🍺': 'beer',
+  //   '🍷': 'wine',
+  //   '🥤': 'cup with straw',
+  //   '🐶': 'dog',
+  //   '🐱': 'cat',
+  //   '🐭': 'mouse',
+  //   '🐹': 'hamster',
+  //   '🐰': 'rabbit',
+  //   '🦊': 'fox',
+  //   '🐻': 'bear',
+  //   '🐼': 'panda',
+  //   '🐨': 'koala',
+  //   '🐯': 'tiger',
+  //   '🦁': 'lion',
+  //   '🐮': 'cow',
+  //   '🐷': 'pig',
+  //   '🐸': 'frog',
+  //   '🐵': 'monkey',
+  //   '🐔': 'chicken',
+  //   '🐧': 'penguin',
+  //   '🐦': 'bird',
+  //   '🦅': 'eagle',
+  //   '🦆': 'duck',
+  //   '🦉': 'owl',
+  //   '🐺': 'wolf',
+  //   '🐗': 'boar',
+  //   '🐴': 'horse',
+  //   '🦄': 'unicorn',
+  //   '🐝': 'bee',
+  //   '🐛': 'bug',
+  //   '🦋': 'butterfly',
+  //   '🐌': 'snail',
+  //   '🐞': 'ladybug',
+  //   '🐍': 'snake',
+  //   '🐢': 'turtle',
+  //   '🐙': 'octopus',
+  //   '🦀': 'crab',
+  //   '🐠': 'tropical fish',
+  //   '🐳': 'whale',
+  //   '🐋': 'whale',
+  //   '🦈': 'shark',
+  //   '🐊': 'crocodile',
+  //   '🦕': 'sauropod',
+  //   '🦖': 't-rex',
+  //   '🌸': 'cherry blossom',
+  //   '🌹': 'rose',
+  //   '🌻': 'sunflower',
+  //   '🌺': 'hibiscus',
+  //   '🌷': 'tulip',
+  //   '🌱': 'seedling',
+  //   '🌲': 'evergreen tree',
+  //   '🌳': 'deciduous tree',
+  //   '🍀': 'four leaf clover',
+  //   '🍎': 'red apple',
+  //   '🍐': 'pear',
+  //   '🍊': 'tangerine',
+  //   '🍋': 'lemon',
+  //   '🍌': 'banana',
+  //   '🍉': 'watermelon',
+  //   '🍇': 'grapes',
+  //   '🍓': 'strawberry',
+  //   '🫐': 'blueberries',
+  //   '🍑': 'peach',
+  //   '🌈': 'rainbow',
+  //   '☀️': 'sun',
+  //   '🌤️': 'sun behind cloud',
+  //   '⛅': 'sun behind cloud',
+  //   '☁️': 'cloud',
+  //   '🌧️': 'rain',
+  //   '⛈️': 'thunder',
+  //   '❄️': 'snowflake',
+  //   '🌊': 'wave',
+  //   '👀': 'eyes',
+  //   '👁️': 'eye',
+  //   '👂': 'ear',
+  //   '👃': 'nose',
+  //   '👄': 'mouth',
+  //   '👅': 'tongue',
+  //   '🧠': 'brain',
+  //   '🦴': 'bone',
+  //   '🦷': 'tooth',
+  //   '👶': 'baby',
+  //   '🧒': 'child',
+  //   '👦': 'boy',
+  //   '👧': 'girl',
+  //   '🧑': 'person',
+  //   '👨': 'man',
+  //   '👩': 'woman',
+  //   '🧓': 'older person',
+  //   '👮': 'police officer',
+  //   '🧑‍💻': 'technologist',
+  //   '👨‍💻': 'man technologist',
+  //   '👩‍💻': 'woman technologist',
+  //   '🎓': 'graduation cap',
+  //   '🧢': 'billed cap',
+  //   '👑': 'crown',
+  //   '💎': 'gem',
+  //   '👓': 'glasses',
+  //   '🕶️': 'sunglasses',
+  //   '🩸': 'drop of blood',
+  //   '💊': 'pill',
+  //   '🩹': 'bandage',
+  //   '🧬': 'dna',
+  //   '🦠': 'microbe',
+  //   '☢️': 'radioactive',
+  //   '☣️': 'biohazard',
+  //   '♻️': 'recycling',
+  //   '🏳️': 'white flag',
+  //   '🏴': 'black flag',
+  //   '🚩': 'red flag',
+  //   '🏁': 'checkered flag',
+  //   '➡️': 'right arrow',
+  //   '⬅️': 'left arrow',
+  //   '⬆️': 'up arrow',
+  //   '⬇️': 'down arrow',
+  //   '↗️': 'upper right arrow',
+  //   '↘️': 'lower right arrow',
+  //   '↙️': 'lower left arrow',
+  //   '↖️': 'upper left arrow',
+  //   '↩️': 'left curve',
+  //   '↪️': 'right curve',
+  //   '🔄': 'counterclockwise',
+  //   '🔃': 'clockwise',
+  //   '➕': 'plus',
+  //   '➖': 'minus',
+  //   '➗': 'division',
+  //   '✖️': 'multiply',
+  //   '♾️': 'infinity',
+  //   '‼️': 'double exclamation',
+  //   '⁉️': 'exclamation question',
+  //   '©️': 'copyright',
+  //   '®️': 'registered',
+  //   '™️': 'trademark',
+  // };
+  /** moved to emoji module */
+  // function emojiToText(str) {
+  //   return str.replace(EMOJI_RE, (match) => {
+  //     const desc = EMOJI_MAP[match];
+  //     if (desc) return ':' + desc + ':';
+  //     // Fallback: use the emoji's Unicode name if available, or skip
+  //     return ':emoji:';
+  //   });
+  // }
 
-  // ── Text-only emoji conversion ──
-  // Regex matching most emoji codepoints (Emoji_Presentation + common sequences)
-  const EMOJI_RE =
-    /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})(?:\uFE0F|\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}))*/gu;
-
-  // Common emoji → text description map
-  const EMOJI_MAP = {
-    '😀': 'grinning',
-    '😃': 'smiley',
-    '😄': 'smile',
-    '😁': 'grin',
-    '😆': 'laughing',
-    '😅': 'sweat smile',
-    '🤣': 'rofl',
-    '😂': 'joy',
-    '🙂': 'slightly smiling',
-    '🙃': 'upside down',
-    '😉': 'wink',
-    '😊': 'blush',
-    '😇': 'innocent',
-    '🥰': 'smiling hearts',
-    '😍': 'heart eyes',
-    '🤩': 'star struck',
-    '😘': 'kissing heart',
-    '😗': 'kissing',
-    '😚': 'kissing closed eyes',
-    '😙': 'kissing smiling eyes',
-    '🥲': 'smiling tear',
-    '😋': 'yum',
-    '😛': 'tongue',
-    '😜': 'winking tongue',
-    '🤪': 'zany',
-    '😝': 'squinting tongue',
-    '🤑': 'money mouth',
-    '🤗': 'hugging',
-    '🤭': 'hand over mouth',
-    '🤫': 'shushing',
-    '🤔': 'thinking',
-    '🫡': 'saluting',
-    '🤐': 'zipper mouth',
-    '🤨': 'raised eyebrow',
-    '😐': 'neutral',
-    '😑': 'expressionless',
-    '😶': 'no mouth',
-    '🫥': 'dotted line face',
-    '😏': 'smirk',
-    '😒': 'unamused',
-    '🙄': 'eye roll',
-    '😬': 'grimacing',
-    '🤥': 'lying',
-    '😌': 'relieved',
-    '😔': 'pensive',
-    '😪': 'sleepy',
-    '🤤': 'drooling',
-    '😴': 'sleeping',
-    '😷': 'mask',
-    '🤒': 'thermometer',
-    '🤕': 'head bandage',
-    '🤢': 'nauseated',
-    '🤮': 'vomiting',
-    '🥵': 'hot',
-    '🥶': 'cold',
-    '🥴': 'woozy',
-    '😵': 'dizzy',
-    '🤯': 'exploding head',
-    '🤠': 'cowboy',
-    '🥳': 'party',
-    '🥸': 'disguised',
-    '😎': 'sunglasses',
-    '🤓': 'nerd',
-    '🧐': 'monocle',
-    '😕': 'confused',
-    '🫤': 'diagonal mouth',
-    '😟': 'worried',
-    '🙁': 'slightly frowning',
-    '😮': 'open mouth',
-    '😯': 'hushed',
-    '😲': 'astonished',
-    '😳': 'flushed',
-    '🥺': 'pleading',
-    '🥹': 'holding back tears',
-    '😦': 'frowning open mouth',
-    '😧': 'anguished',
-    '😨': 'fearful',
-    '😰': 'anxious sweat',
-    '😥': 'sad relieved',
-    '😢': 'crying',
-    '😭': 'sobbing',
-    '😱': 'screaming',
-    '😖': 'confounded',
-    '😣': 'persevering',
-    '😞': 'disappointed',
-    '😓': 'downcast sweat',
-    '😩': 'weary',
-    '😫': 'tired',
-    '🥱': 'yawning',
-    '😤': 'triumph',
-    '😡': 'pouting',
-    '😠': 'angry',
-    '🤬': 'swearing',
-    '😈': 'smiling devil',
-    '👿': 'angry devil',
-    '💀': 'skull',
-    '☠️': 'skull crossbones',
-    '💩': 'poop',
-    '🤡': 'clown',
-    '👹': 'ogre',
-    '👺': 'goblin',
-    '👻': 'ghost',
-    '👽': 'alien',
-    '👾': 'space invader',
-    '🤖': 'robot',
-    '😺': 'smiling cat',
-    '😸': 'grinning cat',
-    '😹': 'tears of joy cat',
-    '😻': 'heart eyes cat',
-    '😼': 'wry cat',
-    '😽': 'kissing cat',
-    '🙀': 'weary cat',
-    '😿': 'crying cat',
-    '😾': 'pouting cat',
-    '🙈': 'see no evil',
-    '🙉': 'hear no evil',
-    '🙊': 'speak no evil',
-    '👋': 'wave',
-    '🤚': 'raised back of hand',
-    '🖐️': 'hand with fingers splayed',
-    '✋': 'raised hand',
-    '🖖': 'vulcan salute',
-    '🫱': 'rightward hand',
-    '🫲': 'leftward hand',
-    '👌': 'ok hand',
-    '🤌': 'pinched fingers',
-    '🤏': 'pinching hand',
-    '✌️': 'victory',
-    '🤞': 'crossed fingers',
-    '🫰': 'hand with index finger and thumb crossed',
-    '🤟': 'love you',
-    '🤘': 'rock on',
-    '🤙': 'call me',
-    '👈': 'point left',
-    '👉': 'point right',
-    '👆': 'point up',
-    '🖕': 'middle finger',
-    '👇': 'point down',
-    '☝️': 'index up',
-    '🫵': 'point at viewer',
-    '👍': 'thumbs up',
-    '👎': 'thumbs down',
-    '✊': 'raised fist',
-    '👊': 'fist bump',
-    '🤛': 'left fist',
-    '🤜': 'right fist',
-    '👏': 'clap',
-    '🙌': 'raising hands',
-    '🫶': 'heart hands',
-    '👐': 'open hands',
-    '🤲': 'palms up',
-    '🤝': 'handshake',
-    '🙏': 'pray',
-    '✍️': 'writing',
-    '💅': 'nail polish',
-    '🤳': 'selfie',
-    '💪': 'flexed biceps',
-    '❤️': 'red heart',
-    '🧡': 'orange heart',
-    '💛': 'yellow heart',
-    '💚': 'green heart',
-    '💙': 'blue heart',
-    '💜': 'purple heart',
-    '🖤': 'black heart',
-    '🤍': 'white heart',
-    '🩷': 'pink heart',
-    '🩵': 'light blue heart',
-    '🩶': 'grey heart',
-    '🤎': 'brown heart',
-    '💔': 'broken heart',
-    '❤️‍🔥': 'heart on fire',
-    '❤️‍🩹': 'mending heart',
-    '💕': 'two hearts',
-    '💞': 'revolving hearts',
-    '💓': 'heartbeat',
-    '💗': 'growing heart',
-    '💖': 'sparkling heart',
-    '💘': 'heart with arrow',
-    '💝': 'heart with ribbon',
-    '💟': 'heart decoration',
-    '🔥': 'fire',
-    '💯': '100',
-    '✨': 'sparkles',
-    '⭐': 'star',
-    '🌟': 'glowing star',
-    '💫': 'dizzy star',
-    '🎉': 'party popper',
-    '🎊': 'confetti ball',
-    '🎈': 'balloon',
-    '🎁': 'gift',
-    '🏆': 'trophy',
-    '🥇': '1st place',
-    '🥈': '2nd place',
-    '🥉': '3rd place',
-    '⚡': 'zap',
-    '💡': 'light bulb',
-    '🔑': 'key',
-    '🔒': 'locked',
-    '🔓': 'unlocked',
-    '🔔': 'bell',
-    '🔕': 'bell off',
-    '📢': 'loudspeaker',
-    '📣': 'megaphone',
-    '💬': 'speech bubble',
-    '💭': 'thought bubble',
-    '🗯️': 'anger bubble',
-    '✅': 'check mark',
-    '❌': 'cross mark',
-    '❓': 'question',
-    '❗': 'exclamation',
-    '⚠️': 'warning',
-    '🚫': 'prohibited',
-    '⛔': 'no entry',
-    '🔴': 'red circle',
-    '🟢': 'green circle',
-    '🔵': 'blue circle',
-    '🟡': 'yellow circle',
-    '⚪': 'white circle',
-    '⚫': 'black circle',
-    '🟠': 'orange circle',
-    '🟣': 'purple circle',
-    '🟤': 'brown circle',
-    '📁': 'folder',
-    '📂': 'open folder',
-    '📄': 'document',
-    '📝': 'memo',
-    '📎': 'paperclip',
-    '📌': 'pin',
-    '📍': 'round pin',
-    '🔗': 'link',
-    '📊': 'bar chart',
-    '📈': 'chart up',
-    '📉': 'chart down',
-    '🔍': 'magnifying glass left',
-    '🔎': 'magnifying glass right',
-    '🌐': 'globe',
-    '🌍': 'globe europe',
-    '🌎': 'globe americas',
-    '🌏': 'globe asia',
-    '🕐': 'clock 1',
-    '🕑': 'clock 2',
-    '🕒': 'clock 3',
-    '🕓': 'clock 4',
-    '⏰': 'alarm clock',
-    '⏳': 'hourglass flowing',
-    '⌛': 'hourglass done',
-    '🚀': 'rocket',
-    '✈️': 'airplane',
-    '🚗': 'car',
-    '🚂': 'train',
-    '🚢': 'ship',
-    '🏠': 'house',
-    '🏢': 'building',
-    '🏗️': 'construction',
-    '🏭': 'factory',
-    '🎵': 'musical note',
-    '🎶': 'musical notes',
-    '🎤': 'microphone',
-    '🎧': 'headphones',
-    '📷': 'camera',
-    '📸': 'camera flash',
-    '🎬': 'clapperboard',
-    '📺': 'television',
-    '💻': 'laptop',
-    '🖥️': 'desktop',
-    '📱': 'mobile phone',
-    '☎️': 'telephone',
-    '🔧': 'wrench',
-    '🔨': 'hammer',
-    '⚙️': 'gear',
-    '🧲': 'magnet',
-    '🧪': 'test tube',
-    '🔬': 'microscope',
-    '📚': 'books',
-    '📖': 'open book',
-    '✏️': 'pencil',
-    '🖊️': 'pen',
-    '🖋️': 'fountain pen',
-    '🎯': 'bullseye',
-    '♟️': 'chess pawn',
-    '🎲': 'game die',
-    '🧩': 'puzzle piece',
-    '🍕': 'pizza',
-    '🍔': 'burger',
-    '🍟': 'fries',
-    '🌮': 'taco',
-    '🍣': 'sushi',
-    '🍩': 'donut',
-    '☕': 'coffee',
-    '🍺': 'beer',
-    '🍷': 'wine',
-    '🥤': 'cup with straw',
-    '🐶': 'dog',
-    '🐱': 'cat',
-    '🐭': 'mouse',
-    '🐹': 'hamster',
-    '🐰': 'rabbit',
-    '🦊': 'fox',
-    '🐻': 'bear',
-    '🐼': 'panda',
-    '🐨': 'koala',
-    '🐯': 'tiger',
-    '🦁': 'lion',
-    '🐮': 'cow',
-    '🐷': 'pig',
-    '🐸': 'frog',
-    '🐵': 'monkey',
-    '🐔': 'chicken',
-    '🐧': 'penguin',
-    '🐦': 'bird',
-    '🦅': 'eagle',
-    '🦆': 'duck',
-    '🦉': 'owl',
-    '🐺': 'wolf',
-    '🐗': 'boar',
-    '🐴': 'horse',
-    '🦄': 'unicorn',
-    '🐝': 'bee',
-    '🐛': 'bug',
-    '🦋': 'butterfly',
-    '🐌': 'snail',
-    '🐞': 'ladybug',
-    '🐍': 'snake',
-    '🐢': 'turtle',
-    '🐙': 'octopus',
-    '🦀': 'crab',
-    '🐠': 'tropical fish',
-    '🐳': 'whale',
-    '🐋': 'whale',
-    '🦈': 'shark',
-    '🐊': 'crocodile',
-    '🦕': 'sauropod',
-    '🦖': 't-rex',
-    '🌸': 'cherry blossom',
-    '🌹': 'rose',
-    '🌻': 'sunflower',
-    '🌺': 'hibiscus',
-    '🌷': 'tulip',
-    '🌱': 'seedling',
-    '🌲': 'evergreen tree',
-    '🌳': 'deciduous tree',
-    '🍀': 'four leaf clover',
-    '🍎': 'red apple',
-    '🍐': 'pear',
-    '🍊': 'tangerine',
-    '🍋': 'lemon',
-    '🍌': 'banana',
-    '🍉': 'watermelon',
-    '🍇': 'grapes',
-    '🍓': 'strawberry',
-    '🫐': 'blueberries',
-    '🍑': 'peach',
-    '🌈': 'rainbow',
-    '☀️': 'sun',
-    '🌤️': 'sun behind cloud',
-    '⛅': 'sun behind cloud',
-    '☁️': 'cloud',
-    '🌧️': 'rain',
-    '⛈️': 'thunder',
-    '❄️': 'snowflake',
-    '🌊': 'wave',
-    '👀': 'eyes',
-    '👁️': 'eye',
-    '👂': 'ear',
-    '👃': 'nose',
-    '👄': 'mouth',
-    '👅': 'tongue',
-    '🧠': 'brain',
-    '🦴': 'bone',
-    '🦷': 'tooth',
-    '👶': 'baby',
-    '🧒': 'child',
-    '👦': 'boy',
-    '👧': 'girl',
-    '🧑': 'person',
-    '👨': 'man',
-    '👩': 'woman',
-    '🧓': 'older person',
-    '👮': 'police officer',
-    '🧑‍💻': 'technologist',
-    '👨‍💻': 'man technologist',
-    '👩‍💻': 'woman technologist',
-    '🎓': 'graduation cap',
-    '🧢': 'billed cap',
-    '👑': 'crown',
-    '💎': 'gem',
-    '👓': 'glasses',
-    '🕶️': 'sunglasses',
-    '🩸': 'drop of blood',
-    '💊': 'pill',
-    '🩹': 'bandage',
-    '🧬': 'dna',
-    '🦠': 'microbe',
-    '☢️': 'radioactive',
-    '☣️': 'biohazard',
-    '♻️': 'recycling',
-    '🏳️': 'white flag',
-    '🏴': 'black flag',
-    '🚩': 'red flag',
-    '🏁': 'checkered flag',
-    '➡️': 'right arrow',
-    '⬅️': 'left arrow',
-    '⬆️': 'up arrow',
-    '⬇️': 'down arrow',
-    '↗️': 'upper right arrow',
-    '↘️': 'lower right arrow',
-    '↙️': 'lower left arrow',
-    '↖️': 'upper left arrow',
-    '↩️': 'left curve',
-    '↪️': 'right curve',
-    '🔄': 'counterclockwise',
-    '🔃': 'clockwise',
-    '➕': 'plus',
-    '➖': 'minus',
-    '➗': 'division',
-    '✖️': 'multiply',
-    '♾️': 'infinity',
-    '‼️': 'double exclamation',
-    '⁉️': 'exclamation question',
-    '©️': 'copyright',
-    '®️': 'registered',
-    '™️': 'trademark',
-  };
-
-  function emojiToText(str) {
-    return str.replace(EMOJI_RE, (match) => {
-      const desc = EMOJI_MAP[match];
-      if (desc) return ':' + desc + ':';
-      // Fallback: use the emoji's Unicode name if available, or skip
-      return ':emoji:';
-    });
-  }
-
+  /** moved to +.svelte */
   const _DEOJ_SKIP = '.sources-section, .thinking-toggle, .memory-used-pill';
-
-  /** Walk all text nodes inside an element and replace emojis with text descriptions */
-  function deEmojify(root) {
-    if (!root || !root.querySelectorAll) return;
-    // Monochrome SVG spans from svgifyEmoji — Unicode lives in aria-label only
-    root.querySelectorAll('.emoji[aria-label]').forEach((span) => {
-      if (span.closest(_DEOJ_SKIP)) return;
-      const label = span.getAttribute('aria-label') || '';
-      span.replaceWith(document.createTextNode(emojiToText(label)));
-    });
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    for (const node of nodes) {
-      // Skip UI elements that use unicode symbols as functional icons
-      if (node.parentElement && node.parentElement.closest(_DEOJ_SKIP))
-        continue;
-      if (EMOJI_RE.test(node.textContent)) {
-        EMOJI_RE.lastIndex = 0; // reset regex state
-        node.textContent = emojiToText(node.textContent);
-      }
-    }
-  }
-
-  /** Apply or remove text-emoji mode on all chat messages */
-  function applyTextEmojis(enabled) {
-    document.body.classList.toggle('text-emojis', enabled);
-    if (enabled) {
-      document.querySelectorAll('.msg .body').forEach(deEmojify);
-    }
-  }
-
-  // Observe chat history for new/changed messages — de-emojify on the fly
-  let _deEmojifyTimer = null;
-  const _chatObs = new MutationObserver(() => {
-    if (!document.body.classList.contains('text-emojis')) return;
-    clearTimeout(_deEmojifyTimer);
-    _deEmojifyTimer = setTimeout(() => {
-      document.querySelectorAll('.msg .body').forEach(deEmojify);
-    }, 150);
-  });
-  const _chatBox = document.getElementById('chat-history');
-  if (_chatBox) _chatObs.observe(_chatBox, { childList: true, subtree: true });
+  // /** Walk all text nodes inside an element and replace emojis with text descriptions */
+  // function deEmojify(root) {
+  //   if (!root || !root.querySelectorAll) return;
+  //   // Monochrome SVG spans from svgifyEmoji — Unicode lives in aria-label only
+  //   root.querySelectorAll('.emoji[aria-label]').forEach((span) => {
+  //     if (span.closest(_DEOJ_SKIP)) return;
+  //     const label = span.getAttribute('aria-label') || '';
+  //     span.replaceWith(document.createTextNode(emojiToText(label)));
+  //   });
+  //   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  //   const nodes = [];
+  //   while (walker.nextNode()) nodes.push(walker.currentNode);
+  //   for (const node of nodes) {
+  //     // Skip UI elements that use unicode symbols as functional icons
+  //     if (node.parentElement && node.parentElement.closest(_DEOJ_SKIP))
+  //       continue;
+  //     if (EMOJI_RE.test(node.textContent)) {
+  //       EMOJI_RE.lastIndex = 0; // reset regex state
+  //       node.textContent = emojiToText(node.textContent);
+  //     }
+  //   }
+  // }
+  /** moved to +.svelte */
+  // /** Apply or remove text-emoji mode on all chat messages */
+  // function applyTextEmojis(enabled) {
+  //   document.body.classList.toggle('text-emojis', enabled);
+  //   if (enabled) {
+  //     document.querySelectorAll('.msg .body').forEach(deEmojify);
+  //   }
+  // }
+  /** moved to +.svelte */
+  // // Observe chat history for new/changed messages — de-emojify on the fly
+  // let _deEmojifyTimer = null;
+  // const _chatObs = new MutationObserver(() => {
+  //   if (!document.body.classList.contains('text-emojis')) return;
+  //   clearTimeout(_deEmojifyTimer);
+  //   _deEmojifyTimer = setTimeout(() => {
+  //     document
+  //       .querySelectorAll('.msg .body')
+  //       .forEach((e) => deEmojify(e, _DEOJ_SKIP));
+  //   }, 150);
+  // });
+  // const _chatBox = document.getElementById('chat-history');
+  // if (_chatBox) _chatObs.observe(_chatBox, { childList: true, subtree: true });
 
   // Migrate old toolbar visibility key if present
   (function migrateOldToolbarVis() {
@@ -3838,31 +3854,32 @@ function initializeEventListeners() {
     });
   }
 
-  // Mobile new chat button — always go to blank welcome screen.
-  // The send path at chat.js:354 will auto-create a session using /api/default-chat
-  // on first submit, so users can start typing before models finish loading and
-  // the default model attaches when they hit send.
-  const mobileNewChat = el('mobile-new-chat-btn');
-  if (mobileNewChat) {
-    mobileNewChat.addEventListener('click', () => {
-      if (!sessionModule) return;
-      if (_closeCompareIfActive()) return;
-      _deactivateIncognito();
-      _startFreshChat();
-      document
-        .querySelectorAll('.session-item.active')
-        .forEach((s) => s.classList.remove('active'));
-      // Focus the composer synchronously so mobile keyboards pop open.
-      // iOS Safari only honours programmatic focus inside the original click
-      // callback — a setTimeout breaks the user-gesture chain.
-      const _input = el('message-input');
-      if (_input) {
-        try {
-          _input.focus();
-        } catch (_) {}
-      }
-    });
-  }
+  /** planned to move, but search for mobile-new-chat-btn failed. 'removing' */
+  // // Mobile new chat button — always go to blank welcome screen.
+  // // The send path at chat.js:354 will auto-create a session using /api/default-chat
+  // // on first submit, so users can start typing before models finish loading and
+  // // the default model attaches when they hit send.
+  // const mobileNewChat = el('mobile-new-chat-btn');
+  // if (mobileNewChat) {
+  //   mobileNewChat.addEventListener('click', () => {
+  //     if (!sessionModule) return;
+  //     if (_closeCompareIfActive()) return;
+  //     _deactivateIncognito();
+  //     _startFreshChat();
+  //     document
+  //       .querySelectorAll('.session-item.active')
+  //       .forEach((s) => s.classList.remove('active'));
+  //     // Focus the composer synchronously so mobile keyboards pop open.
+  //     // iOS Safari only honours programmatic focus inside the original click
+  //     // callback — a setTimeout breaks the user-gesture chain.
+  //     const _input = el('message-input');
+  //     if (_input) {
+  //       try {
+  //         _input.focus();
+  //       } catch (_) {}
+  //     }
+  //   });
+  // }
 
   // Logo click → new chat (same logic as rail new-session button)
   const brandBtn = el('sidebar-brand-btn');
@@ -4261,7 +4278,7 @@ function startOdysseusApp() {
   researchPanelModule.initLegacy(API_BASE, markdownModule, sessionModule);
   // Initialize document editor module
   if (documentModule) {
-    documentModule.InitLegacy(API_BASE);
+    documentModule.initLegacy(API_BASE);
     // Restore document panel if it was open before refresh
     const _curSession = sessionModule && sessionModule.getCurrentSessionId();
     if (

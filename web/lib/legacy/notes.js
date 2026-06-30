@@ -13,7 +13,7 @@ import { topPortalZ, topToolWindowZ } from '$lib/legacy/toolWindowZOrder.js';
 import uiModule from '$lib/legacy/ui.js';
 import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
 
-let API_BASE;
+let API_BASE = '';
 let _open = false;
 let _notes = [];
 let _editingId = null;

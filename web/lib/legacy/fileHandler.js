@@ -304,7 +304,7 @@ export function getLastUploadedMeta() {
 var escapeHtml = uiModule.esc;
 
 const fileHandlerModule = {
-  init: initLegacy,
+  initLegacy,
   openPicker,
   renderAttachStrip,
   removePending,

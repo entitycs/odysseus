@@ -51,7 +51,7 @@ export function refresh() {
 }
 
 const searchModule = {
-  init: initLegacy,
+  initLegacy,
   getCurrentProvider,
   getProviderLabel,
   refresh,

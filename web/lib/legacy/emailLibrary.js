@@ -45,7 +45,7 @@ import { state } from './emailLibrary/state.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { collapseSidebarToRail } from './modalSnap.js';
 
-let API_BASE;
+let API_BASE = ''; // TODO - API_BASE not being set in init before fetch calls
 let _emailUnreadChipClickWired = false;
 let _libLoadSeq = 0;
 let _libFolderSeq = 0;
@@ -55,7 +55,7 @@ let _libSearchInFlight = false;
 let _activeEmailReaderForSelectAll = null;
 
 export function init() {
-  API_BASE = window.location.origin;
+  API_BASE = window.location.origin || '';
   // Frontend reads via the global so chat.js doesn't need a separate import
   // path (emailLibrary loads lazily in some entry points).
   try {

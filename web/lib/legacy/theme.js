@@ -4,6 +4,7 @@
 import { hexToRgb } from '$lib/legacy/color/hex.js';
 import {
   attachColorPicker,
+  init as initColorPicker,
   initColorPickers,
 } from '$lib/legacy/colorPicker.js';
 import Storage from '$lib/legacy/storage.js';
@@ -187,6 +188,7 @@ const THEME_DEFAULT_FROSTED = {
 };
 
 export function init() {
+  initColorPicker();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => _initWithSync());
   } else {
