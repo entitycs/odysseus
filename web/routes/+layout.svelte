@@ -4,7 +4,7 @@ import Header from './Header.svelte';
 import './layout.css';
 import { onMount } from 'svelte';
 
-// In the exact same order as your original <script> tags:
+// In same order as original <script> tags:
 
 import * as admin from '$lib/legacy/admin.js';
 import * as app from '$lib/legacy/app.js';
@@ -36,6 +36,8 @@ import * as skills from '$lib/legacy/skills.js';
 import * as spinner from '$lib/legacy/spinner.js';
 import * as storage from '$lib/legacy/storage.js';
 import * as theme from '$lib/legacy/theme.js';
+import * as tourAutoPlay from '$lib/legacy/tourAutoplay.js';
+import * as tourHints from '$lib/legacy/tourHints.js';
 import * as ttsAi from '$lib/legacy/tts-ai.js';
 import * as ui from '$lib/legacy/ui.js';
 import * as voiceRecorder from '$lib/legacy/voiceRecorder.js';
@@ -51,8 +53,10 @@ onMount(async () => {
   sessions.init?.();
   memory.init?.();
   skills.init?.();
+  tourAutoPlay.init?.();
+  tourHints.init?.();
   fileHandler.init?.();
-  voiceRecorder.init?.();
+  voiceRecorder.initLegacy?.();
   models.init?.();
   rag.init?.();
   presets.init?.();
@@ -71,7 +75,7 @@ onMount(async () => {
   searchChat.init?.();
   compare.init?.();
   theme.init?.();
-  censor.init?.();
+  censor.initLegacy?.();
   settings.init?.();
   admin.init?.();
   assistant.init?.();

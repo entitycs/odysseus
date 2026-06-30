@@ -12,7 +12,7 @@ import uiModule, { autoResize, styledPrompt } from '$lib/legacy/ui.js';
 
 // const API_BASE = window.location.origin;
 export function getApiBase() {
-  return window.location.origin;
+  return window.location.origin || '';
 }
 
 /**

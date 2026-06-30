@@ -777,6 +777,7 @@ export function getCachedItems() {
 
 const modelsModule = {
   init,
+  initLegacy,
   refreshModels,
   refreshProviders,
   getCachedItems,

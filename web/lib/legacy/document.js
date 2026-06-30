@@ -181,7 +181,7 @@ function _ensureAgentMode() {
 }
 
 export function init() {
-  API_BASE = window.location.origin;
+  API_BASE = window.location.origin || '';
   // Inject tab menu styles immediately (must exist before any hover)
   const s = document.createElement('style');
   s.id = 'doc-tab-menu-styles';
@@ -11667,7 +11667,8 @@ export function findEmailDocId(uid, folder) {
 }
 
 const documentModule = {
-  init: initLegacy,
+  init,
+  initLegacy,
   openPanel,
   closePanel,
   swapSide,

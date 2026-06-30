@@ -1986,7 +1986,8 @@ registerPaneActions({
 export { EVAL_PROMPTS, handleCompareSubmit, showScoreboard };
 
 const compareModule = {
-  init: initLegacy,
+  init,
+  initLegacy,
   toggleMode,
   handleCompareSubmit,
   isActive: isCompareActive,

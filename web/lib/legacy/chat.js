@@ -6173,7 +6173,8 @@ async function openAttachment(att, isImage) {
 
 // Public API
 const chatModule = {
-  init: initLegacy,
+  init,
+  initLegacy,
   initListeners,
   openAttachment,
   addMessage: chatRenderer.addMessage,
