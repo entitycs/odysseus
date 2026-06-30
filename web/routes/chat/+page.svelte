@@ -1,3 +1,375 @@
+<script lang="ts">
+import { onMount } from 'svelte';
+import { syncGroupIndicator } from '$lib/chat/group';
+import { deEmojify } from '$lib/emoji';
+import chatModule from '$lib/legacy/chat';
+import chatRenderer from '$lib/legacy/chatRenderer';
+import compareModule from '$lib/legacy/compare';
+import documentModule from '$lib/legacy/document';
+import fileHandlerModule from '$lib/legacy/fileHandler';
+import groupModule from '$lib/legacy/group';
+import presetsModule from '$lib/legacy/presets';
+import * as researchPanelModule from '$lib/legacy/research/panel.js';
+import sessionModule from '$lib/legacy/sessions';
+import uiModule from '$lib/legacy/ui';
+import { updatePlusDot } from '$lib/overflow';
+
+const _DEOJ_SKIP = '.sources-section, .thinking-toggle, .memory-used-pill';
+
+/**
+ * @param {string} id
+ */
+function el(id: string) {
+  return document.getElementById(id);
+}
+
+onMount(() => {
+  // Message count in the header — recount on any DOM change in
+  // #chat-history and write "· N msgs" next to the title. Counts top-
+  // level .msg elements (one per user/assistant turn); excludes the
+  // welcome screen since it isn't inside chat-history.
+  const _metaCountEl = document.getElementById('current-meta-count');
+  const _chatHistEl = document.getElementById('chat-history');
+  if (_metaCountEl && _chatHistEl) {
+    let _countScheduled = false;
+    const _updateMsgCount = () => {
+      _countScheduled = false;
+      const n = _chatHistEl.querySelectorAll(':scope > .msg').length;
+      _metaCountEl.textContent = n ? `· ${n} msg${n === 1 ? '' : 's'}` : '';
+    };
+    const _scheduleCount = () => {
+      if (_countScheduled) return;
+      _countScheduled = true;
+      requestAnimationFrame(_updateMsgCount);
+    };
+    new MutationObserver(_scheduleCount).observe(_chatHistEl, {
+      childList: true,
+    });
+    _updateMsgCount();
+  }
+
+  // Scrolling
+  document.getElementById('chat-history').addEventListener(
+    'scroll',
+    uiModule.debounce(() => {
+      const box = document.getElementById('chat-history');
+      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      uiModule.setAutoScroll(atBottom);
+    }, 100),
+  );
+  // Close all footer popups immediately on any scroll
+  document.getElementById('chat-history').addEventListener(
+    'scroll',
+    () => {
+      document
+        .querySelectorAll('.ctx-popup, .memory-used-detail, .msg-overflow-menu')
+        .forEach((p) => p.remove());
+      document.querySelectorAll('.memory-used-pill').forEach((p) => {
+        p._openDetail = null;
+      });
+    },
+    { passive: true },
+  );
+
+  document.getElementById('chat-history').addEventListener('wheel', (e) => {
+    // Only disable auto-scroll when user scrolls UP (deltaY < 0)
+    if (e.deltaY < 0) uiModule.setAutoScroll(false);
+  });
+  let _touchThrottled = false;
+  document.getElementById('chat-history').addEventListener(
+    'touchmove',
+    () => {
+      if (_touchThrottled) return;
+      _touchThrottled = true;
+      uiModule.setAutoScroll(false);
+      requestAnimationFrame(() => {
+        _touchThrottled = false;
+      });
+    },
+    { passive: true },
+  );
+
+  // Internal #session-id links from AI search results
+  document.getElementById('chat-history').addEventListener('click', (e) => {
+    const link = e.target.closest('a.chat-link');
+    if (!link) return;
+    const href = link.getAttribute('href');
+    if (href && href.startsWith('#') && sessionModule) {
+      e.preventDefault();
+      sessionModule.selectSession(href.slice(1));
+    }
+  });
+  // Export: PDF
+  const exportPdfBtn = el('export-pdf-btn');
+  const exportMenu = document.getElementById('export-dropdown-menu');
+  if (exportPdfBtn) {
+    exportPdfBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportMenu.classList.remove('open');
+      const meta = sessionModule
+        .getSessions()
+        .find((s) => s.id === sessionModule.getCurrentSessionId());
+      const sessionName = meta ? meta.name : 'Odysseus Chat';
+      const originalTitle = document.title;
+      document.title = sessionName;
+      const chatHistory = document.getElementById('chat-history');
+      if (chatHistory) chatHistory.dataset.printTitle = sessionName;
+      document
+        .querySelectorAll('#chat-history details:not([open])')
+        .forEach((d) => {
+          d.setAttribute('open', '');
+          d.dataset.printOpened = '1';
+        });
+      window.print();
+      document.title = originalTitle;
+      document
+        .querySelectorAll('#chat-history details[data-print-opened]')
+        .forEach((d) => {
+          d.removeAttribute('open');
+          d.removeAttribute('data-print-opened');
+        });
+    });
+  }
+  document.addEventListener('overflow-state-change', () => updatePlusDot());
+
+  // ── Prevent toolbar buttons from stealing focus (avoids mobile keyboard bounce) ──
+  const chatInputBar = document.querySelector('.chat-input-bar');
+  // ── Keep textarea focused when interacting with chat bar controls (mobile keyboard fix) ──
+  const _msgTextarea = el('message');
+  if (chatInputBar && _msgTextarea) {
+    let _refocusOnBlur = false;
+    function _flagRefocus(e) {
+      if (e.target.closest('textarea, input')) return;
+      // Don't refocus for attach — file picker needs full focus control
+      if (e.target.closest('#overflow-attach-btn')) return;
+      // Don't refocus for model picker button — focus should go to picker search input
+      if (e.target.closest('.model-picker-btn')) return;
+      // Don't refocus when tapping the +/chevron tools button — the user
+      // is explicitly trying to dismiss the keyboard and open the tools
+      // menu. Without this, the textarea blurs (keyboard down), then this
+      // handler re-focuses it (keyboard bounces back up).
+      if (e.target.closest('#overflow-plus-btn')) return;
+      if (document.activeElement === _msgTextarea) _refocusOnBlur = true;
+    }
+    chatInputBar.addEventListener('touchstart', _flagRefocus, {
+      passive: true,
+    });
+    // Overflow menu is position:fixed — may not bubble through chatInputBar on mobile
+    const _overflowMenu = el('overflow-menu');
+    if (_overflowMenu)
+      _overflowMenu.addEventListener('touchstart', _flagRefocus, {
+        passive: true,
+      });
+    // Model picker menu too
+    const _pickerMenu = document.getElementById('model-picker-menu');
+    if (_pickerMenu)
+      _pickerMenu.addEventListener('touchstart', _flagRefocus, {
+        passive: true,
+      });
+    // Attach strip (outside chat-input-bar)
+    const _attachStrip = el('attach-strip');
+    if (_attachStrip)
+      _attachStrip.addEventListener('touchstart', _flagRefocus, {
+        passive: true,
+      });
+    _msgTextarea.addEventListener('blur', () => {
+      if (_refocusOnBlur) {
+        _refocusOnBlur = false;
+        setTimeout(() => _msgTextarea.focus(), 0);
+      }
+    });
+    // Clear flag if touch ends without causing blur
+    document.addEventListener(
+      'touchend',
+      () => {
+        setTimeout(() => {
+          _refocusOnBlur = false;
+        }, 50);
+      },
+      { passive: true },
+    );
+  }
+  // ── Overflow Group Chat toggle ──
+  const overflowGroupBtn = el('overflow-group-btn');
+  if (overflowGroupBtn) {
+    overflowGroupBtn.addEventListener('click', async () => {
+      const chk = el('group-toggle');
+      const turningOn = chk ? !chk.checked : false;
+      if (turningOn) {
+        const picked = await groupModule.showModelPicker();
+        if (!picked || picked.length < 2) return;
+        groupModule.setActive(true); // Set early so updateModelPicker sees it
+        syncGroupIndicator(true);
+        _startFreshChat();
+        // Clear any leftover splash screens
+        const _chatBox = document.getElementById('chat-history');
+        if (_chatBox) {
+          _chatBox.querySelectorAll('.tool-splash').forEach((s) => s.remove());
+          // Also hide welcome screen
+          if (chatModule && chatModule.hideWelcomeScreen)
+            chatModule.hideWelcomeScreen();
+        }
+        // Start group — create participant sessions immediately
+        const sid =
+          sessionModule.getCurrentSessionId() || 'group-' + Date.now();
+        await groupModule.startGroup(picked, sid);
+        // Re-hide picker after everything settles
+        const _mpw = el('model-picker-wrap');
+        if (_mpw) _mpw.style.display = 'none';
+        uiModule.showToast(`Group chat ready — ${picked.length} models`);
+      } else {
+        syncGroupIndicator(false);
+        groupModule.stopGroup();
+        // Restore model picker
+        const _mpWrap2 = el('model-picker-wrap');
+        if (_mpWrap2) _mpWrap2.style.display = '';
+      }
+    });
+  }
+
+  // ── Group toggle button (chatbox indicator) — click to deactivate ──
+  const groupToggleBtn = el('group-toggle-btn');
+  if (groupToggleBtn) {
+    groupToggleBtn.addEventListener('click', () => {
+      syncGroupIndicator(false);
+      groupModule.stopGroup();
+    });
+  }
+
+  // Observe chat history for new/changed messages — de-emojify on the fly
+  let _deEmojifyTimer = null;
+  const _chatObs = new MutationObserver(() => {
+    if (!document.body.classList.contains('text-emojis')) return;
+    clearTimeout(_deEmojifyTimer);
+    _deEmojifyTimer = setTimeout(() => {
+      document
+        .querySelectorAll('.msg .body')
+        .forEach((e) => deEmojify(e, _DEOJ_SKIP));
+    }, 150);
+  });
+  const _chatBox = document.getElementById('chat-history');
+  if (_chatBox) _chatObs.observe(_chatBox, { childList: true, subtree: true });
+
+  // INITIALIZE EVENT LISTENERS
+  // Chat form submission
+  //  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
+
+  // File attachments (inside overflow menu)
+  const _overflowAttach = document.getElementById('overflow-attach-btn');
+  if (_overflowAttach)
+    _overflowAttach.addEventListener('click', fileHandlerModule.openPicker);
+  document.getElementById('file-input').addEventListener('change', (e) => {
+    for (const f of e.target.files) fileHandlerModule.addFiles([f]);
+    fileHandlerModule.renderAttachStrip();
+    // Refocus textarea after file picker closes (mobile keyboard)
+    const ta = document.getElementById('message');
+    if (ta) setTimeout(() => ta.focus(), 100);
+  });
+  // Modify form submit to handle special modes
+  const chatForm = document.getElementById('chat-form');
+  const originalSubmit = chatModule.handleChatSubmit;
+  let _submitting = false;
+
+  function handleSubmit(e) {
+    if (e) e.preventDefault();
+    // Debounce: prevent double-submit while a request is being initiated
+    if (_submitting) return;
+    _submitting = true;
+    // Release after a short delay (stream start sets its own isStreaming guard)
+    setTimeout(() => {
+      _submitting = false;
+    }, 300);
+
+    // Compare mode: route submit to compare handler (same message to all panes)
+    if (compareModule && compareModule.isActive()) {
+      return compareModule.handleCompareSubmit(e);
+    }
+
+    // Group chat: route to group module
+    if (groupModule && groupModule.isActive()) {
+      console.log('[group] Submit intercepted');
+      const msgInput = document.getElementById('message');
+      const msg = msgInput ? msgInput.value.trim() : '';
+      if (!msg) {
+        console.log('[group] Empty message, skipping');
+        return;
+      }
+      console.log('[group] Sending:', msg);
+      chatRenderer.hideWelcomeScreen();
+      chatRenderer.addMessage('user', msg);
+      msgInput.value = '';
+      groupModule.sendMessage(msg);
+      return;
+    }
+
+    return originalSubmit.call(chatModule, e);
+  }
+
+  chatForm.onsubmit = handleSubmit;
+});
+</script>
+<div class="chat-top-bar">
+   <button type="button" class="incognito-indicator" id="incognito-indicator" title="Nobody mode active — click to deactivate" style="display:none;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+         <line x1="8" y1="16" x2="16" y2="8"/>
+         <line x1="8" y1="8" x2="16" y2="16"/>
+      </svg>
+   </button>
+   <div class="chat-meta-overlay">
+      <span id="current-meta">Odysseus Chat</span>
+      <span id="current-meta-count" class="chat-meta-count" aria-hidden="true"></span>
+      <span id="session-cost-display" class="session-cost-display" style="display:none;"></span>
+      <span class="export-dropdown-wrap" id="export-dropdown-wrap">
+         <button type="button" class="export-dl-btn" id="export-dl-btn" title="More">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+               <polyline points="6 9 12 15 18 9"/>
+            </svg>
+         </button>
+         <div class="export-dropdown-menu" id="export-dropdown-menu">
+            <div class="export-dropdown-item" id="export-rename-btn">
+               <span class="dropdown-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                     <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                  </svg>
+               </span>
+               <span>Rename</span>
+            </div>
+            <div class="export-dropdown-item" id="export-copy-btn">
+               <span class="dropdown-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                     <rect x="9" y="9" width="13" height="13" rx="2"/>
+                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+               </span>
+               <span>Copy Chat</span>
+            </div>
+            <div class="export-dropdown-item" id="export-pdf-btn">
+               <span class="dropdown-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                     <polyline points="14 2 14 8 20 8"/>
+                     <path d="M9 15v-2h2a1.5 1.5 0 0 1 0 3H9z"/>
+                  </svg>
+               </span>
+               <span>PDF</span>
+            </div>
+            <div class="export-dropdown-item" id="export-doc-btn">
+               <span class="dropdown-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                     <polyline points="14 2 14 8 20 8"/>
+                     <line x1="16" y1="13" x2="8" y2="13"/>
+                     <line x1="16" y1="17" x2="8" y2="17"/>
+                     <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+               </span>
+               <span>Save to Documents</span>
+            </div>
+         </div>
+      </span>
+   </div>
+</div>
 <div id="chat-history" class="chat-history" role="log" aria-live="polite"></div>
 <!-- Attachments strip -->
 <div id="attach-strip" class="attach-strip"></div>

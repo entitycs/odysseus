@@ -44,7 +44,9 @@ async function refreshSttProvider() {
  * Format seconds as MM:SS
  */
 function formatTime(seconds) {
-  const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const mins = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, '0');
   const secs = (seconds % 60).toString().padStart(2, '0');
   return `${mins}:${secs}`;
 }
@@ -73,7 +75,8 @@ function _resetRecordingUI() {
  * Start browser speech recognition alongside recording
  */
 function startBrowserSTT() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) return;
 
   _browserTranscript = '';
@@ -99,7 +102,11 @@ function startBrowserSTT() {
 
 function stopBrowserSTT() {
   if (_recognition) {
-    try { _recognition.stop(); } catch (e) { /* ignore */ }
+    try {
+      _recognition.stop();
+    } catch (e) {
+      /* ignore */
+    }
     _recognition = null;
   }
   return _browserTranscript.trim();
@@ -151,7 +158,10 @@ function insertTranscription(text, showToast) {
 export function startRecording(onFileCreated, showToast, showError) {
   // Check for secure context (getUserMedia requires HTTPS or localhost)
   if (!window.isSecureContext) {
-    if (showError) showError('Microphone requires HTTPS. Use a reverse proxy with SSL or access via localhost.');
+    if (showError)
+      showError(
+        'Microphone requires HTTPS. Use a reverse proxy with SSL or access via localhost.',
+      );
     _resetRecordingUI();
     return;
   }
@@ -164,18 +174,19 @@ export function startRecording(onFileCreated, showToast, showError) {
 
   audioChunks = [];
 
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(stream => {
+  navigator.mediaDevices
+    .getUserMedia({ audio: true })
+    .then((stream) => {
       mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
 
-      mediaRecorder.ondataavailable = event => {
+      mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunks.push(event.data);
         }
       };
 
       mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
 
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
         const provider = _sttProvider;
@@ -186,7 +197,11 @@ export function startRecording(onFileCreated, showToast, showError) {
             insertTranscription(transcript, showToast);
           } else {
             if (showToast) showToast('No speech detected');
-            const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
+            const audioFile = new File(
+              [audioBlob],
+              `voice-message-${Date.now()}.webm`,
+              { type: 'audio/webm' },
+            );
             if (onFileCreated) onFileCreated(audioFile);
           }
         } else if (provider === 'local' || provider.startsWith('endpoint:')) {
@@ -203,12 +218,20 @@ export function startRecording(onFileCreated, showToast, showError) {
             console.error('STT transcription error:', e);
             if (showError) showError('Transcription failed: ' + e.message);
             // Fallback: attach as file
-            const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
+            const audioFile = new File(
+              [audioBlob],
+              `voice-message-${Date.now()}.webm`,
+              { type: 'audio/webm' },
+            );
             if (onFileCreated) onFileCreated(audioFile);
           }
         } else {
           // STT disabled — attach audio file
-          const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
+          const audioFile = new File(
+            [audioBlob],
+            `voice-message-${Date.now()}.webm`,
+            { type: 'audio/webm' },
+          );
           if (onFileCreated) onFileCreated(audioFile);
         }
 
@@ -228,7 +251,7 @@ export function startRecording(onFileCreated, showToast, showError) {
         showToast('Recording...');
       }
     })
-    .catch(error => {
+    .catch((error) => {
       console.error('Microphone access error:', error);
       if (showError) {
         if (error.name === 'NotAllowedError') {
@@ -265,7 +288,7 @@ export function getIsRecording() {
 /**
  * Initialize recording state
  */
-export function init() {
+export function initLegacy() {
   isRecording = false;
   refreshSttProvider();
 }
@@ -274,10 +297,14 @@ const voiceRecorderModule = {
   startRecording,
   stopRecording,
   getIsRecording,
-  init,
+  initLegacy,
   refreshSttProvider,
-  get _sttProvider() { return _sttProvider; },
-  set _sttProvider(v) { _sttProvider = v; },
+  get _sttProvider() {
+    return _sttProvider;
+  },
+  set _sttProvider(v) {
+    _sttProvider = v;
+  },
 };
 
 export default voiceRecorderModule;

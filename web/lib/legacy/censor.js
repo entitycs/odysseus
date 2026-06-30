@@ -19,29 +19,50 @@ export const _prefEnabled = () => {
 // Patterns that indicate sensitive data
 const PATTERNS = [
   // Emails
-  { re: /\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b/g, label: 'email' },
+  { re: /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g, label: 'email' },
   // API key prefixes (common services)
-  { re: /\b(sk-[a-zA-Z0-9]{20,}|pk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36,}|gho_[a-zA-Z0-9]{36,}|glpat-[a-zA-Z0-9\-_]{20,}|xox[bpras]-[a-zA-Z0-9\-]{10,}|npm_[a-zA-Z0-9]{36,}|AKIA[A-Z0-9]{12,})\b/g, label: 'api-key' },
+  {
+    re: /\b(sk-[a-zA-Z0-9]{20,}|pk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36,}|gho_[a-zA-Z0-9]{36,}|glpat-[a-zA-Z0-9\-_]{20,}|xox[bpras]-[a-zA-Z0-9-]{10,}|npm_[a-zA-Z0-9]{36,}|AKIA[A-Z0-9]{12,})\b/g,
+    label: 'api-key',
+  },
   // Bearer tokens
-  { re: /Bearer\s+[A-Za-z0-9._\-]{20,}/g, label: 'token' },
+  { re: /Bearer\s+[A-Za-z0-9._-]{20,}/g, label: 'token' },
   // Generic tokens/secrets in key=value or key: value patterns
   // Credentials with delimiters (key: value, key=value, key  value)
-  { re: /(?:password|passwd|secret|api[_\-]?key|access[_\-]?token|auth[_\-]?token|private[_\-]?key|client[_\-]?secret)[\s]*[:=]\s*["']?[^\s"'<]{4,}["']?/gi, label: 'credential' },
+  {
+    re: /(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|client[_-]?secret)[\s]*[:=]\s*["']?[^\s"'<]{4,}["']?/gi,
+    label: 'credential',
+  },
   // Credentials in tabular/label-value format (Password    xyzABC123)
-  { re: /(?:password|passwd|secret|api[_\-]?key|access[_\-]?token|auth[_\-]?token|private[_\-]?key|client[_\-]?secret)\s{2,}[^\s<]{4,}/gi, label: 'credential' },
+  {
+    re: /(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|client[_-]?secret)\s{2,}[^\s<]{4,}/gi,
+    label: 'credential',
+  },
   // Value after a line starting with password-like label
-  { re: /(?:^|\n)\s*(?:password|passwd|secret|api[_\-]?key|token|private[_\-]?key)[\t ]*\n\s*([^\s<]{4,})/gim, label: 'credential' },
+  {
+    re: /(?:^|\n)\s*(?:password|passwd|secret|api[_-]?key|token|private[_-]?key)[\t ]*\n\s*([^\s<]{4,})/gim,
+    label: 'credential',
+  },
   // SSH / PEM private keys (inline)
-  { re: /-----BEGIN\s[\w\s]*PRIVATE KEY-----[\s\S]*?-----END\s[\w\s]*PRIVATE KEY-----/g, label: 'private-key' },
+  {
+    re: /-----BEGIN\s[\w\s]*PRIVATE KEY-----[\s\S]*?-----END\s[\w\s]*PRIVATE KEY-----/g,
+    label: 'private-key',
+  },
   // Long hex strings (32+ chars) that look like hashes/tokens
   { re: /\b[0-9a-f]{32,}\b/gi, label: 'hash' },
   // JWT tokens (three dot-separated base64 segments)
-  { re: /\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b/g, label: 'jwt' },
+  {
+    re: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+    label: 'jwt',
+  },
   // IP addresses with ports (internal networks)
-  { re: /\b(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?::\d+)?\b/g, label: 'internal-ip' },
+  {
+    re: /\b(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?::\d+)?\b/g,
+    label: 'internal-ip',
+  },
 ];
 
-export function init() {
+export function initLegacy() {
   // Load enabled state from feature flags
   _loadState();
   window.addEventListener('odysseus-sensitive-blur-change', (e) => {
@@ -60,8 +81,8 @@ export function init() {
 function _loadState() {
   // Check admin feature flag
   fetch('/api/auth/features', { credentials: 'same-origin' })
-    .then(r => r.json())
-    .then(features => {
+    .then((r) => r.json())
+    .then((features) => {
       _enabled = features.sensitive_filter !== false && _prefEnabled();
       // Start observer after loading state
       _startObserver();
@@ -85,7 +106,9 @@ function _startObserver() {
         if (node.classList && node.classList.contains('body')) {
           _scheduleProcess(node);
         } else if (node.querySelectorAll) {
-          node.querySelectorAll('.msg .body, .msg-ai .body').forEach(b => _scheduleProcess(b));
+          node
+            .querySelectorAll('.msg .body, .msg-ai .body')
+            .forEach((b) => _scheduleProcess(b));
         }
       }
     }
@@ -97,7 +120,7 @@ function _startObserver() {
     document.getElementById('chat-history'),
   ].filter(Boolean);
 
-  targets.forEach(t => {
+  targets.forEach((t) => {
     _observer.observe(t, { childList: true, subtree: true });
   });
 }
@@ -127,7 +150,8 @@ function _scheduleProcess(el) {
 }
 
 // Labels that indicate the NEXT value should be censored
-const SENSITIVE_LABELS = /^(?:password|passwd|secret|api[_\-]?key|access[_\-]?token|auth[_\-]?token|private[_\-]?key|client[_\-]?secret|token|credentials?)$/i;
+const SENSITIVE_LABELS =
+  /^(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|client[_-]?secret|token|credentials?)$/i;
 
 function _processElement(el) {
   if (!_enabled || !el) return;
@@ -139,7 +163,8 @@ function _processElement(el) {
   let node;
   while ((node = walker.nextNode())) {
     if (node.parentElement.closest('.setup-guide-no-censor')) continue;
-    if (node.parentElement.closest('pre:not(.censored-item), .censored-item')) continue;
+    if (node.parentElement.closest('pre:not(.censored-item), .censored-item'))
+      continue;
     textNodes.push(node);
   }
 
@@ -152,7 +177,12 @@ function _processElement(el) {
       pattern.re.lastIndex = 0;
       let m;
       while ((m = pattern.re.exec(text)) !== null) {
-        matches.push({ start: m.index, end: m.index + m[0].length, text: m[0], label: pattern.label });
+        matches.push({
+          start: m.index,
+          end: m.index + m[0].length,
+          text: m[0],
+          label: pattern.label,
+        });
       }
     }
     if (matches.length === 0) continue;
@@ -172,7 +202,9 @@ function _processElement(el) {
     let lastIdx = 0;
     for (const match of deduped) {
       if (match.start > lastIdx) {
-        frag.appendChild(document.createTextNode(text.slice(lastIdx, match.start)));
+        frag.appendChild(
+          document.createTextNode(text.slice(lastIdx, match.start)),
+        );
       }
       const span = document.createElement('span');
       span.className = 'censored-item';
@@ -196,7 +228,9 @@ function _processElement(el) {
 
 function _contextCensor(el) {
   // Strategy 1: Walk all elements looking for sensitive labels
-  const allElements = el.querySelectorAll('td, th, dt, dd, span, strong, b, em, li, p, div');
+  const allElements = el.querySelectorAll(
+    'td, th, dt, dd, span, strong, b, em, li, p, div',
+  );
   for (let i = 0; i < allElements.length; i++) {
     const elem = allElements[i];
     if (elem.closest('.setup-guide-no-censor')) continue;
@@ -210,7 +244,8 @@ function _contextCensor(el) {
     // A) Next text sibling node (e.g. <strong>Password</strong> value123)
     let sibling = elem.nextSibling;
     while (sibling && !censored) {
-      if (sibling.nodeType === 3) { // text node
+      if (sibling.nodeType === 3) {
+        // text node
         const val = sibling.textContent.trim();
         if (val.length >= 4 && !SENSITIVE_LABELS.test(val)) {
           const span = document.createElement('span');
@@ -253,7 +288,10 @@ function _contextCensor(el) {
       let found = false;
       for (let c = 0; c < parent.childNodes.length; c++) {
         const child = parent.childNodes[c];
-        if (child === elem) { found = true; continue; }
+        if (child === elem) {
+          found = true;
+          continue;
+        }
         if (!found) continue;
         if (child.nodeType === 3 && child.textContent.trim().length >= 4) {
           const val = child.textContent.trim();
@@ -274,7 +312,8 @@ function _contextCensor(el) {
   // Strategy 2: Full-text scan for label-value patterns across lines
   // Get the full text, find patterns like "Password\n  value" or "Password: value"
   const fullText = el.textContent || '';
-  const labelValueRe = /(?:password|passwd|secret|api[_\-]?key|access[_\-]?token|private[_\-]?key|client[_\-]?secret|token|auth[_\-]?token)\s*[:\s]\s*(\S{4,})/gi;
+  const labelValueRe =
+    /(?:password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]?key|client[_-]?secret|token|auth[_-]?token)\s*[:\s]\s*(\S{4,})/gi;
   let m;
   while ((m = labelValueRe.exec(fullText)) !== null) {
     const value = m[1];
@@ -289,7 +328,8 @@ function _censorValueInElement(el, value) {
   let node;
   while ((node = walker.nextNode())) {
     if (node.parentElement.closest('.setup-guide-no-censor')) continue;
-    if (node.parentElement.closest('pre:not(.censored-item), .censored-item')) continue;
+    if (node.parentElement.closest('pre:not(.censored-item), .censored-item'))
+      continue;
     const idx = node.textContent.indexOf(value);
     if (idx < 0) continue;
     // Split text node and wrap the value
@@ -341,9 +381,13 @@ export function setEnabled(enabled) {
   _enabled = enabled;
   if (!enabled) {
     // Reveal all currently censored items
-    document.querySelectorAll('.censored-item').forEach(el => el.classList.add('revealed'));
+    document
+      .querySelectorAll('.censored-item')
+      .forEach((el) => el.classList.add('revealed'));
   } else {
-    document.querySelectorAll('.censored-item').forEach(el => el.classList.remove('revealed'));
+    document
+      .querySelectorAll('.censored-item')
+      .forEach((el) => el.classList.remove('revealed'));
   }
 }
 
@@ -351,6 +395,6 @@ export function isEnabled() {
   return _enabled;
 }
 
-const censorModule = { init, censorElement, setEnabled, isEnabled };
+const censorModule = { initLegacy, censorElement, setEnabled, isEnabled };
 
 export default censorModule;

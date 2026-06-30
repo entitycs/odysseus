@@ -83,7 +83,7 @@ let userTemplates = [];
 /**
  * Initialize with dependencies
  */
-export function initPresets(apiBase) {
+export function initLegacy(apiBase) {
   API_BASE = apiBase;
   initCharTabs();
   initEnabledToggle();
@@ -1260,7 +1260,7 @@ export function removePersistentChat(sessionId) {
 }
 
 const presetsModule = {
-  init: initPresets,
+  initLegacy,
   loadPresets,
   setActivePreset,
   openCustomPresetModal,

@@ -188,7 +188,8 @@ function _setupUploadZone() {
 }
 
 const ragModule = {
-  init: initLegacy,
+  init,
+  initLegacy,
   loadPersonalDocs,
   uploadRagFiles,
 };

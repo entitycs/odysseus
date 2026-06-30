@@ -209,7 +209,7 @@ export function initLegacy(apiBase) {
 }
 
 const searchChatModule = {
-  init: initLegacy,
+  initLegacy,
   openSearch,
   closeSearch,
   isOpen,

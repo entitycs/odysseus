@@ -1270,6 +1270,7 @@ export function getModelCount() {
 
 const groupModule = {
   init,
+  initLegacy,
   isActive,
   setActive,
   getMode,
