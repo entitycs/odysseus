@@ -17,7 +17,7 @@ import { applyEdgeDock } from '$lib/legacy/modalSnap.js';
 import sessionModule from '$lib/legacy/sessions.js';
 import spinnerModule from '$lib/legacy/spinner.js';
 
-let API_BASE;
+let API_BASE = '';
 let _acct;
 
 const _emailSetupHint = () =>

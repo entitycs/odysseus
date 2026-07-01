@@ -1941,7 +1941,7 @@ let { children } = $props();
 </div>
 
 <style>
-	.theme-toggle {
+	/* .theme-toggle {
 		position:fixed;
 		font-size: 1rem;
 	}
@@ -1976,5 +1976,5 @@ let { children } = $props();
 		footer {
 			padding: 12px 0;
 		}
-	}
+	} */
 </style>
