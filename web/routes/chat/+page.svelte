@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { syncGroupIndicator } from '$lib/chat/group';
+import { handleSubmit } from '$lib/chat/helpers';
 import { deEmojify } from '$lib/emoji';
 import chatModule from '$lib/legacy/chat';
 import chatRenderer from '$lib/legacy/chatRenderer';
@@ -267,44 +268,6 @@ onMount(() => {
   });
   // Modify form submit to handle special modes
   const chatForm = document.getElementById('chat-form');
-  const originalSubmit = chatModule.handleChatSubmit;
-  let _submitting = false;
-
-  function handleSubmit(e) {
-    if (e) e.preventDefault();
-    // Debounce: prevent double-submit while a request is being initiated
-    if (_submitting) return;
-    _submitting = true;
-    // Release after a short delay (stream start sets its own isStreaming guard)
-    setTimeout(() => {
-      _submitting = false;
-    }, 300);
-
-    // Compare mode: route submit to compare handler (same message to all panes)
-    if (compareModule && compareModule.isActive()) {
-      return compareModule.handleCompareSubmit(e);
-    }
-
-    // Group chat: route to group module
-    if (groupModule && groupModule.isActive()) {
-      console.log('[group] Submit intercepted');
-      const msgInput = document.getElementById('message');
-      const msg = msgInput ? msgInput.value.trim() : '';
-      if (!msg) {
-        console.log('[group] Empty message, skipping');
-        return;
-      }
-      console.log('[group] Sending:', msg);
-      chatRenderer.hideWelcomeScreen();
-      chatRenderer.addMessage('user', msg);
-      msgInput.value = '';
-      groupModule.sendMessage(msg);
-      return;
-    }
-
-    return originalSubmit.call(chatModule, e);
-  }
-
   chatForm.onsubmit = handleSubmit;
 });
 </script>
