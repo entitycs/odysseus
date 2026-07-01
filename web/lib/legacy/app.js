@@ -33,7 +33,11 @@ import '$lib/legacy/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import '$lib/legacy/tileManager.js';
 import { syncGroupIndicator } from '$lib/chat/group';
-import { serializeChatTranscript, startFreshChat } from '$lib/chat/helpers';
+import {
+  handleSubmit,
+  serializeChatTranscript,
+  startFreshChat,
+} from '$lib/chat/helpers';
 import { applyTextEmojis, deEmojify } from '$lib/emoji';
 // IMPORTANT: import cookbook.js with NO ?v= query — the same plain specifier
 // every other importer (cookbook-hwfit.js / cookbook-diagnosis.js) uses. A query
@@ -4580,47 +4584,50 @@ function startOdysseusApp() {
       if (searchChatModule) searchChatModule.openSearch();
     });
   }
-  // Modify form submit to handle special modes
-  const chatForm = document.getElementById('chat-form');
-  const originalSubmit = chatModule.handleChatSubmit;
-  let _submitting = false;
+  /** moved to +.svelte onMount */
+  // // Modify form submit to handle special modes
+  // const chatForm = document.getElementById('chat-form');
 
-  function handleSubmit(e) {
-    if (e) e.preventDefault();
-    // Debounce: prevent double-submit while a request is being initiated
-    if (_submitting) return;
-    _submitting = true;
-    // Release after a short delay (stream start sets its own isStreaming guard)
-    setTimeout(() => {
-      _submitting = false;
-    }, 300);
+  /** moved to chat.helpers */
+  // const originalSubmit = chatModule.handleChatSubmit;
+  // let _submitting = false;
 
-    // Compare mode: route submit to compare handler (same message to all panes)
-    if (compareModule && compareModule.isActive()) {
-      return compareModule.handleCompareSubmit(e);
-    }
+  // function handleSubmit(e) {
+  //   if (e) e.preventDefault();
+  //   // Debounce: prevent double-submit while a request is being initiated
+  //   if (_submitting) return;
+  //   _submitting = true;
+  //   // Release after a short delay (stream start sets its own isStreaming guard)
+  //   setTimeout(() => {
+  //     _submitting = false;
+  //   }, 300);
 
-    // Group chat: route to group module
-    if (groupModule && groupModule.isActive()) {
-      console.log('[group] Submit intercepted');
-      const msgInput = document.getElementById('message');
-      const msg = msgInput ? msgInput.value.trim() : '';
-      if (!msg) {
-        console.log('[group] Empty message, skipping');
-        return;
-      }
-      console.log('[group] Sending:', msg);
-      chatRenderer.hideWelcomeScreen();
-      chatRenderer.addMessage('user', msg);
-      msgInput.value = '';
-      groupModule.sendMessage(msg);
-      return;
-    }
+  //   // Compare mode: route submit to compare handler (same message to all panes)
+  //   if (compareModule && compareModule.isActive()) {
+  //     return compareModule.handleCompareSubmit(e);
+  //   }
 
-    return originalSubmit.call(chatModule, e);
-  }
+  //   // Group chat: route to group module
+  //   if (groupModule && groupModule.isActive()) {
+  //     console.log('[group] Submit intercepted');
+  //     const msgInput = document.getElementById('message');
+  //     const msg = msgInput ? msgInput.value.trim() : '';
+  //     if (!msg) {
+  //       console.log('[group] Empty message, skipping');
+  //       return;
+  //     }
+  //     console.log('[group] Sending:', msg);
+  //     chatRenderer.hideWelcomeScreen();
+  //     chatRenderer.addMessage('user', msg);
+  //     msgInput.value = '';
+  //     groupModule.sendMessage(msg);
+  //     return;
+  //   }
 
-  chatForm.onsubmit = handleSubmit;
+  //   return originalSubmit.call(chatModule, e);
+  // }
+  /** moved to +.svelte */
+  // chatForm.onsubmit = handleSubmit;
 
   // ── Dual-purpose send/mic button ──
   const sendBtn = document.querySelector('.send-btn');
