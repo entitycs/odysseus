@@ -1842,23 +1842,6 @@ body.bg-pattern-sparkles {
                   margin-right 160ms cubic-bezier(0.22, 0.61, 0.36, 1);
     }
     .chat-meta { font-size:12px; color:color-mix(in srgb, var(--fg) 60%, transparent); margin-bottom:6px; }
-    .chat-history {
-      display:flex;
-      flex-direction:column;
-      flex:1;
-      overflow-y:auto;
-      overflow-x:hidden;
-      overscroll-behavior-y: none;
-      margin-bottom:8px;
-      white-space:normal;
-      min-height:0;
-      /* --chat-max: 800px;
-      padding-left: max(0px, calc((100% - var(--chat-max)) / 2));
-      padding-right: max(12px, calc((100% - var(--chat-max)) / 2 + 12px)); */
-    }
-    .chat-history > * {
-      flex: 0 0 auto;
-    }
     /* Sortable Cookbook column headers had no visual cue, so users couldn't tell
        a header was clickable (the Newest sort on the Model column was invisible).
        Show a pointer + hover highlight, and underline the active sort column. */
@@ -2045,8 +2028,8 @@ body.bg-pattern-sparkles {
       display: flex;
       flex-direction: column;
       width: fit-content;
-      max-width: 85%;
-      min-width: 80px;
+      /* max-width: 85%;
+      min-width: 80px; */
       border-radius: 12px;
       padding: 10px 12px;
       line-height: 1.4;
@@ -2064,8 +2047,8 @@ body.bg-pattern-sparkles {
       border-radius: 18px 18px 0 18px;
       align-self: flex-end;
       width: fit-content;
-      max-width: 85%;
-      min-width: 80px;
+      /* max-width: 85%;
+      min-width: 80px; */
       word-wrap: break-word;
       overflow-wrap: break-word;
       overflow: hidden;
@@ -2114,7 +2097,7 @@ body.bg-pattern-sparkles {
       background: color-mix(in srgb, var(--fg) 40%, transparent);
     }
     .msg .body {
-      /* width: 100%; */
+      width: 100%;
       white-space: normal;
       word-break: break-word;
       overflow-wrap: anywhere;
@@ -2122,7 +2105,7 @@ body.bg-pattern-sparkles {
       font-size: 0.95em;
       margin: 0;
       overflow: hidden;
-      /* max-width: 100%; */
+      max-width: 100%;
     }
     .msg .body > * {
       margin-top: 8px;
@@ -4278,7 +4261,7 @@ body.bg-pattern-sparkles {
     }
     @media (max-width:768px){
       .box { max-height:none; }
-      .chat-container { padding:10px; flex:1; margin-top:0; padding-top:42px; min-height:0; }
+      /* .chat-container { padding:10px; flex:1; margin-top:0; padding-top:42px; min-height:0; } */
       .scroll-nav-btn { width:44px; height:44px; font-size:14px; margin-bottom:0; }
       .send-btn { width:48px; height:48px !important; border-radius:12px; }
       .send-btn svg { width:22px; height:22px; }
@@ -4287,11 +4270,11 @@ body.bg-pattern-sparkles {
       .drag-handle, .item-drag-handle, .folder-drag-handle { display:none !important; }
       /* Sidebar overlays chat on mobile */
       .sidebar {
-        position: fixed !important;
+        position: relative !important;
         top: 0; bottom: 0; left: 0;
         z-index: 400;
-        width: 80% !important;
-        max-width: 340px;
+        /* width: 80% !important;
+        max-width: 340px; */
         box-shadow: 4px 0 20px rgba(0,0,0,0.5);
         transition: transform 0.25s ease, opacity 0.25s ease !important;
         opacity: 1 !important;
@@ -4318,7 +4301,7 @@ body.bg-pattern-sparkles {
       }
       /* Backdrop behind sidebar */
       #sidebar-backdrop {
-        position: fixed;
+        /* position: fixed; */
         inset: 0;
         z-index: 390;
         background: rgba(0,0,0,0.4);
@@ -7927,8 +7910,6 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       .modal, .toast, .overflow-wrapper, .mode-toggle, .incognito-btn,
       button, .dropdown, .session-dropdown,
       .agent-tool-spinner, .agent-thread-node.running { display: none !important; }
-      main.chat-container { width: 100% !important; margin: 0 !important; padding: 0 !important; max-height: none !important; overflow: visible !important; }
-      #chat-history { max-height: none !important; overflow: visible !important; height: auto !important; padding: 0 !important; }
       .msg { break-inside: avoid; page-break-inside: avoid; border: none !important; box-shadow: none !important; }
       .msg-ai { background: #f5f5f5 !important; color: #000 !important; }
       .msg-user { background: #e8e8e8 !important; color: #000 !important; }
@@ -7939,7 +7920,6 @@ pre { background: var(--code-bg, var(--hl-bg, #282c34)) !important; }
       details[open] summary ~ * { display: block !important; }
       details > summary { list-style: none; }
       details > summary::before { content: "" !important; }
-      #chat-history::before { content: attr(data-print-title); display: block; font-size: 1.3em; font-weight: bold; margin-bottom: 1em; color: #000; }
       a { color: #000 !important; text-decoration: underline; }
     }
 
@@ -39694,14 +39674,4 @@ body.theme-frosted .modal {
 }
 .log-line-default {
   color: var(--fg, #9cdef2);
-}
-
-/* The model-comparison grid hard-codes 2-4 equal columns with no phone
-   breakpoint that stacks them, so at 390px two models render ~178px columns and
-   four render ~88px columns. Each column is a full scrolling chat (code blocks,
-   tool output, vote footer), so the text is unreadably over-wrapped and clipped.
-   On phones, stack the panes into a single scrollable column instead. */
-@media (max-width: 768px) {
-  .compare-grid[data-cols] { grid-template-columns: 1fr !important; overflow-y: auto; }
-  .compare-pane { min-height: 60dvh; }
 }

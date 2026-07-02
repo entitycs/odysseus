@@ -3,6 +3,7 @@
  * Follows the session list pattern: list items, click to open as document, archive, etc.
  */
 
+import { replaceState } from '$app/navigation';
 import { buildReplyAllCc } from '$lib/legacy/emailLibrary/replyRecipients.js';
 import {
   closeEmailLibrary,
@@ -283,11 +284,12 @@ function _maybeOpenFromHash() {
   }
   // Clear the hash so reloads don't reopen
   try {
-    history.replaceState(
-      null,
-      '',
-      window.location.pathname + window.location.search,
-    );
+    replaceState('', {});
+    // history.replaceState(
+    //   null,
+    //   '',
+    //   window.location.pathname + window.location.search,
+    // );
   } catch (_) {}
   // ok, but remember to use sveltekit if you get odd behavior + console warnings later on
 }

@@ -1,6 +1,7 @@
 // static/js/settings.js — Settings panel module (ES6)
 // User-facing preferences: AI models, search, appearance
 
+import { replaceState } from '$app/navigation';
 import { bindMenuDismiss } from '$lib/legacy/escMenuStack.js';
 import { clearDockSide } from '$lib/legacy/modalSnap.js';
 import { sortModelIds } from '$lib/legacy/modelSort.js';
@@ -28,7 +29,8 @@ export function init() {
   if (!sp.has('email_oauth_success') && !sp.has('email_oauth_error')) return;
   // Strip params from URL without a page reload.
   const clean = window.location.pathname + window.location.hash;
-  window.history.replaceState(null, '', clean); // ok (ok to wipe sveltekit state if we ever get here)
+  replaceState('', {});
+  // window.history.replaceState(null, '', clean); // ok (ok to wipe sveltekit state if we ever get here)
   const success = sp.has('email_oauth_success');
   const errMsg = sp.get('email_oauth_error') || '';
   // Open settings → integrations after the app has initialised.

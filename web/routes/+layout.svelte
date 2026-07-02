@@ -88,7 +88,6 @@ let { children } = $props();
 <div class="app">
 	<Header />
 	<div class="wrapper">
-
 		<!-- From index.html -->
 
 		<!-- Memory Management Modal -->
@@ -783,15 +782,7 @@ let { children } = $props();
 			</div>
 			</div>
 		</nav>
-
-		<main class="chat-container welcome-active" id="chat-container" aria-label="Chat area" aria-busy="false">
-			<!-- Persistent page heading for assistive tech. Visually hidden so it
-				never affects layout, but always present inside the main landmark
-				(the sidebar that shows the visible brand is hidden off-canvas on
-				mobile) so the page always exposes a single level-1 heading. -->
-			<h1 class="a11y-visually-hidden">Odysseus</h1>
-			{@render children()}
-		</main>
+		{@render children()}
 		<button id="scroll-bottom-btn" class="scroll-nav-btn" title="Scroll to bottom">▼</button>
 
 		<!-- Rename Session Modal -->
@@ -1941,7 +1932,7 @@ let { children } = $props();
 </div>
 
 <style>
-	/* .theme-toggle {
+	.theme-toggle {
 		position:fixed;
 		font-size: 1rem;
 	}
@@ -1972,9 +1963,23 @@ let { children } = $props();
 		font-weight: bold;
 	}
 
+ @media (max-width:768px){
+      .box { max-height:none; }
+      .chat-container { padding:10px; flex:1; margin-top:0; padding-top:42px; min-height:0; display:flex }
+      .scroll-nav-btn { width:44px; height:44px; font-size:14px; margin-bottom:0; }
+      .send-btn { width:48px; height:48px !important; border-radius:12px; }
+      .send-btn svg { width:22px; height:22px; }
+      #compare-toggle-btn { display:none !important; }
+      .section[draggable] { -webkit-user-drag:none; }
+      .drag-handle, .item-drag-handle, .folder-drag-handle { display:none !important; }
+      /* Sidebar overlays chat on mobile */
+      .sidebar {
+        position: relative !important;
+	  }
+	}
 	@media (min-width: 480px) {
 		footer {
 			padding: 12px 0;
 		}
-	} */
+	}
 </style>
