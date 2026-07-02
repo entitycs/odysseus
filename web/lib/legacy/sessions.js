@@ -1,7 +1,7 @@
 // Session Management Functions
 // This module handles all session-related operations
 
-import { replaceState } from '$app/navigation';
+import { pushState, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import chatRenderer from '$lib/legacy/chatRenderer.js';
 import markdownModule from '$lib/legacy/markdown.js';
@@ -348,7 +348,7 @@ function _deselectCurrentSession(sid) {
   uiModule.el('chat-history').innerHTML = '';
   uiModule.el('current-meta').textContent = 'Odysseus Chat';
   Storage.remove('lastSessionId');
-  replaceState(window.location.pathname, { session: true });
+  pushState(window.location.pathname, { session: true });
   // history.replaceState(null, '', window.location.pathname);// no (use sveltekit)
   if (window.chatModule && window.chatModule.showWelcomeScreen) {
     window.chatModule.showWelcomeScreen();
@@ -2076,7 +2076,7 @@ export async function selectSession(
       Storage.set('lastSessionId', id);
       // Update URL hash without triggering hashchange handler
       if (window.location.hash !== '#' + id) {
-        replaceState('#' + id, { session: true });
+        pushState('#' + id, { lastSessionId: id });
         // history.replaceState(null, '', '#' + id);// no (use sveltekit)
       }
     }
@@ -2426,7 +2426,7 @@ export function createDirectChat(url, modelId, endpointId) {
   _skipAutoSelect = true;
   currentSessionId = null;
   Storage.remove('lastSessionId');
-  replaceState('', { session: true });
+  pushState('', { lastSessionId: null });
   // history.replaceState(null, '', window.location.pathname);// no... (use sveltekit)
   document
     .querySelectorAll('.list-item.active-session, .session-item.active')
@@ -2532,7 +2532,7 @@ export async function materializePendingSession() {
   }
   currentSessionId = payload.id;
   Storage.set('lastSessionId', payload.id);
-  replaceState('#' + payload.id, { session: true });
+  pushState('#' + payload.id, { lastSessionId: payload.id });
   // history.replaceState(null, '', '#' + payload.id);// no. (use sveltekit)
 
   // Reload the sidebar in the background. Awaiting this used to block the first
@@ -2580,14 +2580,14 @@ export function setCurrentSessionId(id) {
   currentSessionId = id;
   if (!id) {
     Storage.remove('lastSessionId');
-    replaceState('', { session: true });
+    pushState('', { lastSessionId: null });
     // history.replaceState(null, '', window.location.pathname); no. (use sveltekit)
     document
       .querySelectorAll('.list-item.active-session, .session-item.active')
       .forEach((el) => {
         el.classList.remove('active-session', 'active');
       });
-  }
+  } else pushState('#' + id, { lastSessionId: id });
 }
 
 // Session list keyboard navigation: arrows to move, Delete to delete
