@@ -4,13 +4,8 @@ import { syncGroupIndicator } from '$lib/chat/group';
 import { handleSubmit } from '$lib/chat/helpers';
 import { deEmojify } from '$lib/emoji';
 import chatModule from '$lib/legacy/chat';
-import chatRenderer from '$lib/legacy/chatRenderer';
-import compareModule from '$lib/legacy/compare';
-import documentModule from '$lib/legacy/document';
 import fileHandlerModule from '$lib/legacy/fileHandler';
 import groupModule from '$lib/legacy/group';
-import presetsModule from '$lib/legacy/presets';
-import * as researchPanelModule from '$lib/legacy/research/panel.js';
 import sessionModule from '$lib/legacy/sessions';
 import uiModule from '$lib/legacy/ui';
 import { updatePlusDot } from '$lib/overflow';
@@ -341,7 +336,8 @@ onMount(() => {
          </span>
       </div>
    </div>
-   <div id="chat-history" class="chat-history" role="log" aria-live="polite"></div>
+
+   <div id="chat-history" class="chat-history block" role="log" aria-live="polite"></div>
    <!-- Attachments strip -->
    <div id="attach-strip" class="attach-strip"></div>
    <!-- Hidden elements for form logic -->
@@ -695,7 +691,9 @@ onMount(() => {
          </div>
       </div>
    </div>
+
 </main>
+
 <style>
     .chat-history {
       display:flex;

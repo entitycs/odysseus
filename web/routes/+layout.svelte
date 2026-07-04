@@ -2,7 +2,6 @@
 <script lang="ts">
 import Header from './Header.svelte';
 import './layout.css';
-import { onMount } from 'svelte';
 
 // In same order as original <script> tags:
 
@@ -604,6 +603,7 @@ let { children } = $props();
 				</div>
 				<div id="session-list" role="listbox"></div>
 			</div>
+
 			<!-- Hidden dropdown for session actions -->
 			<div id="session-actions-dropdown" class="dropdown hidden">
 				<div class="dropdown-item" id="rename-session-option">

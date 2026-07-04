@@ -11,7 +11,7 @@
 
 import uiModule from '$lib/legacy/ui.js';
 
-let API_BASE;
+let API_BASE = '';
 let _notifFired;
 export function init() {
   API_BASE = window.location.origin;
