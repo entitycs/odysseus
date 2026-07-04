@@ -91,6 +91,7 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 # Build SvelteKit (Track B)
 RUN pnpm install --frozen-lockfile
+RUN pnpm build:widgets
 RUN pnpm build:app
 
 EXPOSE 7000

@@ -1,4 +1,5 @@
 import adapter from '@sveltejs/adapter-static';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 const config = {
   compilerOptions: {
@@ -19,6 +20,12 @@ const config = {
       strict: true,
     }),
   },
+  preprocess: [
+    vitePreprocess({
+      style: false, // does not stop stripping from precompiled
+      script: false, // default value
+    }),
+  ],
 };
 
 export default config;
