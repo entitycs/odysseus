@@ -5,6 +5,8 @@
  */
 // ES6 module — IIFE removed
 
+import { goto } from '$app/navigation';
+import { page } from '$app/stores';
 import chatRenderer from '$lib/legacy/chatRenderer.js';
 import chatStream from '$lib/legacy/chatStream.js';
 import codeRunnerModule from '$lib/legacy/codeRunner.js';
@@ -4216,7 +4218,9 @@ var _insertStreamDoneToast = chatStream.insertStreamDoneToast;
 export async function resumeStream(sessionId) {
   if (!sessionId) return false;
   if (hasActiveStream(sessionId)) return false;
-
+  // if ($page.url.pathname !== '/chat') {
+  //   goto('/chat');
+  // }
   let res;
   try {
     res = await fetch(`${API_BASE}/api/chat/resume/${sessionId}`);

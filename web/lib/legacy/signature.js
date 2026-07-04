@@ -12,7 +12,7 @@
 // derived from pointer velocity (slower → thicker), which gives signatures
 // their characteristic ink-bleed feel.
 
-let API_BASE;
+let API_BASE = '';
 
 export function init() {
   API_BASE = window.location.origin;

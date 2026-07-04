@@ -10,7 +10,7 @@ import uiModule from '$lib/legacy/ui.js';
 import { ordinalSuffix } from '$lib/legacy/util/ordinal.js';
 import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
 
-let API_BASE;
+let API_BASE = '';
 let _open = false;
 let _tasksCascadeNext = false; // play the domino-in entrance on the next render
 let _tasks = [];

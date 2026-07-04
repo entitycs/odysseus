@@ -16,7 +16,7 @@ import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
 /**
  * @type {string}
  */
-let API_BASE;
+let API_BASE = '';
 let _open = false;
 let _galleryResizeHandler = null;
 

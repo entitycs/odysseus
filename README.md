@@ -30,6 +30,12 @@
 
 ## Quick Start
 
+### sveltekit version notes
+> `svelte-dev` is the default. No fast-tracking `main`, but `svelte` exists.
+
+
+
+
 > `dev` is the default branch and gets the newest changes first. Use [`main`](https://github.com/pewdiepie-archdaemon/odysseus/tree/main) if you want the more curated branch.
 
 ```bash
