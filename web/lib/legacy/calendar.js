@@ -33,7 +33,7 @@ import { topPortalZ } from '$lib/legacy/toolWindowZOrder.js';
 import uiModule from '$lib/legacy/ui.js';
 import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
 
-let API_BASE;
+let API_BASE = '';
 let _filtersCollapsed;
 // Week-start preference: 'mon' (default, Mon=first col) or 'sun' (Sun=first col).
 let _weekStartSun;

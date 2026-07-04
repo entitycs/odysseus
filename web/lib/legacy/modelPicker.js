@@ -14,7 +14,7 @@ import uiModule from '$lib/legacy/ui.js';
 /**
  * @type {string}
  */
-let API_BASE;
+let API_BASE = '';
 
 export function init() {
   if (!API_BASE) {
