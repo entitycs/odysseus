@@ -875,7 +875,7 @@ app.include_router(setup_companion_routes())
 async def serve_index(request: Request):
     logger.info("GET / hit — starting route resolution")
 
-    is_sveltekit_route = True
+    is_sveltekit_route = not request.url.path.startswith('/login')
     logger.info(f"is_sveltekit_route = {is_sveltekit_route}")
 
     if is_sveltekit_route:

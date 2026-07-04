@@ -1,6 +1,8 @@
 // static/js/chatRenderer.js
 // Extracted from chat.js — message rendering, sources, images, metrics
 
+import { goto } from '$app/navigation';
+import { page } from '$app/stores';
 import { bindMenuDismiss } from '$lib/legacy/escMenuStack.js';
 import markdownModule, { svgifyEmoji } from '$lib/legacy/markdown.js';
 import {
@@ -111,7 +113,10 @@ export function init() {
     const [, kind, id] = m;
     if (kind === 'session') {
       import('$lib/legacy/sessions.js').then((mod) => {
-        // TODO IMPORT
+        // TODO - navigate to /chat if not already there
+        // if ($page.url.pathname !== '/chat') {
+        //   goto('/chat');
+        // }
         const fn =
           mod.selectSession || (mod.default && mod.default.selectSession);
         if (fn) fn(id);
@@ -2521,6 +2526,7 @@ export function renderAskUserCard(payload, options) {
       descriptionText.innerHTML = emojiText(description);
       row.appendChild(descriptionText);
     }
+
     if (!multi) {
       row.type = 'button';
       row.addEventListener('click', () => send(label));
