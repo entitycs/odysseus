@@ -109,6 +109,11 @@ import spinnerModule from '$lib/legacy/spinner.js';
 import uiModule from '$lib/legacy/ui.js';
 
 let API_BASE = '';
+let _historyPanel;
+let _jumpToHistory;
+let _toggleHistoryPanel;
+let _refreshHistoryPanelIfOpen;
+// ── Layer panel rendering ──
 
 export function init(){
   API_BASE = window.location.origin;
@@ -1587,10 +1592,10 @@ function redo() {
 // History panel — full implementation in editor/history-panel.js.
 // Wrappers preserve the legacy names that the topbar History button
 // + undo/redo paths already reference.
-// const _historyPanel = createHistoryPanel({ undo, redo });
-// const _jumpToHistory = _historyPanel.jumpToHistory;
-// const _toggleHistoryPanel = _historyPanel.toggleHistoryPanel;
-// const _refreshHistoryPanelIfOpen = _historyPanel.refreshHistoryPanelIfOpen;
+_historyPanel = createHistoryPanel({ undo, redo });
+_jumpToHistory = _historyPanel.jumpToHistory;
+_toggleHistoryPanel = _historyPanel.toggleHistoryPanel;
+_refreshHistoryPanelIfOpen = _historyPanel.refreshHistoryPanelIfOpen;
 
 // _relTime lives in editor/layer-helpers.js.
 

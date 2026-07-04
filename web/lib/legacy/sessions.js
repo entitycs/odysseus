@@ -1,7 +1,7 @@
 // Session Management Functions
 // This module handles all session-related operations
 
-import { pushState, replaceState } from '$app/navigation';
+import { goto, pushState, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import chatRenderer from '$lib/legacy/chatRenderer.js';
 import markdownModule from '$lib/legacy/markdown.js';
@@ -2024,12 +2024,13 @@ export async function loadSessions() {
     renderSessionList();
 
     const sessionsSection = uiModule.el('sessions-section');
-    if (sessions_glob.length === 0) {
-      sessionsSection.classList.add('hidden');
-    } else {
-      sessionsSection.classList.remove('hidden');
+    if (sessionsSection != undefined) {
+      if (sessions_glob.length === 0) {
+        sessionsSection.classList.add('hidden');
+      } else {
+        sessionsSection.classList.remove('hidden');
+      }
     }
-
     const activeSessions = sessions_glob.filter((s) => !s.archived);
     // "Transient" sessions = the singleton Assistant chat + any task-output
     // session. Treat them as not-restorable so coming back to the app lands
@@ -2162,6 +2163,13 @@ export async function selectSession(
     window.compareModule.deactivate(true);
     return; // deactivate does a page reload
   }
+  // // Navigate to chat page if not already there
+  // // selectSession is called somewhere before DOM so we must check
+  // if ($page !== undefined) {
+  //   if ($page.url.pathname !== '/chat') {
+  // goto('/chat');
+  //   }
+  // }
   try {
     const navToken = ++_sessionNavToken;
     const prevSessionId = currentSessionId;
