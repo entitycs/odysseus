@@ -117,7 +117,7 @@ import modalManager from '$lib/legacy/modalManager.js'; //
 import spinnerModule from '$lib/legacy/spinner.js'; //
 import uiModule from '$lib/legacy/ui.js'; //
 
-let API_BASE;
+let API_BASE = '';
 let _historyPanel;
 let _jumpToHistory;
 let _toggleHistoryPanel;

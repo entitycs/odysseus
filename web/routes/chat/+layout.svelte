@@ -1,9 +1,97 @@
-
 <script lang="ts">
-let { children } = $props();
-</script>
+import { onMount } from 'svelte';
 
+// In same order as original <script> tags:
+
+import { page } from '$app/stores';
+import UserMsgScrollMarker from '$lib/components/UserMsgScrollMarker.svelte';
+import * as admin from '$lib/legacy/admin.js';
+import * as app from '$lib/legacy/app.js';
+import * as assistant from '$lib/legacy/assistant.js';
+import * as calendar from '$lib/legacy/calendar.js';
+import * as censor from '$lib/legacy/censor.js';
+import * as chat from '$lib/legacy/chat.js';
+import * as chatRenderer from '$lib/legacy/chatRenderer.js';
+import * as chatStream from '$lib/legacy/chatStream.js';
+import * as codeRunner from '$lib/legacy/codeRunner.js';
+import * as compare from '$lib/legacy/compare/index.js';
+import * as cookbook from '$lib/legacy/cookbook.js';
+import * as cookbookSchedule from '$lib/legacy/cookbookSchedule.js';
+import * as documentModule from '$lib/legacy/document.js';
+import * as dragSort from '$lib/legacy/dragSort.js';
+import * as fileHandler from '$lib/legacy/fileHandler.js';
+import * as gallery from '$lib/legacy/gallery.js';
+import * as initModule from '$lib/legacy/init.js';
+import * as markdown from '$lib/legacy/markdown.js';
+import * as memory from '$lib/legacy/memory.js';
+import * as models from '$lib/legacy/models.js';
+import * as presets from '$lib/legacy/presets.js';
+import * as rag from '$lib/legacy/rag.js';
+import * as search from '$lib/legacy/search.js';
+import * as searchChat from '$lib/legacy/search-chat.js';
+import * as sessions from '$lib/legacy/sessions.js';
+import * as settings from '$lib/legacy/settings.js';
+import * as skills from '$lib/legacy/skills.js';
+import * as spinner from '$lib/legacy/spinner.js';
+import * as storage from '$lib/legacy/storage.js';
+import * as theme from '$lib/legacy/theme.js';
+import * as tourAutoPlay from '$lib/legacy/tourAutoplay.js';
+import * as tourHints from '$lib/legacy/tourHints.js';
+import * as ttsAi from '$lib/legacy/tts-ai.js';
+import * as ui from '$lib/legacy/ui.js';
+import * as voiceRecorder from '$lib/legacy/voiceRecorder.js';
+
+let { children } = $props();
+
+onMount(async () => {
+  // Call init() in the same order as the original script tags.
+  // If a module has no init(), this call is harmless.
+
+  storage.init?.();
+  ui.init?.();
+  markdown.init?.();
+  dragSort.init?.();
+  sessions.init?.();
+  memory.init?.();
+  skills.init?.();
+  tourAutoPlay.init?.();
+  tourHints.init?.();
+  fileHandler.init?.();
+  voiceRecorder.initLegacy?.();
+  models.init?.();
+  rag.init?.();
+  presets.init?.();
+  search.init?.();
+  spinner.init?.();
+  ttsAi.init?.();
+  documentModule.init?.();
+  gallery.init?.();
+  await calendar.init?.();
+  chatRenderer.init?.();
+  codeRunner.init?.();
+  chatStream.init?.();
+  chat.init?.();
+  cookbook.init?.();
+  cookbookSchedule.init?.();
+  searchChat.init?.();
+  compare.init?.();
+  theme.init?.();
+  censor.initLegacy?.();
+  settings.init?.();
+  admin.init?.();
+  assistant.init?.();
+  app.init?.();
+  await initModule.init?.();
+  app.startOdysseusApp();
+});
+</script>
 {@render children()}
+<div>
+   <div id="scroll-marker" data-svelte="scroll-marker" hidden>
+   </div>
+   <UserMsgScrollMarker />
+   <!-- <script type="module" src="/static/svelte/scroll-marker.js"></script> -->
+</div>
 <div id="welcome-screen">
    <div class="welcome-name">
       <svg class="welcome-boat" viewBox="0 0 32 32">
