@@ -2,6 +2,7 @@
 import { onMount } from 'svelte';
 import { syncGroupIndicator } from '$lib/chat/group';
 import { handleSubmit } from '$lib/chat/helpers';
+import ScrollChatBottom from '$lib/components/ScrollChatBottom.svelte';
 import { deEmojify } from '$lib/emoji';
 import chatModule from '$lib/legacy/chat';
 import fileHandlerModule from '$lib/legacy/fileHandler';
@@ -693,7 +694,12 @@ onMount(() => {
    </div>
 
 </main>
-
+		<!-- <button id="scroll-bottom-btn" class="scroll-nav-btn" title="Scroll to bottom">▼</button> -->
+		<!-- Scroll-to-bottom button — logic owned by ScrollChatBottom.svelte.
+		     The inline scroll script in web/app.html (lines 288-347) can be
+		     removed once this component is confirmed working. -->
+		<ScrollChatBottom />
+		<!-- Rename Session Modal -->
 <style>
     .chat-history {
       display:flex;

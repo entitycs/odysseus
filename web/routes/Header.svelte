@@ -2,6 +2,7 @@
 <script lang="ts">
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
+import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 import github from '$lib/images/github.svg';
 import logo from '$lib/images/svelte-logo.svg';
 </script>
@@ -19,7 +20,7 @@ import logo from '$lib/images/svelte-logo.svg';
 		</svg>
 		<ul>
 			<li aria-current={page.url.pathname === '/chat' ? 'page' : undefined}>
-				<a href={resolve('/chat')}>Home</a>
+				<a href={resolve('/chat')}>Chat</a>
 			</li>
 			<li aria-current={page.url.pathname === '/about' ? 'page' : undefined}>
 				<a href={resolve('/about')}>About</a>
@@ -30,8 +31,9 @@ import logo from '$lib/images/svelte-logo.svg';
 				static/svelte/. Each is a self-contained ES module covered by the existing
 				script-src 'self' CSP — no nonce needed. Add a widget: create a
 				web/entries/<name>.ts + a [data-svelte="<name>"] mount point below. -->
-				<div data-svelte="theme-toggle" hidden class="theme-toggle"></div>
-				<script type="module" src="static/svelte/theme-toggle.js"></script>
+				<div data-svelte="theme-toggle" hidden class="theme-toggle">
+					<ThemeToggle />
+				</div>
 			</li>
 		</ul>
 		<svg viewBox="0 0 2 3" aria-hidden="true">
@@ -135,9 +137,13 @@ import logo from '$lib/images/svelte-logo.svg';
 	}
 
 	.theme-toggle {
-
+		height: 100%;
+		width: 8rem;
 	}
-	.theme-toggle button {
-		font-size:5rem;
+	.theme-toggle :global {
+		button {
+			height:100%;
+			width: 8rem;
 	}
+}
 </style>

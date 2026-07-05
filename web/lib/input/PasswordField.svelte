@@ -54,8 +54,61 @@ $effect(() => {
     onclick={(e: Event) =>  toggle(e)}
     tabindex="-1"
   >
-    {@html showState
+    {@html showState.showing
       ? eyeOpen
       : eyeClosed}
   </button>
 </div>
+<style>
+.pw-wrapper {
+    position: relative;
+    margin-bottom: 1rem;
+}
+.pw-wrapper input:not(.remember-check) {
+    padding-right: 2.5rem;
+    margin-bottom: 0;
+}
+input:not(.remember-check) {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg);
+    font-size: 0.95rem;
+    font-family: 'Fira Code', monospace;
+}
+.pw-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(calc(-50% + 1px));
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color:
+color-mix(in srgb, var(--fg) 40%, transparent);
+    width: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.pw-wrapper button {
+    height: auto !important;
+    width: auto;
+    padding: calc(0.7rem + 1px) 0.7rem calc(0.7rem - 1px);
+    border: none;
+    border-radius: 6px;
+    /* background: */
+/* color-mix(in srgb, var(--red) 78%, #000); */
+    color: #fff;
+    font-size: 1rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: 'Fira Code', monospace;
+}
+.pw-wrapper button:hover { background: color-mix(in srgb, var(--red) 66%, black); }
+.pw-wrapper button:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>

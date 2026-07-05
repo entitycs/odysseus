@@ -5,6 +5,7 @@
 
 import {
   _addTask,
+  _applyServerSelectColor,
   _buildDownloadCmd,
   _copyText,
   _currentServerValue,
@@ -19,17 +20,12 @@ import {
   _runModelDownload,
   _runPanelCmd,
   _serverByVal,
+  _serverDefaultHtml,
   _serverEntryHtml,
   _serverKey,
   _setLastCacheHost,
   _shellQuote,
-  _MODELDIR_CHECK_ON,
-  _MODELDIR_CHECK_OFF,
-  _serverEntryHtml,
-  _applyServerSelectColor,
-  _serverDefaultHtml,
   _syncServerSelectColors,
-  _copyText,
   // Import cookbook.js WITHOUT a ?v= query — the same plain specifier every other
   // importer uses. A query mismatch loads cookbook.js twice as two separate modules
   // (two _envState objects), which silently sent downloads to the wrong server.

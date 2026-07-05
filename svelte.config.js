@@ -16,7 +16,7 @@ const config = {
     adapter: adapter({
       pages: 'web-build',
       assets: 'web-build',
-      fallback: 'index.html', // issue? - see nonce in app.html
+      fallback: 'index.html', // 'hacky' SPA
       strict: true,
     }),
   },

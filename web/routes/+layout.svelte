@@ -2,83 +2,28 @@
 <script lang="ts">
 import Header from './Header.svelte';
 import './layout.css';
+import { onMount } from 'svelte';
+import { page } from '$app/state';
+import { init as sessionInit } from '$lib/legacy/sessions';
 
-// In same order as original <script> tags:
-
-import * as admin from '$lib/legacy/admin.js';
-import * as app from '$lib/legacy/app.js';
-import * as assistant from '$lib/legacy/assistant.js';
-import * as calendar from '$lib/legacy/calendar.js';
-import * as censor from '$lib/legacy/censor.js';
-import * as chat from '$lib/legacy/chat.js';
-import * as chatRenderer from '$lib/legacy/chatRenderer.js';
-import * as chatStream from '$lib/legacy/chatStream.js';
-import * as codeRunner from '$lib/legacy/codeRunner.js';
-import * as compare from '$lib/legacy/compare/index.js';
-import * as cookbook from '$lib/legacy/cookbook.js';
-import * as cookbookSchedule from '$lib/legacy/cookbookSchedule.js';
-import * as documentModule from '$lib/legacy/document.js';
-import * as dragSort from '$lib/legacy/dragSort.js';
-import * as fileHandler from '$lib/legacy/fileHandler.js';
-import * as gallery from '$lib/legacy/gallery.js';
-import * as initModule from '$lib/legacy/init.js';
-import * as markdown from '$lib/legacy/markdown.js';
-import * as memory from '$lib/legacy/memory.js';
-import * as models from '$lib/legacy/models.js';
-import * as presets from '$lib/legacy/presets.js';
-import * as rag from '$lib/legacy/rag.js';
-import * as search from '$lib/legacy/search.js';
-import * as searchChat from '$lib/legacy/search-chat.js';
-import * as sessions from '$lib/legacy/sessions.js';
-import * as settings from '$lib/legacy/settings.js';
-import * as skills from '$lib/legacy/skills.js';
-import * as spinner from '$lib/legacy/spinner.js';
-import * as storage from '$lib/legacy/storage.js';
-import * as theme from '$lib/legacy/theme.js';
-import * as tourAutoPlay from '$lib/legacy/tourAutoplay.js';
-import * as tourHints from '$lib/legacy/tourHints.js';
-import * as ttsAi from '$lib/legacy/tts-ai.js';
-import * as ui from '$lib/legacy/ui.js';
-import * as voiceRecorder from '$lib/legacy/voiceRecorder.js';
-
-onMount(async () => {
-  // Call init() in the same order as the original script tags.
-  // If a module has no init(), this call is harmless.
-
-  storage.init?.();
-  ui.init?.();
-  markdown.init?.();
-  dragSort.init?.();
-  sessions.init?.();
-  memory.init?.();
-  skills.init?.();
-  tourAutoPlay.init?.();
-  tourHints.init?.();
-  fileHandler.init?.();
-  voiceRecorder.init?.();
-  fileHandler.init?.();
-  models.init?.();
-  rag.init?.();
-  presets.init?.();
-  gallery.init?.();
-  await calendar.init?.();
-  chatRenderer.init?.();
-  codeRunner.init?.();
-  chatStream.init?.();
-  chat.init?.();
-  cookbook.init?.();
-  cookbookSchedule.init?.();
-  searchChat.init?.();
-  compare.init?.();
-  theme.init?.();
-  censor.initLegacy?.();
-  settings.init?.();
-  admin.init?.();
-  assistant.init?.();
-  app.init?.();
-  await initModule.init?.();
-});
 let { children } = $props();
+onMount(() => {
+  // Remove loader immediately on client-side mount
+  const loader = document.getElementById('app-loader');
+  if (loader) {
+    loader.classList.add('fade');
+    setTimeout(() => loader.remove(), 300);
+  }
+
+  // Also remove it after hydration (for full SPA transitions)
+  window.addEventListener('sveltekit:start', () => {
+    const loader2 = document.getElementById('app-loader');
+    if (loader2) {
+      loader2.classList.add('fade');
+      setTimeout(() => loader2.remove(), 300);
+    }
+  });
+});
 </script>
 
 <div class="app">
@@ -502,8 +447,8 @@ let { children } = $props();
 		</div>
 
 		<div id="mobile-backdrop"></div>
+		{#if !(["/login", "/"].includes(page.url.pathname))}
 		<button id="mobile-menu-btn" aria-label="Toggle sidebar">&#x2630;</button>
-
 		<button class="hamburger-btn" id="hamburger-btn" title="Show sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
 		<!-- new session button removed — use + in send button instead -->
 		<div class="icon-rail" id="icon-rail">
@@ -779,10 +724,8 @@ let { children } = $props();
 			</div>
 			</div>
 		</nav>
+		{/if}
 		{@render children()}
-		<button id="scroll-bottom-btn" class="scroll-nav-btn" title="Scroll to bottom">▼</button>
-
-		<!-- Rename Session Modal -->
 		<div id="rename-session-modal" class="modal hidden">
 			<div class="modal-content" role="dialog" aria-label="Rename session" style="width: 400px;">
 			<div class="modal-header">
@@ -834,7 +777,7 @@ let { children } = $props();
 				<div class="settings-sidebar">
 				<!-- Section 1: AI plumbing (Add Models → AI Defaults → Search) -->
 				<button class="settings-nav-item active" data-settings-tab="services">
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1"/><circle cx="6" cy="18" r="1"/></svg>
+					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
 					<span>Add Models</span>
 				</button>
 				<button class="settings-nav-item" data-settings-tab="added-models">
@@ -1299,6 +1242,11 @@ let { children } = $props();
 						<input type="checkbox" checked data-ui-key="chat-meta"><span class="vis-switch"></span>
 					</label>
 					<label class="vis-row">
+						<span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M4 10h8"/></svg></span>
+						<span class="vis-label">Full-width chat <span class="vis-hint">Use the full window width (desktop)</span></span>
+						<input type="checkbox" data-ui-key="chat-fullwidth"><span class="vis-switch"></span>
+					</label>
+					<label class="vis-row">
 						<span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v2m0 14v2m-7-9H3m18 0h-2m-1.5-6.5L16 7m-8-1.5L6.5 7m11 11l-1.5-1.5M8 18l-1.5 1.5"/><circle cx="12" cy="12" r="4"/></svg></span>
 						<span class="vis-label">Welcome Message <span class="vis-hint">Logo &amp; tips on empty chat</span></span>
 						<input type="checkbox" checked data-ui-key="welcome-text"><span class="vis-switch"></span>
@@ -1373,6 +1321,7 @@ let { children } = $props();
 				</div>
 
 				<!-- ═══ THEME TAB ═══ -->
+
 				<!-- ═══ MEMORY TAB ═══ -->
 				<!-- ═══ SHORTCUTS TAB ═══ -->
 				<div data-settings-panel="shortcuts" class="hidden">
@@ -1490,7 +1439,7 @@ let { children } = $props();
 					</div>
 					<div id="set-reminder-webhook-template-row" class="settings-row" style="display:none;align-items:flex-start">
 						<label class="settings-label" style="padding-top:6px">Payload</label>
-						<textarea id="set-reminder-webhook-template" class="settings-select" rows="3" style="font-family:inherit;resize:vertical;flex:1" placeholder={'{"content": "{{title}}: {{message}}"}'}></textarea>
+						<textarea id="set-reminder-webhook-template" class="settings-select" rows="3" style="font-family:inherit;resize:vertical;flex:1" placeholder='{{"content": "{{title}}: {{message}}"}}'></textarea>
 					</div>
 					<div id="set-reminder-channel-hint" style="font-size:11px;opacity:0.6;"></div>
 					<div style="font-size:11px;opacity:0.6;margin-top:4px;">Configure email account, ntfy server, etc. in <a href="#" id="set-reminders-open-integrations" style="color:var(--accent, var(--red));text-decoration:none;font-weight:600;">Integrations</a>.</div>
@@ -1538,6 +1487,16 @@ let { children } = $props();
 					</div>
 				</div>
 				<div class="admin-card">
+					<h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 15v3m-3-3h6M12 3v2m0 16v-2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M3 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/><circle cx="12" cy="12" r="3"/></svg>Model Defaults</h2>
+					<div class="admin-toggle-row">
+					<div>
+						<div class="admin-toggle-label">Share defaults with users</div>
+						<div class="admin-toggle-sub">When on, users without a personal default inherit the global default model (only if those models are allowed for them).</div>
+					</div>
+					<label class="admin-switch"><input type="checkbox" id="adm-shareDefaultsToggle"><span class="admin-slider"></span></label>
+					</div>
+				</div>
+				<div class="admin-card">
 					<h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Users</h2>
 					<div id="adm-userList"><div class="admin-empty">Loading...</div></div>
 				</div>
@@ -1560,7 +1519,7 @@ let { children } = $props();
 
 				<!-- ── Local card ─────────────────────────────────────────── -->
 				<div class="admin-card">
-					<h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Add Local Models <span style="opacity:0.45;font-weight:normal;font-size:0.82em">(Endpoint)</span>
+					<h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Add Local Models <span style="opacity:0.45;font-weight:normal;font-size:0.82em">(Endpoint)</span>
 					<span style="flex:1"></span>
 					<button class="admin-btn-sm" id="adm-epLocalTestBtn" style="font-size:11px;font-weight:normal;display:inline-flex;align-items:center;gap:4px;">
 						<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Test
@@ -1592,7 +1551,7 @@ let { children } = $props();
 							<input id="adm-epLocalUrl" type="text" placeholder="Paste endpoint URL, e.g. http://localhost:11434/v1" style="flex:1;min-width:0;border-top-left-radius:0;border-bottom-left-radius:0;">
 						</div>
 						<button class="admin-btn-add" id="adm-epLocalAddBtn" style="min-width:55px;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:4px;flex-shrink:0;">
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Add
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Add
 						</button>
 						</div>
 						<div class="admin-model-form-row" id="adm-epLocalApiKey-row" style="display:none;">
@@ -1605,7 +1564,7 @@ let { children } = $props();
 
 				<!-- ── API card ───────────────────────────────────────────── -->
 				<div class="admin-card">
-					<h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Add API Models <span style="opacity:0.45;font-weight:normal;font-size:0.82em">(Endpoint)</span>
+					<h2 style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><circle cx="11" cy="12" r="8"/><path d="M19 5v6"/><path d="M16 8h6"/><path d="M7 12h8"/></svg>Add API Models <span style="opacity:0.45;font-weight:normal;font-size:0.82em">(Endpoint)</span>
 					<span style="flex:1"></span>
 					<button class="admin-btn-sm" id="adm-epApiTestBtn" style="font-size:11px;font-weight:normal;display:inline-flex;align-items:center;gap:4px;">
 						<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Test
@@ -1674,7 +1633,7 @@ let { children } = $props();
 							<input id="adm-epApiKey" type="password" placeholder="API key, e.g. sk-proj-AbCdEf…" autocomplete="off" style="flex:1;padding-left:28px;height:32px;box-sizing:border-box;">
 						</div>
 						<button class="admin-btn-add" id="adm-epAddBtn" style="height:32px;min-width:55px;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:4px;flex-shrink:0;box-sizing:border-box;">
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Add
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Add
 						</button>
 						</div>
 						<div id="adm-epApiMsg" class="adm-ep-inline-msg"></div>
@@ -1904,6 +1863,7 @@ let { children } = $props();
 			</div>
 		</div>
 
+
 		<!-- Search overlay (Ctrl+K command palette) -->
 		<div class="search-overlay hidden" id="search-overlay">
 			<div class="search-popup">
@@ -1929,25 +1889,6 @@ let { children } = $props();
 </div>
 
 <style>
-	.theme-toggle {
-		position:fixed;
-		font-size: 1rem;
-	}
-	.theme-toggle button {
-		font-size: 4rem;
-	}
-	.app {
-		display: flex;
-		flex: 1 1;
-		flex-direction: column;
-		min-height: 100vh;
-	}
-
-	.wrapper {
-		overflow-y: auto;
-		display: flex;
-	}
-
 	footer {
 		display: flex;
 		flex-direction: column;
@@ -1959,6 +1900,53 @@ let { children } = $props();
 	footer a {
 		font-weight: bold;
 	}
+
+	#app-loader.fade {
+	opacity: 0;
+	transition: opacity .3s ease;
+	}
+
+	.app {
+		display: flex;
+		flex: 1 1;
+		flex-direction: column;
+		min-height: 100vh;
+	}
+	.theme-toggle {
+		position:fixed;
+		font-size: 1rem;
+	}
+	.theme-toggle button {
+		font-size: 4rem;
+	}
+  #loader-wave::before {
+    content: '▁▂▃';
+    animation: wave 1s steps(9) infinite;
+  }
+
+	.wave {
+	font-family: monospace;
+	animation: wave 1s steps(9) infinite;
+	}
+	.wrapper {
+		display: flex;
+		justify-content: center;
+		margin: 2rem 0;
+		overflow-y: auto;
+	}
+
+	@keyframes wave {
+	0%   { content: '▁▂▃'; }
+	11%  { content: '▂▃▄'; }
+	22%  { content: '▃▄▅'; }
+	33%  { content: '▄▅▆'; }
+	44%  { content: '▅▆▅'; }
+	55%  { content: '▆▅▄'; }
+	66%  { content: '▅▄▃'; }
+	77%  { content: '▄▃▂'; }
+	88%  { content: '▃▂▁'; }
+	}
+
 
  @media (max-width:768px){
       .box { max-height:none; }
