@@ -2,6 +2,7 @@
 <script lang="ts">
 import Header from './Header.svelte';
 import './layout.css';
+import { page } from '$app/state';
 
 // In same order as original <script> tags:
 
@@ -502,8 +503,8 @@ let { children } = $props();
 		</div>
 
 		<div id="mobile-backdrop"></div>
+		{#if !(["/login", "/"].includes(page.url.pathname))}
 		<button id="mobile-menu-btn" aria-label="Toggle sidebar">&#x2630;</button>
-
 		<button class="hamburger-btn" id="hamburger-btn" title="Show sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
 		<!-- new session button removed — use + in send button instead -->
 		<div class="icon-rail" id="icon-rail">
@@ -779,6 +780,7 @@ let { children } = $props();
 			</div>
 			</div>
 		</nav>
+		{/if}
 		{@render children()}
 		<button id="scroll-bottom-btn" class="scroll-nav-btn" title="Scroll to bottom">▼</button>
 
@@ -1944,8 +1946,10 @@ let { children } = $props();
 	}
 
 	.wrapper {
-		overflow-y: auto;
 		display: flex;
+		justify-content: center;
+		margin: 2rem 0;
+		overflow-y: auto;
 	}
 
 	footer {
