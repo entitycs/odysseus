@@ -16,6 +16,7 @@ import * as chatStream from '$lib/legacy/chatStream.js';
 import * as codeRunner from '$lib/legacy/codeRunner.js';
 import * as compare from '$lib/legacy/compare/index.js';
 import * as cookbook from '$lib/legacy/cookbook.js';
+import * as cookbookRunning from '$lib/legacy/cookbookRunning';
 import * as cookbookSchedule from '$lib/legacy/cookbookSchedule.js';
 import * as documentModule from '$lib/legacy/document.js';
 import * as dragSort from '$lib/legacy/dragSort.js';
@@ -71,6 +72,7 @@ onMount(async () => {
   codeRunner.init?.();
   chatStream.init?.();
   chat.init?.();
+  cookbookRunning.init?.();
   cookbook.init?.();
   cookbookSchedule.init?.();
   searchChat.init?.();

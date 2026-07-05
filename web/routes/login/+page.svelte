@@ -571,6 +571,7 @@ onMount(async () => {
     outline-offset: 2px;
   }
   button {
+    height: auto;
     width: 100%;
     /* Asymmetric vertical padding nudges the label 1px down while keeping
        the button's total height the same as 0.7rem all-around. */
@@ -652,4 +653,34 @@ onMount(async () => {
     vertical-align: -3px;
   }
   @keyframes login-spin { to { transform: rotate(360deg); } }
+
+  .pw-toggle :global {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(calc(-50% + 1px));
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color:
+color-mix(in srgb, var(--fg) 40%, transparent);
+    width: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+button {
+    width: 100%;
+    padding: calc(0.7rem + 1px) 0.7rem calc(0.7rem - 1px);
+    border: none;
+    border-radius: 6px;
+    background:
+color-mix(in srgb, var(--red) 78%, #000);
+    color: #fff;
+    font-size: 1rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: 'Fira Code', monospace;
+}
 </style>

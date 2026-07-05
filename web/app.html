@@ -264,7 +264,7 @@
 		<div id="app-loader" style="position:fixed;inset:0;z-index:99999;background:var(--bg,#282c34);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;transition:opacity .3s">
 			<div id="loader-wave" style="color:var(--brand-color,var(--red,#e06c75));font-family:monospace;font-size:11px;opacity:.5">▁▂▃</div>
 		</div>
-		<script nonce="{{CSP_NONCE}}">
+		<!-- <script nonce="{{CSP_NONCE}}">
 			(function(){
 				var el=document.getElementById('loader-wave');
 				if(!el)return;
@@ -277,15 +277,16 @@
 		},150);
 			setTimeout(function(){var l=document.getElementById('app-loader');if(l){l.style.opacity='0';setTimeout(function(){l.remove()},300)}},5000);
 		})();
-		</script>
+		</script> -->
 
 		<!-- SvelteKit injection point (Body) -->
 
 		<div class="flex flex-col w-full">%sveltekit.body%</div>
 
 		<!-- From index.html-->
+        <!-- Translated to Svelte Component -->
 
-		<script  nonce="{{CSP_NONCE}}">
+		<!-- <script  nonce="{{CSP_NONCE}}">
 		(function(){
 			const container = document.getElementById('chat-history');
 			const chatBar = document.querySelector('.chat-input-bar');
@@ -344,7 +345,7 @@
 			window.addEventListener('resize', reposition);
 			update();
 		})();
-		</script>
+		</script> -->
 		<script  nonce="{{CSP_NONCE}}">
 		(function(){
 		var mobile = window.matchMedia('(max-width: 768px)').matches;
