@@ -12,21 +12,38 @@ import Storage from '$lib/legacy/storage.js';
 import themeModule from '$lib/legacy/theme.js';
 import uiModule, { autoResize, styledPrompt } from '$lib/legacy/ui.js';
 
-// const API_BASE = window.location.origin;
 export function getApiBase() {
   return window.location.origin || '';
 }
 
-/**
- * @type {any[]}
- */
-let sessions_glob = [];
-/**
- * @type {string | null}
- */
+let API_BASE = '';
+let sessions = [];
 let currentSessionId = null;
+let _sessionNavToken = 0;
+let _skipAutoSelect = false;
+let _suppressNextSessionLoading = false;
+const HISTORY_DISPLAY_CHAR_LIMIT = 160000;
+const HISTORY_DISPLAY_TAIL_CHARS = 20000;
+const HISTORY_PAGE_LIMIT_MOBILE = 8;
+const HISTORY_PAGE_LIMIT_DESKTOP = 24;
+const SIDEBAR_MAX_VISIBLE = 10;
+const FOLDER_MAX_VISIBLE = 5;
+let _showAllSessions = false;
+let _expandedFolders = {}; // folderName -> true if "show more" clicked
+let _sortMode = Storage.get('odysseus-session-sort') || 'active'; // default to last active
+let _autoCreateInProgress = false; // guard against recursive auto-create
+const _INCOGNITO_SESSIONS_KEY = 'ody-incognito-sessions'; // sessionStorage key for incognito session IDs
+const _isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+const _mod = _isMac ? '⌘' : 'Ctrl';
+let _historyPager = null;
+let _rootFreshChatApplied = false;
+const DATE_SECTION_COLLAPSE_KEY = 'ody-session-date-section-collapsed';
+
+
 
 export function init() {
+  API_BASE = window.location.origin;
+  _sortMode = getSortMode();
   // Hash-based routing: navigate between sessions with browser back/forward.
   // Skip entity-prefixed hashes (document-, note-, etc.) — those are handled
   // by their own click handlers in chatRenderer.js and must not trigger
@@ -50,27 +67,6 @@ export function init() {
     _initAllDropdowns();
   }
 }
-
-let _sessionNavToken = 0;
-let _skipAutoSelect = false;
-let _suppressNextSessionLoading = false;
-let _rootFreshChatApplied = false;
-const HISTORY_DISPLAY_CHAR_LIMIT = 160000;
-const HISTORY_DISPLAY_TAIL_CHARS = 20000;
-const HISTORY_PAGE_LIMIT_MOBILE = 8;
-const HISTORY_PAGE_LIMIT_DESKTOP = 24;
-
-const SIDEBAR_MAX_VISIBLE = 10;
-const FOLDER_MAX_VISIBLE = 5;
-let _showAllSessions = false;
-let _expandedFolders = {};  // folderName -> true if "show more" clicked
-let _sortMode = Storage.get('odysseus-session-sort') || 'active'; // default to last active
-const DATE_SECTION_COLLAPSE_KEY = 'ody-session-date-section-collapsed';
-let _autoCreateInProgress = false; // guard against recursive auto-create
-const _INCOGNITO_SESSIONS_KEY = 'ody-incognito-sessions'; // sessionStorage key for incognito session IDs
-const _isMac = /Mac|iPhone|iPad/.test(navigator.platform);
-const _mod = _isMac ? '⌘' : 'Ctrl';
-let _historyPager = null;
 
 function _shouldPreserveStartupComposer(msgInput) {
   if (!msgInput || !msgInput.value) return false;
@@ -348,7 +344,7 @@ async function _cleanupIncognitoSessions() {
   sessionStorage.setItem(_INCOGNITO_SESSIONS_KEY, JSON.stringify(keep));
   await Promise.all(
     toDelete.map((sid) =>
-      fetch(`${getApiBase()}/api/session/${sid}`, { method: 'DELETE' }).catch(
+      fetch(`${API_BASE}/api/session/${sid}`, { method: 'DELETE' }).catch(
         () => {},
       ),
     ),
@@ -371,8 +367,7 @@ function _deselectCurrentSession(sid) {
   uiModule.el('chat-history').innerHTML = '';
   uiModule.el('current-meta').textContent = 'Odysseus Chat';
   Storage.remove('lastSessionId');
-  pushState(window.location.pathname, { session: true });
-  // history.replaceState(null, '', window.location.pathname);// no (use sveltekit)
+  history.replaceState(null, '', window.location.pathname);
   if (window.chatModule && window.chatModule.showWelcomeScreen) {
     window.chatModule.showWelcomeScreen();
   }
@@ -389,7 +384,7 @@ function _deselectCurrentSession(sid) {
 function _removeSessionFromLocalState(sid) {
   if (!sid) return;
   const id = String(sid);
-  sessions_glob = sessions_glob.filter((s) => String(s.id) !== id);
+  sessions = sessions.filter((s) => String(s.id) !== id);
   _selectedIds.delete(id);
   try {
     const savedOrder = Storage.get('session-order');
@@ -448,7 +443,7 @@ function saveFolderOrder(order) {
 /** Get all unique folder names from current sessions. */
 function getFolderNames() {
   const names = new Set();
-  sessions_glob.forEach((s) => {
+  sessions.forEach((s) => {
     if (s.folder) names.add(s.folder);
   });
   return Array.from(names).sort();
@@ -458,12 +453,12 @@ function getFolderNames() {
 async function moveToFolder(sessionId, folderName) {
   const fd = new FormData();
   fd.append('folder', folderName || '');
-  await fetch(`${getApiBase()}/api/session/${sessionId}`, {
+  await fetch(`${API_BASE}/api/session/${sessionId}`, {
     method: 'PATCH',
     body: fd,
   });
   // Update local data
-  const s = sessions_glob.find((x) => x.id === sessionId);
+  const s = sessions.find((x) => x.id === sessionId);
   if (s) s.folder = folderName || null;
   renderSessionList();
 }
@@ -590,7 +585,6 @@ function buildFolderSubmenu(sessionId, currentFolder, dropdown) {
 
 /** Create a single session list-item element. */
 function createSessionItem(s) {
-  let API_BASE = getApiBase();
   const div = document.createElement('div');
   div.className = 'list-item session-item';
   div.setAttribute('role', 'option');
@@ -1112,7 +1106,7 @@ function createSessionItem(s) {
     _skipAutoSelect = true;
     // Clean up persistent chat mapping
     try {
-      const pm = await import('./presets.js'); // TODO IMPORT
+      const pm = await import('$lib/legacy/presets.js');
       if (pm.removePersistentChat) pm.removePersistentChat(s.id);
     } catch (e) {}
     // On mobile, close sidebar if we deleted the active session so user sees welcome screen
@@ -1137,13 +1131,10 @@ function createSessionItem(s) {
     dropdown.style.display = 'none';
     _forceSidebarOpen();
     try {
-      const response = await fetch(
-        `${getApiBase()}/api/session/${s.id}/archive`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        },
-      );
+      const response = await fetch(`${API_BASE}/api/session/${s.id}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
       if (response.ok) {
         _forceSidebarOpen();
         await loadSessions();
@@ -1302,14 +1293,13 @@ export function renderSessionList() {
 }
 
 function _renderSessionListImpl() {
-  let API_BASE = getApiBase();
   _renderRAF = null;
   const list = uiModule.el('session-list');
   if (!list) return;
 
   // Get saved order from localStorage
   const savedOrder = Storage.get('session-order');
-  let orderedSessions = sessions_glob.filter(
+  let orderedSessions = sessions.filter(
     (s) =>
       !s.archived &&
       s.folder !== 'Assistant' &&
@@ -1345,29 +1335,30 @@ function _renderSessionListImpl() {
   const _frag = document.createDocumentFragment();
 
   // ── Flat sort modes: ignore folders, show one ordered list. ──
-  // Folders are only shown when sortMode === 'group' (or null/empty
+  // Folders are only shown when _sortMode === 'group' (or null/empty
   // for manual mode). This keeps the picker simple: a folder-grouped
   // view is one of the sort choices, alongside Last Active / Newest.
-  let sortMode = getSortMode();
-  if (sortMode && sortMode !== 'group') {
+  if (_sortMode && _sortMode !== 'group') {
     orderedSessions.sort((a, b) => {
-      if (sortMode === 'newest')
+      if (_sortMode === 'newest')
         return (b.created_at || '').localeCompare(a.created_at || '');
       // "Last active" sorts by the last actual MESSAGE, not updated_at —
       // updated_at is bumped by renames / model swaps / folder moves, which
       // made the order feel random. Fall back to updated_at/created_at for
       // older rows that predate the last_message_at backfill.
-      if (sortMode === 'active') {
+      if (_sortMode === 'active') {
         const av = a.last_message_at || a.updated_at || a.created_at || '';
         const bv = b.last_message_at || b.updated_at || b.created_at || '';
         return bv.localeCompare(av);
       }
       return 0;
     });
-    // Starred still float to top
-    const starred = orderedSessions.filter((s) => s.is_important);
-    const rest = orderedSessions.filter((s) => !s.is_important);
-    const allFlat = [...starred, ...rest];
+    // Favorites are a global pinned block above date buckets, not just
+    // promoted within the day they belong to.
+    const allFlat = [
+      ...orderedSessions.filter((s) => s.is_important),
+      ...orderedSessions.filter((s) => !s.is_important),
+    ];
 
     const limit = _showAllSessions ? allFlat.length : SIDEBAR_MAX_VISIBLE;
     const visible = allFlat.slice(0, limit);
@@ -1375,7 +1366,10 @@ function _renderSessionListImpl() {
     if (!_showAllSessions && activeIdx >= limit)
       visible.push(allFlat[activeIdx]);
 
-    visible.forEach((s) => _frag.appendChild(createSessionItem(s)));
+    const visibleFavorites = visible.filter((s) => s.is_important);
+    const visibleRegular = visible.filter((s) => !s.is_important);
+    _appendFavoriteSessionItems(_frag, visibleFavorites);
+    _appendSessionItemsWithDateHeaders(_frag, visibleRegular);
 
     if (allFlat.length > SIDEBAR_MAX_VISIBLE) {
       const remaining = allFlat.length - SIDEBAR_MAX_VISIBLE;
@@ -1928,7 +1922,7 @@ function _initBulkSelect() {
         return;
       for (const sid of _selectedIds) {
         try {
-          await fetch(`${getApiBase()}/api/session/${sid}/archive`, {
+          await fetch(`${API_BASE}/api/session/${sid}/archive`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
           });
@@ -1961,7 +1955,7 @@ function _initBulkSelect() {
       const deletedIds = [];
       for (const sid of _selectedIds) {
         try {
-          const res = await fetch(`${getApiBase()}/api/session/${sid}`, {
+          const res = await fetch(`${API_BASE}/api/session/${sid}`, {
             method: 'DELETE',
           });
           if (res.ok) deletedIds.push(sid);
@@ -2001,7 +1995,6 @@ function _animateSessionRowsRemoving(ids, selector) {
 }
 
 export async function loadSessions() {
-  let API_BASE = getApiBase();
   try {
     // Delete incognito sessions left over from a previous page load
     await _cleanupIncognitoSessions();
@@ -2020,18 +2013,17 @@ export async function loadSessions() {
       const res = await fetch(url);
       fetched = await res.json();
     }
-    sessions_glob = _normalizeSessionsList(fetched);
+    sessions = _normalizeSessionsList(fetched);
     renderSessionList();
 
     const sessionsSection = uiModule.el('sessions-section');
-    if (sessionsSection != undefined) {
-      if (sessions_glob.length === 0) {
-        sessionsSection.classList.add('hidden');
-      } else {
-        sessionsSection.classList.remove('hidden');
-      }
+    if (sessions.length === 0) {
+      sessionsSection.classList.add('hidden');
+    } else {
+      sessionsSection.classList.remove('hidden');
     }
-    const activeSessions = sessions_glob.filter((s) => !s.archived);
+
+    const activeSessions = sessions.filter((s) => !s.archived);
     // "Transient" sessions = the singleton Assistant chat + any task-output
     // session. Treat them as not-restorable so coming back to the app lands
     // on the user's last actual conversation, not whichever check-in task
@@ -2114,11 +2106,15 @@ export async function loadSessions() {
       }
     }
 
+    const suppressSessionLoading = _suppressNextSessionLoading;
+    _suppressNextSessionLoading = false;
+
     if (targetId && targetId !== currentSessionId) {
-      await selectSession(targetId, { keepSidebar: true });
+      const showLoading = !suppressSessionLoading && !(_isFirstLoad && !hashId);
+      await selectSession(targetId, { keepSidebar: true, showLoading });
     } else if (targetId && targetId === currentSessionId) {
       // Same session — just refresh the header name in case it was auto-generated
-      const s = sessions_glob.find((x) => x.id === targetId);
+      const s = sessions.find((x) => x.id === targetId);
       const metaEl = document.getElementById('current-meta');
       if (metaEl && s) metaEl.textContent = s.name;
     }
@@ -2163,13 +2159,6 @@ export async function selectSession(
     window.compareModule.deactivate(true);
     return; // deactivate does a page reload
   }
-  // // Navigate to chat page if not already there
-  // // selectSession is called somewhere before DOM so we must check
-  // if ($page !== undefined) {
-  //   if ($page.url.pathname !== '/chat') {
-  // goto('/chat');
-  //   }
-  // }
   try {
     const navToken = ++_sessionNavToken;
     const prevSessionId = currentSessionId;
@@ -2196,25 +2185,25 @@ export async function selectSession(
     // URL hash — the user complained that coming back to Odysseus kept
     // landing them on the auto-firing task-log chat instead of their last
     // real conversation.
-    const _meta = sessions_glob.find((s) => s.id === id);
+    const _meta = sessions.find((s) => s.id === id);
     const _isTransientChat =
       !!_meta && (_meta.folder === 'Assistant' || _meta.folder === 'Tasks');
     if (!_isTransientChat) {
       Storage.set('lastSessionId', id);
             // Update URL hash without triggering hashchange handler
       if (window.location.hash !== '#' + id) {
-        pushState('#' + id, { lastSessionId: id });
-        // history.replaceState(null, '', '#' + id);// no (use sveltekit)
+        history.replaceState(null, '', '#' + id);
       }
     }
     // Restore character preset for persistent chats
     try {
       const presetsModule =
-        window.presetsModule || (await import('./presets.js')).default; // TODO IMPORT
+        window.presetsModule ||
+        (await import('$lib/legacy/presets.js')).default;
       if (presetsModule && presetsModule.onSessionSwitch)
         presetsModule.onSessionSwitch(id);
     } catch (e) {}
-    const meta = sessions_glob.find((s) => s.id === id);
+    const meta = sessions.find((s) => s.id === id);
 
     // Detach any in-flight stream to background instead of aborting
     try {
@@ -2261,7 +2250,15 @@ export async function selectSession(
       if (window._updateSendBtnIcon) window._updateSendBtnIcon();
     }
 
-    // On mobile, keep sidebar open — user dismisses it by tapping chat area or swiping
+    // On mobile manual chat switches, move the drawer away before showing the
+    // loader so the status sits over the chat pane instead of being hidden by
+    // the sidebar. Startup auto-restore passes keepSidebar + showLoading=false.
+    if (showLoading && !keepSidebar && window.innerWidth <= 768) {
+      const sidebar = document.getElementById('sidebar');
+      const backdrop = document.getElementById('sidebar-backdrop');
+      if (sidebar) sidebar.classList.add('hidden');
+      if (backdrop) backdrop.classList.remove('visible');
+    }
 
     // Highlight active session in sidebar
     document
@@ -2291,7 +2288,11 @@ export async function selectSession(
     // place, producing a ReferenceError every selectSession.)
     const isOC = meta && (meta.is_openclaw || id === 'openclaw');
     let msgHistory = [],
-      modelName = null;
+      modelName = null,
+      pageInfo = null;
+    let paintedLoading = false;
+    let loadingTimer = null;
+    let loadingPaintReady = Promise.resolve();
     if (!isOC) {
       if (showLoading && chatHistory && prevSessionId !== id) {
         const loadingDelayMs = immediateLoading
@@ -2308,16 +2309,29 @@ export async function selectSession(
       }
       const res = await fetch(_historyUrl(id, { limit: _historyPageLimit() }));
       const data = await res.json();
+      if (loadingTimer) {
+        clearTimeout(loadingTimer);
+        loadingTimer = null;
+      }
+      if (paintedLoading) {
+        await loadingPaintReady;
+      }
       if (navToken !== _sessionNavToken || currentSessionId !== id) return;
       msgHistory = data.history || [];
       modelName = data.model || null;
+      pageInfo = {
+        offset: data.offset,
+        limit: data.limit,
+        total: data.total,
+        has_more_before: !!data.has_more_before,
+      };
       // The model returned by /api/history is the authoritative one the
       // backend will use for this session. Write it back into the cached
       // session meta and refresh the picker so the displayed model can
       // never diverge from what's actually sent (the "picker says Minimax
       // but it used the default" bug after a restart / stale cache).
       if (modelName) {
-        const sMeta = sessions_glob.find((s) => s.id === id);
+        const sMeta = sessions.find((s) => s.id === id);
         if (sMeta && sMeta.model !== modelName) {
           sMeta.model = modelName;
           updateModelPicker();
@@ -2341,8 +2355,20 @@ export async function selectSession(
       return;
     }
 
-    // Fade out old content, swap, fade in
-    if (chatHistory) {
+    if (paintedLoading && chatHistory) {
+      _updateSessionLoading(
+        chatHistory,
+        msgHistory.length ? 'Rendering chat' : 'Opening chat',
+      );
+      await _nextPaint();
+      if (navToken !== _sessionNavToken || currentSessionId !== id) return;
+      chatHistory.innerHTML = '';
+    }
+
+    // Fade out old content, swap, fade in. When we already painted a loading
+    // state, keep it visible until render starts instead of fading to a blank
+    // pane during slow history fetches.
+    if (chatHistory && !paintedLoading) {
       chatHistory.style.transition = 'opacity 0.12s ease-out';
       chatHistory.style.opacity = '0';
       await new Promise((r) => setTimeout(r, 120));
@@ -2365,48 +2391,11 @@ export async function selectSession(
       );
     } else if (msgHistory.length) {
       for (const msg of msgHistory) {
-        const meta = msg.metadata
-          ? { ...msg.metadata, _fromHistory: true }
-          : null;
-        let displayContent;
-        if (typeof msg.content === 'string') {
-          displayContent = msg.content;
-        } else if (Array.isArray(msg.content)) {
-          // Multimodal (image/audio attachments): extract text parts, skip binary
-          displayContent = msg.content
-            .filter((p) => p.type === 'text')
-            .map((p) => p.text)
-            .join('\n')
-            .trim();
-        } else {
-          displayContent = '';
+        try {
+          _renderHistoryMessage(msg, modelName);
+        } catch (e) {
+          console.warn('Failed to render history message:', e, msg);
         }
-        // Clean up doc selection context for display
-        if (msg.role === 'user') {
-          // Hide "Continue where you left off" bubbles
-          if (
-            displayContent.trim() === 'Continue where you left off' ||
-            displayContent.trim().startsWith('Your message was cut off.') ||
-            displayContent
-              .trim()
-              .startsWith('Your previous response was interrupted.') ||
-            displayContent.includes('[Instruction: Rewrite') ||
-            displayContent.includes('[Instruction: Explain')
-          )
-            continue;
-          const docEditMatch = displayContent.match(
-            /^In the document, edit this specific text \((lines? [\d-]+)\):\n```\n([\s\S]*?)\n```\n\nInstruction: ([\s\S]*)$/,
-          );
-          if (docEditMatch) {
-            displayContent = `[Doc edit: ${docEditMatch[1]}] ${docEditMatch[3]}`;
-          }
-        }
-        window.chatModule.addMessage(
-          msg.role,
-          markdownModule.renderContent(displayContent),
-          modelName,
-          meta,
-        );
       }
     } else {
       if (window.chatModule && window.chatModule.showWelcomeScreen)
@@ -2425,6 +2414,9 @@ export async function selectSession(
       }
     }
     uiModule.scrollHistoryInstant();
+    if (!isOC && msgHistory.length) {
+      _installHistoryPager(id, pageInfo, modelName);
+    }
 
     // Fade in and re-enable message animations
     if (chatHistory) {
@@ -2479,7 +2471,7 @@ export async function selectSession(
     // Document panel: keep open if next session also wants it, otherwise close
     if (window.documentModule) {
       const docBtn = document.getElementById('overflow-doc-btn');
-      const meta = sessions_glob.find((s) => s.id === id);
+      const meta = sessions.find((s) => s.id === id);
       const shouldOpen =
         localStorage.getItem('odysseus-doc-open-' + id) === '1';
       const hasDocs = !!(meta && meta.has_documents);
@@ -2502,6 +2494,16 @@ export async function selectSession(
     }
   } catch (error) {
     console.error('Error in selectSession:', error);
+    const chatHistory = uiModule.el('chat-history');
+    if (chatHistory?.querySelector('.session-loading-state')) {
+      chatHistory.innerHTML = '';
+      chatHistory.style.opacity = '1';
+      chatHistory.classList.remove('no-animate');
+      const msg = document.createElement('div');
+      msg.className = 'msg msg-ai';
+      msg.innerHTML = `<div class="body">Failed to load this chat. ${uiModule.esc ? uiModule.esc(error.message || '') : ''}</div>`;
+      chatHistory.appendChild(msg);
+    }
     uiModule.showError('Failed to load session: ' + error.message);
   } finally {
     // Memory warmup must not block chat switching. The memories panel can load
@@ -2592,11 +2594,11 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   _pendingChat = { url, modelId, endpointId, source: incomingSource };
   _pendingMaterializePromise = null;
   _skipAutoSelect = true;
+  _suppressNextSessionLoading = true;
   currentSessionId = null;
   try { window.__odysseusLastSelectedSessionId = ''; } catch (_) {}
   Storage.remove('lastSessionId');
-  pushState('', { lastSessionId: null });
-  // history.replaceState(null, '', window.location.pathname);// no... (use sveltekit)
+  history.replaceState(null, '', window.location.pathname);
   document
     .querySelectorAll('.list-item.active-session, .session-item.active')
     .forEach((el) => {
@@ -2757,11 +2759,11 @@ export function isCurrentSessionIncognito() {
 }
 
 export function getSessions() {
-  return sessions_glob;
+  return sessions;
 }
 
 export function getCurrentModel() {
-  const sess = sessions_glob.find((x) => x.id === currentSessionId);
+  const sess = sessions.find((x) => x.id === currentSessionId);
   if (sess && sess.model) return sess.model;
   if (_pendingChat && _pendingChat.modelId) return _pendingChat.modelId;
   return null;
@@ -2770,7 +2772,7 @@ export function getCurrentModel() {
 /** Endpoint URL serving the current (or pending) session's model. Used to
  *  decide whether a model is local (free) vs a billable cloud provider. */
 export function getCurrentEndpointUrl() {
-  const sess = sessions_glob.find((x) => x.id === currentSessionId);
+  const sess = sessions.find((x) => x.id === currentSessionId);
   if (sess && sess.endpoint_url) return sess.endpoint_url;
   if (_pendingChat && _pendingChat.url) return _pendingChat.url;
   return null;
@@ -2781,15 +2783,15 @@ export function setCurrentSessionId(id) {
   currentSessionId = id;
   try { window.__odysseusLastSelectedSessionId = id || ''; } catch (_) {}
   if (!id) {
+    _suppressNextSessionLoading = true;
     Storage.remove('lastSessionId');
-    pushState('', { lastSessionId: null });
-    // history.replaceState(null, '', window.location.pathname); no. (use sveltekit)
+    history.replaceState(null, '', window.location.pathname);
     document
       .querySelectorAll('.list-item.active-session, .session-item.active')
       .forEach((el) => {
         el.classList.remove('active-session', 'active');
       });
-  } else pushState('#' + id, { lastSessionId: id });
+  }
 }
 
 export async function deleteCurrentSessionFromTopMenu() {
@@ -2853,7 +2855,7 @@ async function _onSessionListKeydown(e) {
     if (item.querySelector('.session-rename-input')) return;
     e.preventDefault();
     const sid = item.dataset.sessionId;
-    const s = sessions_glob.find((x) => x.id === sid);
+    const s = sessions.find((x) => x.id === sid);
     if (!s) return;
     if (s.is_important) {
       uiModule.showToast('Unfavorite before deleting');
@@ -2866,7 +2868,7 @@ async function _onSessionListKeydown(e) {
     if (!ok) return;
     _sessionListFocused = true;
     (async () => {
-      await fetch(`${getApiBase()}/api/session/${s.id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/api/session/${s.id}`, { method: 'DELETE' });
       _deselectCurrentSession(s.id);
       await loadSessions();
     })();
@@ -2947,7 +2949,7 @@ function _startResearchPolling() {
     }
     for (var sid of _researchingSessions) {
       try {
-        var res = await fetch(`${getApiBase()}/api/research/status/${sid}`);
+        var res = await fetch(`${API_BASE}/api/research/status/${sid}`);
         if (!res.ok) {
           _researchingSessions.delete(sid);
           continue;
@@ -2991,6 +2993,17 @@ export function clearStreaming(sessionId) {
   _streamingSessions.delete(sessionId);
   _updateResearchDots();
   _updateRailNotifs();
+}
+
+function _clearRunningState(sessionId) {
+  if (!sessionId) return;
+  var changed = false;
+  if (_researchingSessions.delete(sessionId)) changed = true;
+  if (_streamingSessions.delete(sessionId)) changed = true;
+  if (changed) {
+    _updateResearchDots();
+    _updateRailNotifs();
+  }
 }
 
 export function markStreamComplete(sessionId) {
@@ -3060,7 +3073,6 @@ function _updateRailNotifs() {
  */
 async function _checkServerStream(sessionId) {
   try {
-    let API_BASE = getApiBase();
     // Skip if research is running — it has its own progress UI
     if (_researchingSessions.has(sessionId)) return;
 
@@ -3073,9 +3085,15 @@ async function _checkServerStream(sessionId) {
       return;
 
     const res = await fetch(`${API_BASE}/api/chat/stream_status/${sessionId}`);
-    if (!res.ok) return; // 404 = no active stream
+    if (!res.ok) {
+      _clearRunningState(sessionId);
+      return; // 404 = no active stream
+    }
     const info = await res.json();
-    if (info.status !== 'streaming') return;
+    if (info.status !== 'streaming') {
+      _clearRunningState(sessionId);
+      return;
+    }
 
     // Skip if this is a research stream — research has its own progress UI
     if (info.mode === 'research' || info.is_research) return;
@@ -3096,7 +3114,7 @@ async function _checkServerStream(sessionId) {
     holder.innerHTML = '<div class="body"></div>';
     const bodyDiv = holder.querySelector('.body');
 
-    const spinnerMod = await import('./spinner.js'); // TODO IMPORT
+    const spinnerMod = await import('$lib/legacy/spinner.js');
     const spinner = spinnerMod.default.create(
       'Generating response...',
       'right',
@@ -3176,7 +3194,7 @@ export function clearStreamComplete(sessionId) {
 function _initAllDropdowns() {
   initModelPicker({
     getCurrentSessionId: () => currentSessionId,
-    getSessions: () => sessions_glob,
+    getSessions: () => sessions,
     getPendingChat: () => _pendingChat,
     setPendingChat: (v) => {
       _pendingChat = v;
@@ -3311,7 +3329,7 @@ async function _arcPeekOpen(sid) {
     _peekingSessionId = sid;
     closeArchive();
     // Load history directly without unarchiving
-    const res = await fetch(`${getApiBase()}/api/history/${sid}`);
+    const res = await fetch(`${API_BASE}/api/history/${sid}`);
     const data = await res.json();
     const history = data.history || [];
 
@@ -3364,7 +3382,7 @@ function _checkPeekCleanup(newSessionId) {
 
 async function _arcRestore(sid) {
   try {
-    const res = await fetch(`${getApiBase()}/api/session/${sid}/unarchive`, {
+    const res = await fetch(`${API_BASE}/api/session/${sid}/unarchive`, {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Failed');
@@ -3386,7 +3404,7 @@ async function _arcDelete(sid) {
   )
     return;
   try {
-    const res = await fetch(`${getApiBase()}/api/session/${sid}`, {
+    const res = await fetch(`${API_BASE}/api/session/${sid}`, {
       method: 'DELETE',
     });
     if (!res.ok) throw new Error('Failed');
@@ -3413,7 +3431,7 @@ async function _arcBulkRestore() {
   if (!ids.length) return;
   for (const sid of ids) {
     try {
-      await fetch(`${getApiBase()}/api/session/${sid}/unarchive`, {
+      await fetch(`${API_BASE}/api/session/${sid}/unarchive`, {
         method: 'POST',
       });
       _arcRemove(sid);
@@ -3438,7 +3456,7 @@ async function _arcBulkDelete() {
   const deletedIds = [];
   for (const sid of ids) {
     try {
-      const res = await fetch(`${getApiBase()}/api/session/${sid}`, {
+      const res = await fetch(`${API_BASE}/api/session/${sid}`, {
         method: 'DELETE',
       });
       if (res.ok) {
@@ -3488,7 +3506,7 @@ async function _arcFetch(append) {
   if (_arc.search) params.set('search', _arc.search);
   if (_arc.model) params.set('model', _arc.model);
   try {
-    const res = await fetch(`${getApiBase()}/api/sessions/archived?${params}`);
+    const res = await fetch(`${API_BASE}/api/sessions/archived?${params}`);
     if (!res.ok) throw new Error(res.statusText);
     const data = await res.json();
     _arc.data = append ? _arc.data.concat(data.sessions) : data.sessions;
@@ -3640,7 +3658,6 @@ const _lib = {
 };
 
 export function openLibrary(defaultTab) {
-  let API_BASE = getApiBase();
   // Delegate everything to the document module's library (has tabs for Chats/Documents/Archive)
   if (window.documentModule && window.documentModule.openLibrary) {
     window.documentModule.openLibrary({ tab: defaultTab || 'documents' });
@@ -3859,12 +3876,11 @@ function _renderLibGrid() {
 }
 
 function _renderLibChats(grid) {
-  let API_BASE = getApiBase();
-  if (!sessions_glob || !sessions_glob.length) {
+  if (!sessions || !sessions.length) {
     grid.innerHTML = '<div class="doclib-empty">No sessions loaded</div>';
     return;
   }
-  let filtered = sessions_glob.filter((s) => !s.archived);
+  let filtered = sessions.filter((s) => !s.archived);
   if (_lib.search) {
     const q = _lib.search;
     filtered = filtered.filter(
@@ -3958,7 +3974,6 @@ function _renderLibChats(grid) {
 }
 
 async function _renderLibArchive(grid) {
-  let API_BASE = getApiBase();
   grid.innerHTML = '';
   grid.appendChild(spinnerModule.createLoadingRow('Loading…'));
   try {
@@ -4033,7 +4048,6 @@ async function _renderLibArchive(grid) {
 }
 
 async function _renderLibDocuments(grid) {
-  let API_BASE = getApiBase();
   grid.innerHTML = '';
   grid.appendChild(spinnerModule.createLoadingRow('Loading…'));
   try {
@@ -4116,7 +4130,6 @@ async function _renderLibDocuments(grid) {
 }
 
 async function _renderLibResearch(grid) {
-  let API_BASE = getApiBase();
   grid.innerHTML = '';
   grid.appendChild(spinnerModule.createLoadingRow('Loading research…'));
   try {
@@ -4399,15 +4412,8 @@ export function closeArchive() {
   }
 }
 
-/**
- * Update has_documents flag for a session and re-render the sidebar icon
- * @type {any}
- */
-let _sortMode;
+/** Update has_documents flag for a session and re-render the sidebar icon */
 export function getSortMode() {
-  if (!_sortMode) {
-    _sortMode = Storage.get('odysseus-session-sort') || 'active'; // default to last active
-  }
   return _sortMode;
 }
 export function setSortMode(mode) {
@@ -4418,7 +4424,7 @@ export function setSortMode(mode) {
 }
 
 export function setSessionHasDocs(sessionId, hasDocs) {
-  const s = sessions_glob.find((s) => s.id === sessionId);
+  const s = sessions.find((s) => s.id === sessionId);
   if (s && s.has_documents !== hasDocs) {
     s.has_documents = hasDocs;
     renderSessionList();

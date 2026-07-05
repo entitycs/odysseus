@@ -8,7 +8,7 @@ import time
 import logging
 from datetime import datetime
 from typing import Dict, Any, AsyncGenerator, List, Optional
-
+from src.action_intents import classify_tool_intent
 from fastapi import APIRouter, Request, HTTPException, Form, Query
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
@@ -1084,6 +1084,8 @@ def setup_chat_routes(
             logger.warning(f"Failed to query active document: {e}")
         finally:
             _doc_db.close()
+
+        _explicit_web_intent = classify_tool_intent(message).category == "web"
 
         # Build disabled-tools set from frontend toggles + user privileges
         disabled_tools = set()

@@ -647,10 +647,14 @@ const XML_INVOKE_RE = /<invoke\s+name=['"][^'"]*['"]>[\s\S]*?<\/invoke>/gi;
 const DSML_TOOL_RE =
   /<\s*[｜|]+\s*DSML\s*[｜|]+\s*tool_calls\s*>[\s\S]*?(?:<\s*\/\s*[｜|]+\s*DSML\s*[｜|]+\s*tool_calls\s*>|$)/gi;
 const DSML_STRAY_RE = /<\s*\/?\s*[｜|]+\s*DSML\s*[｜|]+[^>]*>/gi;
-const DSML_INVOKE_RE = /<\s*[｜|]+\s*DSML\s*[｜|]+\s*invoke\b[^>]*>[\s\S]*?(?:<\s*\/\s*[｜|]+\s*DSML\s*[｜|]+\s*invoke\s*>|$)/gi;
-const RAW_OPENAI_TOOL_JSON_RE = /(?:\[\s*)?\{\s*"function"\s*:\s*\{[\s\S]*?\}\s*,\s*"id"\s*:\s*"[^"]*"\s*,\s*"type"\s*:\s*"function"\s*\}\s*\]?/gi;
-const QWEN_ROLE_MARKER_RE = /<\/?\|(?:assistant|assistan|user|system|tool)\|>?|<\/\|end\|>?/gi;
-const QWEN_BARE_MARKER_RE = /(?:^|[\t\r\n ])(?:\|?end\|?|\/?\|end\|)(?=[\t\r\n ]|$)|(?:^|[\t\r\n ])assistan(?:t)?(?=[\t\r\n ]|$)/gi;
+const DSML_INVOKE_RE =
+  /<\s*[｜|]+\s*DSML\s*[｜|]+\s*invoke\b[^>]*>[\s\S]*?(?:<\s*\/\s*[｜|]+\s*DSML\s*[｜|]+\s*invoke\s*>|$)/gi;
+const RAW_OPENAI_TOOL_JSON_RE =
+  /(?:\[\s*)?\{\s*"function"\s*:\s*\{[\s\S]*?\}\s*,\s*"id"\s*:\s*"[^"]*"\s*,\s*"type"\s*:\s*"function"\s*\}\s*\]?/gi;
+const QWEN_ROLE_MARKER_RE =
+  /<\/?\|(?:assistant|assistan|user|system|tool)\|>?|<\/\|end\|>?/gi;
+const QWEN_BARE_MARKER_RE =
+  /(?:^|[\t\r\n ])(?:\|?end\|?|\/?\|end\|)(?=[\t\r\n ]|$)|(?:^|[\t\r\n ])assistan(?:t)?(?=[\t\r\n ]|$)/gi;
 // Self-narration about tool results (model echoing stdout/exit_code)
 const TOOL_NARRATION_RE =
   /(?:The (?:result|output) shows?:?\s*)?-?\s*(?:stdout|stderr|exit_code):\s*.+/gi;
@@ -1202,153 +1206,6 @@ function _appendReportButton(container, sessionId) {
 
   container.appendChild(wrap);
 }
-// svelte-dev note: Wrap this type of code in a no-arg init method - to be called form page onMount
-export function init(){
-  window.toggleSources = function (id) {
-    // Debounce to prevent double-fire from both inline onclick and delegation
-    var now = Date.now();
-    if (window._lastSourcesToggle && now - window._lastSourcesToggle < 100)
-      return;
-    window._lastSourcesToggle = now;
-
-    var content = document.getElementById(id);
-    var toggle = document.getElementById(id + '-toggle');
-    if (content && toggle) {
-      var expanded = content.classList.contains('expanded');
-      content.classList.toggle('expanded', !expanded);
-      toggle.dataset.arrow = expanded ? 'right' : 'down';
-    }
-  };
-
-  // Event delegation for sources toggle (capture phase, handles SVG targets)
-  document.addEventListener(
-    'click',
-    function (e) {
-      // Walk up from target manually to handle SVG elements that may not support closest()
-      var el = e.target;
-      while (el && el !== document) {
-        if (
-          el.classList &&
-          el.classList.contains('sources-header') &&
-          el.dataset &&
-          el.dataset.sourcesId
-        ) {
-          e.stopPropagation();
-          window.toggleSources(el.dataset.sourcesId);
-          return;
-        }
-        el = el.parentElement || el.parentNode;
-      }
-    },
-    true,
-  );
-
-  // Jump-to-entity anchors — the agent emits links like
-  //   [New Chat](#session-89effa28)
-  //   [Notes](#document-abc123)
-  //   [Reminder](#note-42)
-  // and the chat-history click delegate turns them into navigation
-  // instead of default in-page anchor jumps. Each prefix routes to the
-  // matching module via a dynamic import (avoids circular deps —
-  // sessions.js itself imports chatRenderer.js).
-  document.addEventListener('click', function (e) {
-    // Walk past Text nodes — clicking link text yields a Text node target
-    // whose .closest is undefined, so preventDefault never fires and the
-    // browser performs a default hash-navigation that resets the session.
-    let _t = e.target;
-    while (_t && _t.nodeType === Node.TEXT_NODE) _t = _t.parentElement;
-    const a = _t && _t.closest && _t.closest('a[href]');
-    if (!a) return;
-    const href = a.getAttribute('href') || '';
-    if (!href.startsWith('#')) return;
-    const m = href.match(
-      /^#(session|document|note|image|email|event|task|skill|research)-(.+)$/,
-    );
-    if (!m) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const [, kind, id] = m;
-    if (kind === 'session') {
-      import('./sessions.js').then((mod) => {
-        const fn =
-          mod.selectSession || (mod.default && mod.default.selectSession);
-        if (fn) fn(id);
-      });
-    } else if (kind === 'document') {
-      import('./document.js')
-        .then((mod) => {
-          const open =
-            mod.loadDocument ||
-            mod.openDocument ||
-            (mod.default &&
-              (mod.default.loadDocument || mod.default.openDocument));
-          if (open) open(id);
-        })
-        .catch(() => null);
-    } else if (kind === 'note') {
-      import('./notes.js')
-        .then((mod) => {
-          const open = mod.openNote || (mod.default && mod.default.openNote);
-          if (open) open(id);
-        })
-        .catch(() => null);
-    } else if (kind === 'image') {
-      import('./gallery.js')
-        .then((mod) => {
-          const open =
-            mod.openGalleryImage ||
-            (mod.default && mod.default.openGalleryImage);
-          if (open) open(id);
-        })
-        .catch(() => null);
-    } else if (kind === 'email') {
-      import('./emailLibrary.js')
-        .then((mod) => {
-          const open =
-            mod.openEmailLibrary ||
-            (mod.default && mod.default.openEmailLibrary);
-          if (open) open({ uid: id });
-        })
-        .catch(() => null);
-    } else if (kind === 'event') {
-      import('./calendar.js')
-        .then((mod) => {
-          const open =
-            mod.openCalendarTo || (mod.default && mod.default.openCalendarTo);
-          if (open) open(id);
-        })
-        .catch(() => null);
-    } else if (kind === 'task') {
-      import('./tasks.js')
-        .then((mod) => {
-          const open = mod.openTasks || (mod.default && mod.default.openTasks);
-          if (open) open(id);
-          else {
-            const b = document.getElementById('tasks-btn');
-            if (b) b.click();
-          }
-        })
-        .catch(() => {
-          const b = document.getElementById('tasks-btn');
-          if (b) b.click();
-        });
-    } else if (kind === 'skill') {
-      import('./skills.js')
-        .then((mod) => {
-          const open = mod.openSkill || (mod.default && mod.default.openSkill);
-          if (open) open(id);
-        })
-        .catch(() => null);
-    } else if (kind === 'research') {
-      import('./research/panel.js')
-        .then((mod) => {
-          const open = mod.openPanel || (mod.default && mod.default.openPanel);
-          if (open) open(id);
-        })
-        .catch(() => null);
-    }
-  });
-}
 
 /**
  * Build a generated-image bubble element.
@@ -1540,12 +1397,14 @@ export function buildImageBubble(
     galleryBtn.className = 'footer-copy-btn footer-open-gallery-btn';
     galleryBtn.type = 'button';
     galleryBtn.title = 'Open in gallery';
-    galleryBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>Open in gallery</span>';
+    galleryBtn.innerHTML =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>Open in gallery</span>';
     galleryBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       try {
         const mod = await import('./gallery.js');
-        const open = mod.openGalleryImage || (mod.default && mod.default.openGalleryImage);
+        const open =
+          mod.openGalleryImage || (mod.default && mod.default.openGalleryImage);
         if (open) open(imageId);
       } catch (err) {
         console.error('[chat] open in gallery failed', err);
@@ -2164,7 +2023,10 @@ export function displayMetrics(messageElement, metrics) {
   }
 
   // Keep token counts in the Message Stats popup; the footer should stay slim.
-  const costStr0 = cost !== null ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}` : null;
+  const costStr0 =
+    cost !== null
+      ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}`
+      : null;
   const hasTps = tps != null && tps !== 'undefined';
   const metricsLabel = hasTps
     ? `${tps} tok/s`
@@ -2964,8 +2826,8 @@ export function addMessage(role, content, modelName, metadata) {
         .trim();
     }
 
-	    wrap.dataset.raw = text;
-	    if (metadata?._db_id) wrap.dataset.dbId = metadata._db_id;
+    wrap.dataset.raw = text;
+    if (metadata?._db_id) wrap.dataset.dbId = metadata._db_id;
     // Prepend sources box if saved in metadata
     var sourcesPrefix = '';
     var findingsSuffix = '';
@@ -2993,10 +2855,13 @@ export function addMessage(role, content, modelName, metadata) {
           text,
       );
       b.innerHTML = sourcesPrefix + thinkHtml + findingsSuffix;
-	    } else {
-	      b.innerHTML = sourcesPrefix + markdownModule.processWithThinking(text) + findingsSuffix;
-	    }
-	    b.dataset.raw = text;
+    } else {
+      b.innerHTML =
+        sourcesPrefix +
+        markdownModule.processWithThinking(text) +
+        findingsSuffix;
+    }
+    b.dataset.raw = text;
 
     // The vision/OCR caption is stripped from the displayed text above (so the
     // bubble doesn't show the raw model output) but no longer rendered as an
@@ -3269,7 +3134,3 @@ const chatRenderer = {
 };
 
 export default chatRenderer;
-<<<<<<< HEAD
-
-=======
->>>>>>> 71669786 (Initial, unchecked migration from static to web/lib/legacy for imported modules.)
