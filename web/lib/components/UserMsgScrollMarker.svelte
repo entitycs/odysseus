@@ -202,7 +202,7 @@ function init(track: HTMLDivElement): () => void {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--color-accent, #4f8ef7);
+    background: var(--red, #4f8ef7);
     opacity: 0.7;
     cursor: pointer;
     pointer-events: auto;
