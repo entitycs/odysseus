@@ -153,6 +153,7 @@ export function init() {
         document.querySelector('#cookbook-modal .cookbook-tab.active')?.dataset
           ?.backend || '';
       if (activeTab === 'Running') _renderRunningTab();
+      else if (activeTab === 'Serve') _rerenderCachedModels();
     }
   });
 
@@ -4344,48 +4345,6 @@ async function _refreshSharedCookbookState(reason = '') {
     _sharedSyncInFlight = false;
   }
 }
-
-document.addEventListener('cookbook:state-synced', () => {
-  try {
-    Object.assign(_envState, _readStoredEnvState());
-  } catch {}
-  if (isVisible()) {
-    const activeTab =
-      document.querySelector('#cookbook-modal .cookbook-tab.active')?.dataset
-        ?.backend || '';
-    if (activeTab === 'Running') _renderRunningTab();
-    else if (activeTab === 'Serve') _rerenderCachedModels();
-  }
-});
-
-window.addEventListener('focus', () => {
-  _refreshSharedCookbookState('focus');
-});
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible')
-    _refreshSharedCookbookState('visible');
-});
-setInterval(() => {
-  if (!isVisible()) return;
-  const activeTab =
-    document.querySelector('#cookbook-modal .cookbook-tab.active')?.dataset
-      ?.backend || '';
-  if (activeTab === 'Running') _refreshSharedCookbookState('active-poll');
-}, 5000);
-
-// Close button
-document.addEventListener('DOMContentLoaded', () => {
-  const closeBtn = document.getElementById('close-cookbook-modal');
-  if (closeBtn) closeBtn.addEventListener('click', close);
-
-  const modal = document.getElementById('cookbook-modal');
-  if (modal) {
-    modal.addEventListener('click', (e) => {
-      if (uiModule.isTouchInsideModal()) return;
-      if (e.target === modal) close();
-    });
-  }
-});
 
 // ── Initialize sub-modules ──
 

@@ -44,6 +44,7 @@ logs/
 
 # Node
 .npm/
+package-lock.json
 node_modules/
 services/node_modules/
 services/data/
