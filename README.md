@@ -95,11 +95,14 @@ pnpm build:app
 pnpm dev
 ```
 
-![sveltekit dev](docs/svelte-npm-run-dev.png)
+`pnpm dev` is only a shortcut to testing changes *when the backend / app is already running*.
 
-If Odysseus is already running (eg. at localhost:7000), you'll be immediately be able to communicate with the backend while viewing /testing your frontend changes.
+| Odysseus Status | `pnpm dev` result |
+| :--------- | :----------: |
+|Odysseus runnig|![sveltekit dev](docs/svelte-npm-run-dev.png) Use `pnpm dev` to test front-end changes.|
+|Odysseus stopped|![sveltekit dev](docs/svelte-npm-run-fail.png) Start Odysseus to test current state. Then use `pnpm dev` to test further front-end changes.|
 
-If using docker, there's no need to run `docker compose up -d --build` until you're ready to redeploy, or you need to run backend-initiated tests, or you're pulling upstream changes to the backend, or you find the need to modify it yourself.
+If using **docker**, there's no need to run `docker compose up -d --build` to test every front-end change. Deploy it once, and use the same instructions above. Deploy again when done (to run the back-end tests that still touch the front-end).
 
 ---
 
