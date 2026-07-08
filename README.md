@@ -1,7 +1,89 @@
-# Fallback View
-<p align="center">
+ <p align="center">
   <img src="docs/odysseus-wordmark.png" alt="Odysseus" width="280">
 </p>
+
+## SvelteKit POC Version
+
+This POC (proof of concept) is a frontend-focused, gradual-rewrite-ready fork of the Odysseus app, with a **static adapter** to **SvelteKit**.
+
+> The existing FastAPI backend continues to serve the static bundle and handle api calls exactly as before, making this fork a **drop‑in replacement** for the current frontend.
+>
+> **Note** this fact in the *Development* section below.
+
+Out of the box benefits include client-side routing, state and effect handling, prefetching, and other optimizations (provided by sveltekit, vite).
+
+### What This POC Demonstrates
+
+- **Incremental modernization**
+  The legacy HTML/JS/CSS structure is decomposed into Svelte components, layouts, and modules. This allows targeted rewrites without requiring a full migration upfront.
+
+- **Static-first architecture**
+  Using `adapter-static` keeps deployment simple and compatible with the existing FastAPI hosting model. No SSR, no Node server, no runtime dependencies.
+
+- **Faster, friendlier onboarding for new features**
+  By breaking apart monolithic UI logic, new screens, widgets, and flows can be added with significantly less friction. Components are isolated, typed, and easier to reason about.  Use javascript or typescript with a simple script attribute choice (lang="ts/js"). View your logic, html, and styles all in the same document.
+
+- **Improved development, performance and UX**
+  SvelteKit’s dev server provides hot reload, with a no-config ability to interact with the backend. The client-side router enables instant navigation between pages, built‑in prefetching, and smoother transitions. The bundle is optimized by Vite, and unused code is tree‑shaken automatically, speeding up loading times.
+
+- **Cleaner separation of concerns**
+  The frontend no longer needs to manage global scripts or shared DOM state. Each feature lives in its own component, with scoped styles and predictable lifecycle behavior.
+
+### Why SvelteKit (Static) Was Chosen for the POC
+
+Odysseus already has a backend capable of serving static assets. SvelteKit’s static adapter allows us to:
+
+- preserve the current deployment model
+- modernize the UI incrementally
+- avoid introducing new operational complexity
+- keep the bundle lightweight and portable
+
+It’s a low-risk path toward a future full rewrite - while still delivering immediate improvements to maintainability and user experience.
+
+### Project Structure Overview
+
+In order to get aligned with this project, coming from the main project, there are a few quick things to note, and then the rest should fall into place.
+1. First thing to note is that nearly all .js files from `/static/js` have been moved to `/web/lib/legacy`.
+  - They have also been modified slightly, to fit the svelte environment.
+  - Any 'DOM READY' code or self-firing code has been, or will be moved to the given module's `init` method. This is the method that will handle one-time initialization, and be called from `onMount` (inside of a svelte page / layout).
+  - If you're looking for an existing & more sparsely defined `init` method for a module that takes api_base as an argument, that method is now called `initLegacy`.
+
+```
+web/
+  entries/       # Near deprecated - served components-as-widget
+  lib/           # Shared utilities, stores, and modules
+    components/  # Reusable or standalone UI components ()
+    legacy/      # Legacy frontend code, now svelte-compatible!
+  routes/        # SvelteKit pages and endpoints (static)
+    about/       # Just a page to find navigation bugs / play with
+    chat/        # Nearly the whole app (from legacy index.html)
+    demo/        # deprecated, from svelte project init
+    login/       # Yes, the login page (from legacy login.html)
+    sverdle/     # Accessible from the About page if you get bored
+                 # (also) deprecated, from svelte project init
+  app.html       # Custom app template (from legacy index.html)
+svelte.config.js # Sets 'web' and 'web-build' dirs, fallback
+vite.config.js   # Sets plugins (eg. tailwind), demo proxy
+web-build/       # build output - FastAPI serves this index.html
+```
+
+### Development Workflow
+
+The dev server provides full SSR-like behavior (hot reload, server-side dynamic routing, etc.), but the final build is fully static:
+
+```
+npm install
+npm run build
+npm run dev
+```
+
+![sveltekit dev](docs/svelte-npm-run-dev.png)
+
+If Odysseus is already running (eg. at localhost:7000), you'll be immediately be able to communicate with the backend while viewing /testing your frontend changes.
+
+If using docker, there's no need to run `docker compose up -d --build` until you're ready to redeploy, or you need to run backend-initiated tests, or you're pulling upstream changes to the backend, or you find the need to modify it yourself.
+
+---
 
 <p align="center">
   A self-hosted AI workspace for chat, agents, research, documents, email, notes, calendar, and local model workflows.
@@ -23,20 +105,30 @@
 </p>
 
 ---
-# Running through Sveltekit
-<img  alt="image" src="docs/Odysseus-through-Sveltekit.png" />
+
+## Running through SvelteKit
+
+![app viewed through sveltekit](docs/Odysseus-through-Sveltekit.png)
+If you do not see the svelte header and footer, you've reached a fallback page. Check the console for errors.
 
 ---
 
 ## Quick Start
 
-### sveltekit version notes
-> `svelte-dev` is the default. No fast-tracking `main`, but `svelte` exists.
+### SvelteKit POC Version Repo notes
+
+You can follow the legacy build and run steps as they are after you've compiled the svelte frontend with `npm run build`.
 
 
+`svelte-dev` is the default development branch.
 
+There is no fast-tracking `main` branch, but `svelte` exists - Major versions will exist there if we get that far.
 
-> `dev` is the default branch and gets the newest changes first. Use [`main`](https://github.com/pewdiepie-archdaemon/odysseus/tree/main) if you want the more curated branch.
+---
+
+### Legacy Quick Start
+
+`dev` is the default branch and gets the newest changes first. Use [`main`](https://github.com/pewdiepie-archdaemon/odysseus/tree/main) if you want the more curated branch.
 
 ```bash
 git clone https://github.com/pewdiepie-archdaemon/odysseus.git
