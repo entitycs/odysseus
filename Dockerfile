@@ -54,8 +54,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs
 
-RUN npm install -g pnpm
-
 WORKDIR /app
 
 # Install Python deps first (layer cache). Optional extras (PyMuPDF AGPL, etc.)
@@ -90,8 +88,9 @@ RUN mkdir -p data logs services/cache/search
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 # Build SvelteKit (Track B)
+RUN corepack enable
 RUN pnpm install --frozen-lockfile
-RUN pnpm build:widgets
+# RUN pnpm build:widgets
 RUN pnpm build:app
 
 EXPOSE 7000

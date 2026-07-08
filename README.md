@@ -14,6 +14,13 @@ Out of the box benefits include client-side routing, state and effect handling, 
 
 ### What This POC Demonstrates
 
+○ Incremental modernization ○ Static-first architecture ○ Efficient onboarding for new features ○ Improved development, performance and UX ○ Cleaner separation of concerns
+
+<details>
+<summary>
+details:
+</summary>
+
 - **Incremental modernization**
   The legacy HTML/JS/CSS structure is decomposed into Svelte components, layouts, and modules. This allows targeted rewrites without requiring a full migration upfront.
 
@@ -29,6 +36,8 @@ Out of the box benefits include client-side routing, state and effect handling, 
 - **Cleaner separation of concerns**
   The frontend no longer needs to manage global scripts or shared DOM state. Each feature lives in its own component, with scoped styles and predictable lifecycle behavior.
 
+</details>
+
 ### Why SvelteKit (Static) Was Chosen for the POC
 
 Odysseus already has a backend capable of serving static assets. SvelteKit’s static adapter allows us to:
@@ -43,6 +52,13 @@ It’s a low-risk path toward a future full rewrite - while still delivering imm
 ### Project Structure Overview
 
 In order to get aligned with this project, coming from the main project, there are a few quick things to note, and then the rest should fall into place.
+
+<details>
+<summary>
+details:
+</summary>
+
+
 1. First thing to note is that nearly all .js files from `/static/js` have been moved to `/web/lib/legacy`.
   - They have also been modified slightly, to fit the svelte environment.
   - Any 'DOM READY' code or self-firing code has been, or will be moved to the given module's `init` method. This is the method that will handle one-time initialization, and be called from `onMount` (inside of a svelte page / layout).
@@ -67,14 +83,16 @@ vite.config.js   # Sets plugins (eg. tailwind), demo proxy
 web-build/       # build output - FastAPI serves this index.html
 ```
 
+</details>
+
 ### Development Workflow
 
 The dev server provides full SSR-like behavior (hot reload, server-side dynamic routing, etc.), but the final build is fully static:
 
 ```
-npm install
-npm run build
-npm run dev
+pnpm install
+pnpm build:app
+pnpm dev
 ```
 
 ![sveltekit dev](docs/svelte-npm-run-dev.png)
