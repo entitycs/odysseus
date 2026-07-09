@@ -10,6 +10,7 @@ Fix: (1) Read from JSON body as fallback.
 
 import ast
 from pathlib import Path
+import re
 
 import pytest
 
@@ -298,7 +299,7 @@ def test_explicit_false_disables_even_for_admin():
 
 # ── Frontend source-level guards ──────────────────────────────
 
-_CHAT_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "chat.js"
+_CHAT_JS = Path(__file__).resolve().parent.parent / "web" / "lib" / "legacy" / "chat.js"
 
 
 def test_frontend_always_sends_explicit_allow_bash():
@@ -312,8 +313,16 @@ def test_frontend_always_sends_explicit_allow_bash():
 
 
 def test_frontend_sends_explicit_allow_web_search_false_in_agent_mode():
-    """chat.js must send allow_web_search=false when web toggle is off in agent mode."""
     source = _CHAT_JS.read_text(encoding="utf-8")
-    assert "fd.append('allow_web_search', el('web-toggle').checked ? 'true' : 'false')" in source, (
+
+    pattern = re.compile(
+        r"if\s*\(\s*(el|document.getElementById)\s*\(['\"]\s*web-toggle\s*['\"]\s*\)\s*.\s*"
+        r"checked\s*\)[^\}]*fd.append\s*\(['\"]\s*allow_web_search\s*['\"]\s*,\s*['\"]\s*"
+        r"true\s*['\"].*\}\s*else (if)?\s*[^\}]*\s*['\"]\s*allow_web_search\s*['\"]\s*,\s*"
+        r"['\"]false['\"]",
+        re.DOTALL,
+    )
+
+    assert pattern.search(source), (
         "Frontend must send explicit allow_web_search=false in agent mode when toggle is off"
     )

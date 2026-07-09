@@ -9,8 +9,8 @@ from pathlib import Path
 import re
 
 _REPO = Path(__file__).resolve().parent.parent
-_CHAT_JS = _REPO / "static" / "js" / "chat.js"
-_CHAT_RENDERER_JS = _REPO / "static" / "js" / "chatRenderer.js"
+_CHAT_JS = _REPO / "web" / "lib" / "legacy" / "chat.js"
+_CHAT_RENDERER_JS = _REPO / "web" / "lib" / "legacy" / "chatRenderer.js"
 
 
 def _resend_body() -> str:

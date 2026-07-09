@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
-_MOD = _REPO / "static" / "js" / "emailLibrary" / "signatureFold.js"
+_MOD = _REPO / "web" / "lib" / "legacy" / "emailLibrary" / "signatureFold.js"
 _HAS_NODE = shutil.which("node") is not None
 
 

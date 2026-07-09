@@ -32,7 +32,7 @@ def test_extract_quote_meta_ignores_non_string_inputs():
             };
           }
         };
-        const { _extractQuoteMeta } = await import('./static/js/emailLibrary/signatureFold.js');
+        const { _extractQuoteMeta } = await import('./web/lib/legacy/emailLibrary/signatureFold.js');
         console.log(JSON.stringify({
           nullValue: _extractQuoteMeta(null),
           objectValue: _extractQuoteMeta({bad: true})
@@ -54,7 +54,7 @@ def test_extract_quote_meta_keeps_outlook_headers():
             };
           }
         };
-        const { _extractQuoteMeta } = await import('./static/js/emailLibrary/signatureFold.js');
+        const { _extractQuoteMeta } = await import('./web/lib/legacy/emailLibrary/signatureFold.js');
         const html = 'From: Alice <alice@example.com> Sent: Monday, May 4, 2026 To: Bob Subject: hi';
         console.log(JSON.stringify({ meta: _extractQuoteMeta(html) }));
         """

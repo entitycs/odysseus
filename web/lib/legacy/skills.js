@@ -8,8 +8,12 @@
 import { bindMenuDismiss, dismissOrRemove } from '$lib/legacy/escMenuStack.js';
 import * as spinnerModule from '$lib/legacy/spinner.js';
 import uiModule from '$lib/legacy/ui.js';
+import { topPortalZ } from './toolWindowZOrder.js';
 
 let API;
+// Collapsed skills sections ("user" / "builtin"), persisted so the
+// choice survives reloads. Built-in defaults to collapsed (it's
+// reference info, not the user's own skills).
 let _collapsedSections;
 
 export function init() {
@@ -20,83 +24,45 @@ export function init() {
   } catch (_) {
     _collapsedSections = new Set(['builtin']);
   }
-  document
-    .getElementById('skill-import-url-btn')
-    ?.addEventListener('click', importSkillFromUrl);
-  document
-    .getElementById('skill-import-url')
-    ?.addEventListener('keydown', (e) => {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('skill-import-url-btn')?.addEventListener('click', importSkillFromUrl);
+    document.getElementById('skill-import-url')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') importSkillFromUrl();
     });
-  document.getElementById('add-skill-btn')?.addEventListener('click', addSkill);
-  document
-    .getElementById('skills-search')
-    ?.addEventListener('input', renderSkillsList);
-  document.getElementById('skills-sort')?.addEventListener('change', (e) => {
-    // Dropdown holds two optgroups: Sort (sort:<key>) and Filter (filter:<key>).
-    // Picking a sort option leaves the filter alone, and vice-versa.
-    const v = e.target.value || '';
-    if (v.startsWith('sort:')) {
-      _skillsSort = v.slice(5);
-    } else if (v.startsWith('filter:')) {
-      const f = v.slice(7);
-      if (f === 'all') {
-        _showDraftsOnly = false;
-        _showPublishedOnly = false;
-        _confMax = null;
-      } else if (f === 'drafts') {
-        _showDraftsOnly = true;
-        _showPublishedOnly = false;
-        _confMax = null;
-      } else if (f === 'published') {
-        _showPublishedOnly = true;
-        _showDraftsOnly = false;
-        _confMax = null;
-      } else if (f.startsWith('conf')) {
-        _showDraftsOnly = false;
-        _showPublishedOnly = false;
-        _confMax = parseInt(f.slice(4), 10) || null;
+    document.getElementById('add-skill-btn')?.addEventListener('click', addSkill);
+    document.getElementById('skills-search')?.addEventListener('input', renderSkillsList);
+    document.getElementById('skills-sort')?.addEventListener('change', (e) => {
+      // Dropdown holds two optgroups: Sort (sort:<key>) and Filter (filter:<key>).
+      // Picking a sort option leaves the filter alone, and vice-versa.
+      const v = e.target.value || '';
+      if (v.startsWith('sort:')) {
+        _skillsSort = v.slice(5);
+      } else if (v.startsWith('filter:')) {
+        const f = v.slice(7);
+        if (f === 'all') { _showDraftsOnly = false; _showPublishedOnly = false; _confMax = null; }
+        else if (f === 'drafts') { _showDraftsOnly = true; _showPublishedOnly = false; _confMax = null; }
+        else if (f === 'published') { _showPublishedOnly = true; _showDraftsOnly = false; _confMax = null; }
+        else if (f.startsWith('conf')) { _showDraftsOnly = false; _showPublishedOnly = false; _confMax = parseInt(f.slice(4), 10) || null; }
       }
-    }
-    renderSkillsList();
+      renderSkillsList();
+    });
+    document.getElementById('skills-select-btn')?.addEventListener('click', () => {
+      if (_selectMode) _exitSelectMode(); else _enterSelectMode();
+    });
+    document.getElementById('skills-audit-btn')?.addEventListener('click', _auditAllSkills);
+    document.getElementById('skills-select-all')?.addEventListener('change', _toggleSelectAll);
+    document.getElementById('skills-bulk-cancel')?.addEventListener('click', _exitSelectMode);
+    document.getElementById('skills-bulk-audit')?.addEventListener('click', _bulkAudit);
+    document.getElementById('skills-bulk-delete')?.addEventListener('click', _bulkDelete);
+    document.getElementById('skills-bulk-delete-nonpassing')?.addEventListener('click', _bulkDeleteNonPassing);
+    document.getElementById('skills-bulk-publish')?.addEventListener('click', _bulkApprove);
+    document.getElementById('new-skill-title')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addSkill();
+    });
+    document.getElementById('new-skill-name')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addSkill();
+    });
   });
-  document
-    .getElementById('skills-select-btn')
-    ?.addEventListener('click', () => {
-      if (_selectMode) _exitSelectMode();
-      else _enterSelectMode();
-    });
-  document
-    .getElementById('skills-audit-btn')
-    ?.addEventListener('click', _auditAllSkills);
-  document
-    .getElementById('skills-select-all')
-    ?.addEventListener('change', _toggleSelectAll);
-  document
-    .getElementById('skills-bulk-cancel')
-    ?.addEventListener('click', _exitSelectMode);
-  document
-    .getElementById('skills-bulk-audit')
-    ?.addEventListener('click', _bulkAudit);
-  document
-    .getElementById('skills-bulk-delete')
-    ?.addEventListener('click', _bulkDelete);
-  document
-    .getElementById('skills-bulk-delete-nonpassing')
-    ?.addEventListener('click', _bulkDeleteNonPassing);
-  document
-    .getElementById('skills-bulk-publish')
-    ?.addEventListener('click', _bulkApprove);
-  document
-    .getElementById('new-skill-title')
-    ?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') addSkill();
-    });
-  document
-    .getElementById('new-skill-name')
-    ?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') addSkill();
-    });
   // Populate the Skills badge on first load so the count is right before the
   // user clicks into the tab. Cheap fetch — same as the lazy path.
   loadSkills();
@@ -111,13 +77,9 @@ let _loadPromise = null;
 let _pendingFocusSkill = null;
 let _cascadeNext = false; // set true to play the domino-in entrance on the next render
 
-function esc(s) {
-  return uiModule.esc(String(s ?? ''));
-}
+function esc(s) { return uiModule.esc(String(s ?? '')); }
 
-function _playSkillsCascade(
-  container = document.getElementById('skills-list'),
-) {
+function _playSkillsCascade(container = document.getElementById('skills-list')) {
   if (!container || !container.querySelector('.skill-card')) return false;
   container.classList.remove('doclib-just-opened');
   void container.offsetWidth;
@@ -132,9 +94,7 @@ function _playSkillsCascade(
 const _mdCache = new Map();
 async function _fetchSkillMarkdown(name) {
   if (_mdCache.has(name)) return _mdCache.get(name);
-  const res = await fetch(
-    `${API}/api/skills/${encodeURIComponent(name)}/markdown`,
-  );
+  const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/markdown`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   const md = data.markdown || '';
@@ -144,58 +104,27 @@ async function _fetchSkillMarkdown(name) {
 // Background-load the markdown for every currently-rendered skill card so it
 // is ready (in the card's <pre> + _mdLoaded) before the user expands it.
 function _preloadVisibleMarkdown() {
-  document
-    .querySelectorAll('#skills-list .skill-card[data-skill-name]')
-    .forEach((card) => {
-      const name = card.dataset.skillName;
-      if (!name || card._mdLoaded) return;
-      const pre = card.querySelector('.skill-md-pre');
-      const apply = (md) => {
-        if (pre) pre.textContent = md || '(empty)';
-        card._mdLoaded = true;
-        card._md = md || '';
-      };
-      if (_mdCache.has(name)) {
-        apply(_mdCache.get(name));
-        return;
-      }
-      _fetchSkillMarkdown(name)
-        .then(apply)
-        .catch(() => {});
-    });
+  document.querySelectorAll('#skills-list .skill-card[data-skill-name]').forEach(card => {
+    const name = card.dataset.skillName;
+    if (!name || card._mdLoaded) return;
+    const pre = card.querySelector('.skill-md-pre');
+    const apply = (md) => { if (pre) pre.textContent = md || '(empty)'; card._mdLoaded = true; card._md = md || ''; };
+    if (_mdCache.has(name)) { apply(_mdCache.get(name)); return; }
+    _fetchSkillMarkdown(name).then(apply).catch(() => {});
+  });
 }
 
-// Collapsed skills sections ("user" / "builtin"), persisted so the
-// choice survives reloads. Built-in defaults to collapsed (it's
-// reference info, not the user's own skills).
-// const _collapsedSections = (() => {
-//   try {
-//     const raw = localStorage.getItem('skillsSectionsCollapsed');
-//     if (raw) return new Set(JSON.parse(raw));
-//   } catch (_) {}
-//   return new Set(['builtin']);
-// })();
 function _saveCollapsedSections() {
-  try {
-    localStorage.setItem(
-      'skillsSectionsCollapsed',
-      JSON.stringify([..._collapsedSections]),
-    );
-  } catch (_) {}
+  try { localStorage.setItem('skillsSectionsCollapsed', JSON.stringify([..._collapsedSections])); } catch (_) {}
 }
 function _applySectionCollapse(container) {
   if (!container) return;
-  container.querySelectorAll('.skills-section-header').forEach((h) => {
+  container.querySelectorAll('.skills-section-header').forEach(h => {
     h.classList.toggle('collapsed', _collapsedSections.has(h.dataset.section));
   });
-  container
-    .querySelectorAll('.doclib-card[data-skill-section]')
-    .forEach((c) => {
-      c.classList.toggle(
-        'skill-card-section-hidden',
-        _collapsedSections.has(c.dataset.skillSection),
-      );
-    });
+  container.querySelectorAll('.doclib-card[data-skill-section]').forEach(c => {
+    c.classList.toggle('skill-card-section-hidden', _collapsedSections.has(c.dataset.skillSection));
+  });
 }
 
 export async function loadSkills(cascade = false) {
@@ -209,52 +138,48 @@ export async function loadSkills(cascade = false) {
   }
   if (_loadPromise) return _loadPromise;
   _loadPromise = (async () => {
-    try {
-      const res = await fetch(`${API}/api/skills`);
-      const data = await res.json();
-      // Dedupe by name (case-insensitive) — the API has occasionally
-      // returned the same skill twice (built-in shadow + user copy, or
-      // a write-then-read race), and rendering both made the duplicate
-      // detector mark BOTH entries as the "recommended" keeper.
-      const _seen = new Set();
-      skills = (data.skills || []).filter((sk) => {
-        const k = String(sk?.name || sk?.id || '').toLowerCase();
-        if (!k) return true;
-        if (_seen.has(k)) return false;
-        _seen.add(k);
-        return true;
-      });
-      _loadSkillApprovalThreshold();
-      // Built-in capabilities are no longer surfaced in the Skills menu.
-      loaded = true;
-      renderSkillsList();
-      updateCount();
-      if (_pendingFocusSkill) {
-        _focusSkillRow(_pendingFocusSkill);
-        _pendingFocusSkill = null;
-      }
-      // If a background audit is running, re-show its progress panel.
-      if (!_auditPoll) {
-        _fetchAuditStatus()
-          .then((st) => {
-            if (st.status === 'running') _auditAllSkills();
-          })
-          .catch(() => {});
-      }
-    } catch (e) {
-      console.error('Failed to load skills:', e);
-    } finally {
-      _loadPromise = null;
+  try {
+    const res = await fetch(`${API}/api/skills`);
+    const data = await res.json();
+    // Dedupe by name (case-insensitive) — the API has occasionally
+    // returned the same skill twice (built-in shadow + user copy, or
+    // a write-then-read race), and rendering both made the duplicate
+    // detector mark BOTH entries as the "recommended" keeper.
+    const _seen = new Set();
+    skills = (data.skills || []).filter(sk => {
+      const k = String(sk?.name || sk?.id || '').toLowerCase();
+      if (!k) return true;
+      if (_seen.has(k)) return false;
+      _seen.add(k);
+      return true;
+    });
+    _loadSkillApprovalThreshold();
+    // Built-in capabilities are no longer surfaced in the Skills menu.
+    loaded = true;
+    renderSkillsList();
+    updateCount();
+    if (_pendingFocusSkill) {
+      _focusSkillRow(_pendingFocusSkill);
+      _pendingFocusSkill = null;
     }
+    // If a background audit is running, re-show its progress panel.
+    if (!_auditPoll) {
+      _fetchAuditStatus().then(st => {
+        if (st.status === 'running') _auditAllSkills();
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Failed to load skills:', e);
+  } finally {
+    _loadPromise = null;
+  }
   })();
   return _loadPromise;
 }
 
 function _focusSkillRow(name) {
   setTimeout(() => {
-    const card = document.querySelector(
-      `.skill-card[data-skill-name="${CSS.escape(name)}"]`,
-    );
+    const card = document.querySelector(`.skill-card[data-skill-name="${CSS.escape(name)}"]`);
     if (!card) return;
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     card.classList.add('skill-row-flash');
@@ -275,14 +200,14 @@ export function openSkill(name) {
   setTimeout(() => {
     const tab = document.querySelector('.memory-tab[data-memory-tab="skills"]');
     if (tab) tab.click();
-    else loadSkills(); // fallback if tab structure differs
+    else loadSkills();  // fallback if tab structure differs
   }, 120);
 }
 
 let _skillsSort = 'confidence';
 let _showDraftsOnly = false;
 let _showPublishedOnly = false;
-let _confMax = null; // confidence ceiling filter (%, e.g. 90 = show ≤90%); null = off
+let _confMax = null;   // confidence ceiling filter (%, e.g. 90 = show ≤90%); null = off
 let _selectMode = false;
 const _selectedNames = new Set();
 let _skillApprovalThreshold = 0.85;
@@ -291,31 +216,17 @@ function updateCount() {
   const el = document.getElementById('skills-count');
   if (el) el.textContent = skills.length || '0';
   const elH = document.getElementById('skills-count-h2');
-  if (elH)
-    elH.textContent =
-      skills.length + ' skill' + (skills.length === 1 ? '' : 's');
+  if (elH) elH.textContent = skills.length + ' skill' + (skills.length === 1 ? '' : 's');
 }
 
 function _sortSkills(list) {
   const arr = list.slice();
   if (_skillsSort === 'confidence') {
-    arr.sort(
-      (a, b) =>
-        (b.confidence || 0) - (a.confidence || 0) ||
-        (a.name || '').localeCompare(b.name || ''),
-    );
+    arr.sort((a, b) => (b.confidence || 0) - (a.confidence || 0) || (a.name || '').localeCompare(b.name || ''));
   } else if (_skillsSort === 'uses') {
-    arr.sort(
-      (a, b) =>
-        (b.uses || 0) - (a.uses || 0) ||
-        (a.name || '').localeCompare(b.name || ''),
-    );
+    arr.sort((a, b) => (b.uses || 0) - (a.uses || 0) || (a.name || '').localeCompare(b.name || ''));
   } else if (_skillsSort === 'recent') {
-    arr.sort(
-      (a, b) =>
-        (b.updated_at || b.created_at || 0) -
-        (a.updated_at || a.created_at || 0),
-    );
+    arr.sort((a, b) => (b.updated_at || b.created_at || 0) - (a.updated_at || a.created_at || 0));
   } else {
     arr.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }
@@ -329,16 +240,14 @@ function _matches(sk, query) {
     (sk.description || '').toLowerCase().includes(q) ||
     (sk.when_to_use || sk.problem || '').toLowerCase().includes(q) ||
     (sk.category || '').toLowerCase().includes(q) ||
-    (sk.tags || []).some((t) => (t || '').toLowerCase().includes(q))
+    (sk.tags || []).some(t => (t || '').toLowerCase().includes(q))
   );
 }
 
 function _statusPill(sk) {
   const s = sk.status || (sk._legacy ? 'legacy' : 'draft');
-  if (s === 'published')
-    return '<span class="memory-cat-badge skill-status-pill" data-status="published" style="background:color-mix(in srgb, var(--accent, #4ade80) 30%, transparent)">published</span>';
-  if (s === 'draft')
-    return '<span class="memory-cat-badge skill-status-pill" data-status="draft" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">draft</span>';
+  if (s === 'published') return '<span class="memory-cat-badge skill-status-pill" data-status="published" style="background:color-mix(in srgb, var(--accent, #4ade80) 30%, transparent)">published</span>';
+  if (s === 'draft')     return '<span class="memory-cat-badge skill-status-pill" data-status="draft" style="background:color-mix(in srgb, var(--fg) 14%, transparent)">draft</span>';
   return `<span class="memory-cat-badge skill-status-pill" data-status="${esc(s)}" style="opacity:0.6">${esc(s)}</span>`;
 }
 
@@ -353,38 +262,23 @@ function _sourcePill(sk) {
 }
 
 function _modelShortName(model) {
-  return (
-    String(model || '')
-      .split('/')
-      .filter(Boolean)
-      .pop() || String(model || '')
-  );
+  return String(model || '').split('/').filter(Boolean).pop() || String(model || '');
 }
 
 function _skillTokens(sk) {
-  return new Set(
-    String(
-      [
-        sk.name || '',
-        sk.description || '',
-        sk.when_to_use || '',
-        ...(sk.tags || []),
-      ].join(' '),
-    )
-      .toLowerCase()
-      .replace(/-\d+\b/g, '')
-      .split(/[^a-z0-9]+/)
-      .filter(
-        (t) =>
-          t.length > 2 &&
-          !['the', 'and', 'with', 'for', 'from', 'using'].includes(t),
-      ),
-  );
+  return new Set(String([
+    sk.name || '',
+    sk.description || '',
+    sk.when_to_use || '',
+    ...(sk.tags || []),
+  ].join(' ')).toLowerCase()
+    .replace(/-\d+\b/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter(t => t.length > 2 && !['the', 'and', 'with', 'for', 'from', 'using'].includes(t)));
 }
 
 function _skillSimilarity(a, b) {
-  const A = _skillTokens(a),
-    B = _skillTokens(b);
+  const A = _skillTokens(a), B = _skillTokens(b);
   if (!A.size || !B.size) return 0;
   let inter = 0;
   for (const t of A) if (B.has(t)) inter++;
@@ -397,7 +291,7 @@ function _baseSkillName(name) {
 
 function _scoreDuplicateKeeper(sk) {
   return [
-    sk.status === 'published' ? 100000 : 0,
+    (sk.status === 'published') ? 100000 : 0,
     (sk.uses || 0) * 100,
     Math.round((sk.confidence || 0) * 100),
     sk.audit_by_teacher ? -5 : 0,
@@ -407,29 +301,23 @@ function _scoreDuplicateKeeper(sk) {
 
 function _duplicateMeta(list) {
   const parent = new Map();
-  const names = list.map((s) => s.name || s.id).filter(Boolean);
-  names.forEach((n) => parent.set(n, n));
+  const names = list.map(s => s.name || s.id).filter(Boolean);
+  names.forEach(n => parent.set(n, n));
   const find = (x) => {
     let p = parent.get(x) || x;
     while (p !== parent.get(p)) p = parent.get(p);
     return p;
   };
   const unite = (a, b) => {
-    const pa = find(a),
-      pb = find(b);
+    const pa = find(a), pb = find(b);
     if (pa !== pb) parent.set(pb, pa);
   };
   for (let i = 0; i < list.length; i++) {
     for (let j = i + 1; j < list.length; j++) {
-      const a = list[i],
-        b = list[j];
-      const an = a.name || a.id,
-        bn = b.name || b.id;
+      const a = list[i], b = list[j];
+      const an = a.name || a.id, bn = b.name || b.id;
       if (!an || !bn) continue;
-      if (
-        _baseSkillName(an) === _baseSkillName(bn) ||
-        _skillSimilarity(a, b) >= 0.38
-      ) {
+      if (_baseSkillName(an) === _baseSkillName(bn) || _skillSimilarity(a, b) >= 0.38) {
         unite(an, bn);
       }
     }
@@ -446,19 +334,12 @@ function _duplicateMeta(list) {
   let idx = 1;
   for (const group of groups.values()) {
     if (group.length < 2) continue;
-    const sorted = group
-      .slice()
-      .sort((a, b) => _scoreDuplicateKeeper(b) - _scoreDuplicateKeeper(a));
+    const sorted = group.slice().sort((a, b) => _scoreDuplicateKeeper(b) - _scoreDuplicateKeeper(a));
     const keep = sorted[0].name || sorted[0].id;
-    const groupNames = sorted.map((s) => s.name || s.id).filter(Boolean);
+    const groupNames = sorted.map(s => s.name || s.id).filter(Boolean);
     for (const sk of sorted) {
       const n = sk.name || sk.id;
-      meta.set(n, {
-        group: idx,
-        keep: n === keep,
-        keepName: keep,
-        names: groupNames,
-      });
+      meta.set(n, { group: idx, keep: n === keep, keepName: keep, names: groupNames });
     }
     idx++;
   }
@@ -487,17 +368,8 @@ function _necessityKind(sk) {
   if (!nec || nec.necessary !== false) return null;
   const reason = String(nec.reason || '').toLowerCase();
   const redundant = (nec.redundant_with || []).filter(Boolean);
-  if (
-    redundant.length ||
-    /duplicat|redundan|overlap|same skill|same procedure/.test(reason)
-  )
-    return 'duplicate';
-  if (
-    /trivial|generic|capable assistant|without a saved|not need|unnecessary/.test(
-      reason,
-    )
-  )
-    return 'trivial';
+  if (redundant.length || /duplicat|redundan|overlap|same skill|same procedure/.test(reason)) return 'duplicate';
+  if (/trivial|generic|capable assistant|without a saved|not need|unnecessary/.test(reason)) return 'trivial';
   return 'irrelevant';
 }
 
@@ -506,19 +378,13 @@ function _necessityPill(sk) {
   if (!kind) return '';
   const nec = sk.necessity || {};
   const dup = (nec.redundant_with || []).filter(Boolean);
-  const label =
-    kind === 'duplicate'
-      ? sk._duplicateGroup
-        ? `duplicate #${sk._duplicateGroup}`
-        : 'duplicate'
-      : kind === 'trivial'
-        ? 'generic'
-        : 'possibly-irrelevant';
+  const label = kind === 'duplicate' ? (sk._duplicateGroup ? `duplicate #${sk._duplicateGroup}` : 'duplicate')
+    : kind === 'trivial' ? 'generic'
+    : 'possibly-irrelevant';
   const group = sk._duplicateNames || [];
   const why = sk._duplicateGroup
     ? `Duplicate group #${sk._duplicateGroup}. Recommended keep: ${sk._duplicateKeepName}. Group: ${group.join(', ')}`
-    : (nec.reason || 'May not be worth keeping') +
-      (dup.length ? ' | overlaps: ' + dup.join(', ') : '');
+    : (nec.reason || 'May not be worth keeping') + (dup.length ? ' | overlaps: ' + dup.join(', ') : '');
   return `<span class="memory-cat-badge skill-necessity-pill skill-necessity-${kind}" title="${esc(why)}">${label}</span>`;
 }
 
@@ -548,13 +414,9 @@ function _auditMarks(sk) {
 // Audit verdict dot — removed at user request. The ✓ check-mark next to the
 // confidence % still indicates a pass. Stub returns empty so the surrounding
 // header HTML still composes without changing other layout.
-function _auditDot(sk) {
-  return '';
-}
+function _auditDot(sk) { return ''; }
 
-function _isDraftsFilter() {
-  return !!_showDraftsOnly;
-}
+function _isDraftsFilter() { return !!_showDraftsOnly; }
 
 // Confidence → colour. 90%+ is solidly green, scaling down through
 // yellow/orange to red at 50% and below (hue 120→0 over 90→50).
@@ -565,17 +427,14 @@ function _confColor(conf) {
 
 // Shared action icons (collapsed kebab menu + expanded footer use the same).
 const _ICON = {
-  del: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
-  edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  del:   '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
+  edit:  '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
   approve: '<polyline points="20 6 9 17 4 12"/>',
   unpublish: '<path d="M5 12l5 5L20 7"/>',
-  test: '<polygon points="5 3 19 12 5 21 5 3"/>',
+  test:  '<polygon points="5 3 19 12 5 21 5 3"/>',
 };
 function _svg(paths, { fill = 'none', size = 13 } = {}) {
-  const stroke =
-    fill === 'currentColor'
-      ? ''
-      : 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  const stroke = fill === 'currentColor' ? '' : 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fill}" ${stroke} style="vertical-align:-2px;flex-shrink:0;">${paths}</svg>`;
 }
 
@@ -587,26 +446,18 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
   menu.className = 'skill-kebab-menu';
   const mk = (paths, label, opts, onClick) => {
     const item = document.createElement('button');
-    item.className =
-      'skill-kebab-item' + (opts && opts.danger ? ' danger' : '');
+    item.className = 'skill-kebab-item' + (opts && opts.danger ? ' danger' : '');
     item.innerHTML = _svg(paths, opts) + `<span>${label}</span>`;
-    item.addEventListener('click', (e) => {
-      e.stopPropagation();
-      close();
-      onClick();
-    });
+    item.addEventListener('click', (e) => { e.stopPropagation(); close(); onClick(); });
     menu.appendChild(item);
   };
-  if (isPublished)
-    mk(_ICON.unpublish, 'Unpublish', {}, () => _setSkillStatus(name, 'draft'));
-  else
-    mk(_ICON.approve, 'Publish', {}, () => _setSkillStatus(name, 'published'));
+  if (isPublished) mk(_ICON.unpublish, 'Unpublish', {}, () => _setSkillStatus(name, 'draft'));
+  else mk(_ICON.approve, 'Publish', {}, () => _setSkillStatus(name, 'published'));
   // Select — moved up to 2nd so it sits next to Publish/Unpublish
   // (bulk actions cluster at the top of the menu).
   const selItem = document.createElement('button');
   selItem.className = 'skill-kebab-item';
-  selItem.innerHTML =
-    '<svg class="memory-select-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg><span>Select</span>';
+  selItem.innerHTML = '<svg class="memory-select-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg><span>Select</span>';
   selItem.addEventListener('click', (e) => {
     e.stopPropagation();
     close();
@@ -617,8 +468,7 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
   menu.appendChild(selItem);
 
   mk(_ICON.edit, 'Edit', {}, async () => {
-    if (!card.classList.contains('doclib-card-expanded'))
-      await _expandSkillCard(card, name);
+    if (!card.classList.contains('doclib-card-expanded')) await _expandSkillCard(card, name);
     _toggleSkillEdit(card, name);
   });
   mk(_ICON.test, 'Test', {}, () => _testSkill(card, name));
@@ -631,17 +481,17 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
   // already dismisses cleanly.
   const cancelItem = document.createElement('button');
   cancelItem.className = 'skill-kebab-item dropdown-cancel-mobile';
-  cancelItem.innerHTML =
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg><span>Cancel</span>';
-  cancelItem.addEventListener('click', (e) => {
-    e.stopPropagation();
-    close();
-  });
+  cancelItem.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg><span>Cancel</span>';
+  cancelItem.addEventListener('click', (e) => { e.stopPropagation(); close(); });
   menu.appendChild(cancelItem);
 
   document.body.appendChild(menu);
+  // Override the CSS z-index (100002) with a value derived from the live
+  // tool-window stack so the kebab menu stays above its modal even after the
+  // bring-to-front counter climbs past the static value (#4720).
+  menu.style.zIndex = String(topPortalZ());
   const r = btn.getBoundingClientRect();
-  menu.style.top = r.bottom + 4 + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
   menu.style.right = Math.max(6, window.innerWidth - r.right) + 'px';
   // Keep it on-screen (mobile): flip above the button if it would overflow the
   // bottom, clamp the left edge, and cap the height as a last resort.
@@ -654,17 +504,10 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
   }
   const mr2 = menu.getBoundingClientRect();
   if (mr2.bottom > window.innerHeight - 6) {
-    menu.style.maxHeight =
-      Math.max(80, window.innerHeight - 12 - mr2.top) + 'px';
+    menu.style.maxHeight = Math.max(80, window.innerHeight - 12 - mr2.top) + 'px';
     menu.style.overflowY = 'auto';
   }
-  const close = bindMenuDismiss(
-    menu,
-    () => {
-      menu.remove();
-    },
-    (ev) => !menu.contains(ev.target),
-  );
+  const close = bindMenuDismiss(menu, () => { menu.remove(); }, (ev) => !menu.contains(ev.target));
 }
 
 // Cards for the agent's built-in tool capabilities (from
@@ -672,7 +515,7 @@ function _openSkillMenu(btn, card, sk, name, isPublished) {
 // instruction block; editable with a warning + a revert-to-default
 // button (overrides stored in settings, applied to the prompt).
 function _buildBuiltinCards() {
-  return builtinSkills.map((b) => {
+  return builtinSkills.map(b => {
     const card = document.createElement('div');
     card.className = 'doclib-card skill-card skill-builtin-card';
     card.dataset.builtinName = b.name;
@@ -698,12 +541,11 @@ function _buildBuiltinCards() {
     // Warning banner — editing a built-in changes how the assistant uses a native tool.
     const warn = document.createElement('div');
     warn.className = 'skill-builtin-warn';
-    warn.innerHTML =
-      '⚠ This is a built-in capability. Editing changes how the assistant is instructed to use this native tool — it can break or alter core behaviour. Use Revert to restore the shipped default.';
+    warn.innerHTML = '⚠ This is a built-in capability. Editing changes how the assistant is instructed to use this native tool — it can break or alter core behaviour. Use Revert to restore the shipped default.';
     preview.appendChild(warn);
     const pre = document.createElement('pre');
     pre.className = 'skill-md-pre';
-    pre.textContent = ''; // filled on expand
+    pre.textContent = '';  // filled on expand
     preview.appendChild(pre);
 
     // Footer: Revert (left, only meaningful when overridden) · Edit/Save (right).
@@ -711,24 +553,15 @@ function _buildBuiltinCards() {
     actions.className = 'doclib-card-expanded-actions';
 
     const revertBtn = document.createElement('button');
-    revertBtn.className =
-      'doclib-card-text-btn doclib-card-action-btn doclib-card-text-btn-danger';
-    revertBtn.innerHTML =
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>Revert';
+    revertBtn.className = 'doclib-card-text-btn doclib-card-action-btn doclib-card-text-btn-danger';
+    revertBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>Revert';
     revertBtn.title = 'Restore the original shipped instructions';
-    revertBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _revertBuiltin(b.name);
-    });
+    revertBtn.addEventListener('click', (e) => { e.stopPropagation(); _revertBuiltin(b.name); });
 
     const editBtn = document.createElement('button');
     editBtn.className = 'doclib-card-text-btn doclib-card-action-btn';
-    editBtn.innerHTML =
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit';
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _toggleBuiltinEdit(card, b.name);
-    });
+    editBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit';
+    editBtn.addEventListener('click', (e) => { e.stopPropagation(); _toggleBuiltinEdit(card, b.name); });
 
     const rightGroup = document.createElement('div');
     rightGroup.className = 'doclib-action-group';
@@ -758,19 +591,14 @@ async function _expandBuiltinCard(card, name) {
     card.classList.remove('doclib-card-expanded');
     return;
   }
-  if (grid)
-    grid
-      .querySelectorAll('.doclib-card-expanded')
-      .forEach((c) => c.classList.remove('doclib-card-expanded'));
+  if (grid) grid.querySelectorAll('.doclib-card-expanded').forEach(c => c.classList.remove('doclib-card-expanded'));
   card.classList.add('doclib-card-expanded');
   if (grid) grid.scrollTop = 0;
   const pre = card.querySelector('.skill-md-pre');
   if (pre && !card._loaded) {
     pre.textContent = 'Loading…';
     try {
-      const res = await fetch(
-        `${API}/api/skills/builtin/${encodeURIComponent(name)}`,
-      );
+      const res = await fetch(`${API}/api/skills/builtin/${encodeURIComponent(name)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       pre.textContent = data.text || '(empty)';
@@ -786,90 +614,59 @@ async function _expandBuiltinCard(card, name) {
 function _toggleBuiltinEdit(card, name) {
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
-  if (preview.querySelector('.skill-md-editor')) {
-    _saveBuiltinEdit(card, name);
-    return;
-  }
+  if (preview.querySelector('.skill-md-editor')) { _saveBuiltinEdit(card, name); return; }
   const pre = preview.querySelector('.skill-md-pre');
   const ta = document.createElement('textarea');
   ta.className = 'skill-md-editor';
   ta.spellcheck = false;
-  ta.value =
-    (card._text != null ? card._text : pre ? pre.textContent : '') || '';
+  ta.value = (card._text != null ? card._text : (pre ? pre.textContent : '')) || '';
   ta.addEventListener('click', (e) => e.stopPropagation());
   if (pre) pre.style.display = 'none';
-  preview.insertBefore(
-    ta,
-    preview.querySelector('.doclib-card-expanded-actions'),
-  );
+  preview.insertBefore(ta, preview.querySelector('.doclib-card-expanded-actions'));
   ta.focus();
-  const editBtn = [...preview.querySelectorAll('.doclib-card-action-btn')].find(
-    (b) => /Edit|Save/.test(b.textContent),
-  );
-  if (editBtn)
-    editBtn.innerHTML =
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save';
+  const editBtn = [...preview.querySelectorAll('.doclib-card-action-btn')].find(b => /Edit|Save/.test(b.textContent));
+  if (editBtn) editBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save';
 }
 
 async function _saveBuiltinEdit(card, name) {
   const ta = card.querySelector('.skill-md-editor');
   if (!ta) return;
   try {
-    const res = await fetch(
-      `${API}/api/skills/builtin/${encodeURIComponent(name)}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: ta.value }),
-      },
-    );
+    const res = await fetch(`${API}/api/skills/builtin/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: ta.value }),
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     uiModule.showToast('Built-in capability updated');
-    builtinSkills = []; // force reload of built-in list (refreshes "edited" badge)
+    builtinSkills = [];  // force reload of built-in list (refreshes "edited" badge)
     await loadSkills();
-  } catch (e) {
-    uiModule.showError('Save failed: ' + e.message);
-  }
+  } catch (e) { uiModule.showError('Save failed: ' + e.message); }
 }
 
 async function _revertBuiltin(name) {
-  if (
-    !(await uiModule.styledConfirm(
-      `Revert "${name}" to its original built-in instructions?`,
-      { confirmText: 'Revert', danger: true },
-    ))
-  )
-    return;
+  if (!(await uiModule.styledConfirm(`Revert "${name}" to its original built-in instructions?`, { confirmText: 'Revert', danger: true }))) return;
   try {
-    const res = await fetch(
-      `${API}/api/skills/builtin/${encodeURIComponent(name)}`,
-      { method: 'DELETE' },
-    );
+    const res = await fetch(`${API}/api/skills/builtin/${encodeURIComponent(name)}`, { method: 'DELETE' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     uiModule.showToast('Reverted to default');
     builtinSkills = [];
     await loadSkills();
-  } catch (e) {
-    uiModule.showError('Revert failed: ' + e.message);
-  }
+  } catch (e) { uiModule.showError('Revert failed: ' + e.message); }
 }
 
 function _getFilteredSkills() {
-  const query = (
-    document.getElementById('skills-search')?.value || ''
-  ).toLowerCase();
-  let filtered = query ? skills.filter((sk) => _matches(sk, query)) : skills;
+  const query = (document.getElementById('skills-search')?.value || '').toLowerCase();
+  let filtered = query ? skills.filter(sk => _matches(sk, query)) : skills;
   if (_showDraftsOnly) {
-    filtered = filtered.filter((sk) => (sk.status || 'draft') !== 'published');
+    filtered = filtered.filter(sk => (sk.status || 'draft') !== 'published');
   }
   if (_showPublishedOnly) {
-    filtered = filtered.filter((sk) => (sk.status || 'draft') === 'published');
+    filtered = filtered.filter(sk => (sk.status || 'draft') === 'published');
   }
   if (_confMax != null) {
     // "≤ X%" — surface the lower-confidence skills that may need review.
-    filtered = filtered.filter(
-      (sk) => Math.round((sk.confidence || 0) * 100) <= _confMax,
-    );
+    filtered = filtered.filter(sk => Math.round((sk.confidence || 0) * 100) <= _confMax);
   }
   return _sortSkills(filtered);
 }
@@ -929,7 +726,7 @@ function renderSkillsList() {
     }
     const conf = Math.round((sk.confidence || 0) * 100);
     const uses = sk.uses || 0;
-    const isPublished = sk.status === 'published';
+    const isPublished = (sk.status === 'published');
     const confColor = _confColor(conf);
 
     const card = document.createElement('div');
@@ -977,7 +774,7 @@ function renderSkillsList() {
     preview.className = 'doclib-card-preview skill-card-preview';
     const pre = document.createElement('pre');
     pre.className = 'skill-md-pre';
-    pre.textContent = ''; // filled on expand
+    pre.textContent = '';  // filled on expand
     preview.appendChild(pre);
 
     // Footer: Approve/Unpublish on the left, destructive delete on the right.
@@ -985,43 +782,26 @@ function renderSkillsList() {
     actions.className = 'doclib-card-expanded-actions';
 
     const delBtn = document.createElement('button');
-    delBtn.className =
-      'doclib-card-text-btn doclib-card-action-btn doclib-card-text-btn-danger';
-    delBtn.innerHTML =
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Delete';
-    delBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _deleteSkill(name, card);
-    });
+    delBtn.className = 'doclib-card-text-btn doclib-card-action-btn doclib-card-text-btn-danger';
+    delBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Delete';
+    delBtn.addEventListener('click', (e) => { e.stopPropagation(); _deleteSkill(name, card); });
 
     const editBtn = document.createElement('button');
     editBtn.className = 'doclib-card-text-btn doclib-card-action-btn';
-    editBtn.innerHTML =
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit';
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _toggleSkillEdit(card, name);
-    });
+    editBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit';
+    editBtn.addEventListener('click', (e) => { e.stopPropagation(); _toggleSkillEdit(card, name); });
 
     const pubBtn = document.createElement('button');
     pubBtn.className = 'doclib-card-text-btn doclib-card-action-btn';
     if (isPublished) {
-      pubBtn.innerHTML =
-        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12l5 5L20 7"/></svg>Unpublish';
+      pubBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12l5 5L20 7"/></svg>Unpublish';
       pubBtn.title = 'Move back to draft';
-      pubBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        _setSkillStatus(name, 'draft');
-      });
+      pubBtn.addEventListener('click', (e) => { e.stopPropagation(); _setSkillStatus(name, 'draft'); });
     } else {
-      pubBtn.innerHTML =
-        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Publish';
+      pubBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Publish';
       pubBtn.title = 'Publish — appears in the skills index';
       pubBtn.style.color = 'var(--color-success, #4caf50)';
-      pubBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        _setSkillStatus(name, 'published');
-      });
+      pubBtn.addEventListener('click', (e) => { e.stopPropagation(); _setSkillStatus(name, 'published'); });
     }
 
     // Test/audit this one skill — same action that's in the kebab, surfaced in
@@ -1036,7 +816,7 @@ function renderSkillsList() {
       // happened because _testSkill awaits a status fetch before overwriting
       // the preview — so users would tap a second time. Mark the button as
       // pending right away so the first tap is obviously registered.
-      if (testBtn.dataset.busy === '1') return; // also dedupe rapid double-tap
+      if (testBtn.dataset.busy === '1') return;  // also dedupe rapid double-tap
       testBtn.dataset.busy = '1';
       testBtn.disabled = true;
       const _origHTML = testBtn.innerHTML;
@@ -1069,10 +849,7 @@ function renderSkillsList() {
 
     // Click to expand/collapse (unless in select mode → toggle checkbox).
     card.addEventListener('click', (e) => {
-      if (card._suppressNextClick) {
-        card._suppressNextClick = false;
-        return;
-      }
+      if (card._suppressNextClick) { card._suppressNextClick = false; return; }
       if (e.target.closest('button, input, textarea')) return;
       // While editing, a click on the card body (outside the textarea) must
       // NOT collapse the card — that silently discards unsaved edits. Only
@@ -1080,10 +857,7 @@ function renderSkillsList() {
       if (card.querySelector('.skill-md-editor')) return;
       if (_selectMode) {
         const cb = card.querySelector('.skill-select-cb');
-        if (cb) {
-          cb.checked = !cb.checked;
-          cb.dispatchEvent(new Event('change'));
-        }
+        if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
         return;
       }
       _expandSkillCard(card, name);
@@ -1096,38 +870,21 @@ function renderSkillsList() {
       const kebab = header.querySelector('.skill-kebab-btn');
       let hold = null;
       let start = null;
-      const _lpCancel = () => {
-        if (hold) {
-          clearTimeout(hold);
-          hold = null;
-        }
-        start = null;
-      };
+      const _lpCancel = () => { if (hold) { clearTimeout(hold); hold = null; } start = null; };
       card.addEventListener('pointerdown', (e) => {
-        if (
-          e.target.closest(
-            '.skill-kebab-btn, .skill-select-cb, button, input, textarea',
-          )
-        )
-          return;
+        if (e.target.closest('.skill-kebab-btn, .skill-select-cb, button, input, textarea')) return;
         start = { x: e.clientX, y: e.clientY };
         hold = setTimeout(() => {
           hold = null;
           card._suppressNextClick = true;
-          setTimeout(() => {
-            card._suppressNextClick = false;
-          }, 400);
-          if (navigator.vibrate)
-            try {
-              navigator.vibrate(15);
-            } catch {}
+          setTimeout(() => { card._suppressNextClick = false; }, 400);
+          if (navigator.vibrate) try { navigator.vibrate(15); } catch {}
           if (kebab) kebab.click();
         }, 500);
       });
       card.addEventListener('pointermove', (e) => {
         if (!start) return;
-        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10)
-          _lpCancel();
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) _lpCancel();
       });
       card.addEventListener('pointerup', _lpCancel);
       card.addEventListener('pointercancel', _lpCancel);
@@ -1145,17 +902,14 @@ function renderSkillsList() {
   const _mkSectionHeader = (sectionId, title, count) => {
     const collapsed = _collapsedSections.has(sectionId);
     const hdr = document.createElement('div');
-    hdr.className =
-      'skills-section-label skills-section-header' +
-      (collapsed ? ' collapsed' : '');
+    hdr.className = 'skills-section-label skills-section-header' + (collapsed ? ' collapsed' : '');
     hdr.dataset.section = sectionId;
     hdr.innerHTML =
       `<svg class="skills-section-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>` +
       `<span>${esc(title)}</span>` +
       `<span class="skills-section-count">${count}</span>`;
     hdr.addEventListener('click', () => {
-      if (_collapsedSections.has(sectionId))
-        _collapsedSections.delete(sectionId);
+      if (_collapsedSections.has(sectionId)) _collapsedSections.delete(sectionId);
       else _collapsedSections.add(sectionId);
       _saveCollapsedSections();
       _applySectionCollapse(container);
@@ -1166,26 +920,15 @@ function renderSkillsList() {
   // "Your skills" section — show the header only when there's also a
   // built-in section to distinguish from (otherwise it's just the list).
   if (cards.length) {
-    if (showBuiltin)
-      container.appendChild(
-        _mkSectionHeader('user', 'Your skills', cards.length),
-      );
-    cards.forEach((c) => {
-      c.dataset.skillSection = 'user';
-      container.appendChild(c);
-    });
+    if (showBuiltin) container.appendChild(_mkSectionHeader('user', 'Your skills', cards.length));
+    cards.forEach(c => { c.dataset.skillSection = 'user'; container.appendChild(c); });
   }
 
   // Built-in capabilities — read-only cards (the agent's native tools).
   if (showBuiltin) {
     const builtinCards = _buildBuiltinCards();
-    container.appendChild(
-      _mkSectionHeader('builtin', 'Built-in capabilities', builtinCards.length),
-    );
-    builtinCards.forEach((c) => {
-      c.dataset.skillSection = 'builtin';
-      container.appendChild(c);
-    });
+    container.appendChild(_mkSectionHeader('builtin', 'Built-in capabilities', builtinCards.length));
+    builtinCards.forEach(c => { c.dataset.skillSection = 'builtin'; container.appendChild(c); });
   }
 
   _applySectionCollapse(container);
@@ -1202,16 +945,14 @@ function renderSkillsList() {
   // Select-mode checkbox wiring (card-body click is handled in the card's
   // own click listener above).
   if (_selectMode) {
-    container.querySelectorAll('.skill-select-cb').forEach((cb) => {
+    container.querySelectorAll('.skill-select-cb').forEach(cb => {
       cb.addEventListener('change', () => {
         const name = cb.dataset.name;
-        if (cb.checked) _selectedNames.add(name);
-        else _selectedNames.delete(name);
+        if (cb.checked) _selectedNames.add(name); else _selectedNames.delete(name);
         const all = document.getElementById('skills-select-all');
         if (all) {
-          const visible = _getFilteredSkills().map((s) => s.name || s.id);
-          all.checked =
-            visible.length > 0 && visible.every((n) => _selectedNames.has(n));
+          const visible = _getFilteredSkills().map(s => s.name || s.id);
+          all.checked = visible.length > 0 && visible.every(n => _selectedNames.has(n));
         }
         _updateBulkBar();
       });
@@ -1233,17 +974,9 @@ function _collapseSkillCardEl(c) {
   c.classList.remove('doclib-card-expanded', 'skill-expand-instant');
   c.style.removeProperty('height');
   const pv = c.querySelector('.doclib-card-preview');
-  const pr =
-    c.querySelector('.skill-md-pre') || c.querySelector('.skill-md-editor');
-  if (pv) {
-    pv.style.removeProperty('height');
-    pv.style.removeProperty('flex');
-    pv.style.removeProperty('max-height');
-  }
-  if (pr) {
-    pr.style.removeProperty('height');
-    pr.style.removeProperty('flex');
-  }
+  const pr = c.querySelector('.skill-md-pre') || c.querySelector('.skill-md-editor');
+  if (pv) { pv.style.removeProperty('height'); pv.style.removeProperty('flex'); pv.style.removeProperty('max-height'); }
+  if (pr) { pr.style.removeProperty('height'); pr.style.removeProperty('flex'); }
   if (c._fillH) window.removeEventListener('resize', c._fillH);
 }
 
@@ -1261,10 +994,7 @@ async function _expandSkillCard(card, name) {
   // collapsing behind the new (semi-transparent) one, which read as a jump.
   const switching = !!(grid && grid.querySelector('.doclib-card-expanded'));
   // Collapse any other expanded sibling (full cleanup, not just the class).
-  if (grid)
-    grid
-      .querySelectorAll('.doclib-card-expanded')
-      .forEach(_collapseSkillCardEl);
+  if (grid) grid.querySelectorAll('.doclib-card-expanded').forEach(_collapseSkillCardEl);
   card.classList.add('doclib-card-expanded');
   if (switching) card.classList.add('skill-expand-instant');
   // Explicit class on the admin-card so CSS doesn't depend on :has()
@@ -1282,18 +1012,9 @@ async function _expandSkillCard(card, name) {
     card.style.removeProperty('height');
     const preview = card.querySelector('.doclib-card-preview');
     const header = card.querySelector('.skill-card-header');
-    const pre =
-      card.querySelector('.skill-md-pre') ||
-      card.querySelector('.skill-md-editor');
-    if (preview) {
-      preview.style.removeProperty('height');
-      preview.style.removeProperty('flex');
-      preview.style.removeProperty('max-height');
-    }
-    if (pre) {
-      pre.style.removeProperty('height');
-      pre.style.removeProperty('flex');
-    }
+    const pre = card.querySelector('.skill-md-pre') || card.querySelector('.skill-md-editor');
+    if (preview) { preview.style.removeProperty('height'); preview.style.removeProperty('flex'); preview.style.removeProperty('max-height'); }
+    if (pre) { pre.style.removeProperty('height'); pre.style.removeProperty('flex'); }
 
     // The px-pinning is ONLY for the mobile layout (position:absolute fill,
     // where Firefox won't propagate a definite height). On desktop the card
@@ -1373,21 +1094,14 @@ function _toggleSkillEdit(card, name) {
   const ta = document.createElement('textarea');
   ta.className = 'skill-md-editor';
   ta.spellcheck = false;
-  ta.value = (card._md != null ? card._md : pre ? pre.textContent : '') || '';
+  ta.value = (card._md != null ? card._md : (pre ? pre.textContent : '')) || '';
   ta.addEventListener('click', (e) => e.stopPropagation());
   if (pre) pre.style.display = 'none';
-  preview.insertBefore(
-    ta,
-    preview.querySelector('.doclib-card-expanded-actions'),
-  );
+  preview.insertBefore(ta, preview.querySelector('.doclib-card-expanded-actions'));
   ta.focus();
   // Flip the Edit button label to "Save".
-  const editBtn = [...preview.querySelectorAll('.doclib-card-action-btn')].find(
-    (b) => /Edit|Save/.test(b.textContent),
-  );
-  if (editBtn)
-    editBtn.innerHTML =
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save';
+  const editBtn = [...preview.querySelectorAll('.doclib-card-action-btn')].find(b => /Edit|Save/.test(b.textContent));
+  if (editBtn) editBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save';
 }
 
 async function _saveSkillEdit(card, name) {
@@ -1395,66 +1109,43 @@ async function _saveSkillEdit(card, name) {
   const ta = preview?.querySelector('.skill-md-editor');
   if (!ta) return;
   try {
-    const res = await fetch(
-      `${API}/api/skills/${encodeURIComponent(name)}/markdown`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: ta.value }),
-      },
-    );
+    const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/markdown`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ markdown: ta.value }),
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     // Refresh the cached markdown so the preload/expand show the new text.
     _mdCache.set(name, ta.value);
     uiModule.showToast('Saved');
-    await loadSkills(); // re-render (frontmatter changes like name/status may have changed)
+    await loadSkills();  // re-render (frontmatter changes like name/status may have changed)
   } catch (e) {
     uiModule.showError('Save failed: ' + e.message);
   }
 }
 
 async function _deleteSkill(name, card = null) {
-  if (
-    !(await uiModule.styledConfirm(
-      `Delete skill "${name}"? This removes the SKILL.md.`,
-      { confirmText: 'Delete', danger: true },
-    ))
-  )
-    return;
+  if (!(await uiModule.styledConfirm(`Delete skill "${name}"? This removes the SKILL.md.`, { confirmText: 'Delete', danger: true }))) return;
   // Locate the card if the caller didn't hand one over, so we can collapse it
   // away gracefully (same fade+shrink as the document library) instead of
   // re-rendering the whole list.
   if (!card) {
-    card =
-      [...document.querySelectorAll('.skill-card')].find((c) => {
-        const n = c.querySelector('.skill-card-name');
-        return n && n.textContent === name;
-      }) || null;
+    card = [...document.querySelectorAll('.skill-card')]
+      .find(c => { const n = c.querySelector('.skill-card-name'); return n && n.textContent === name; }) || null;
   }
   try {
-    await fetch(`${API}/api/skills/${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-    });
+    await fetch(`${API}/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
     _mdCache.delete(name);
     if (card) {
-      if (card._testPoll) {
-        clearInterval(card._testPoll);
-        card._testPoll = null;
-      }
+      if (card._testPoll) { clearInterval(card._testPoll); card._testPoll = null; }
       _setCardRunning(card, false);
       card.classList.add('doclib-card-deleting');
-      card.addEventListener('transitionend', () => card.remove(), {
-        once: true,
-      });
-      setTimeout(() => {
-        if (card.parentElement) card.remove();
-      }, 400);
+      card.addEventListener('transitionend', () => card.remove(), { once: true });
+      setTimeout(() => { if (card.parentElement) card.remove(); }, 400);
     }
     await loadSkills();
     uiModule.showToast('Skill deleted');
-  } catch (e) {
-    uiModule.showError('Delete failed: ' + e.message);
-  }
+  } catch (e) { uiModule.showError('Delete failed: ' + e.message); }
 }
 
 async function _setSkillStatus(name, status) {
@@ -1465,67 +1156,41 @@ async function _setSkillStatus(name, status) {
       body: JSON.stringify({ status }),
     });
     await loadSkills();
-    uiModule.showToast(
-      status === 'published' ? 'Skill approved' : 'Skill moved to draft',
-    );
-  } catch (e) {
-    uiModule.showError('Update failed: ' + e.message);
-  }
+    uiModule.showToast(status === 'published' ? 'Skill approved' : 'Skill moved to draft');
+  } catch (e) { uiModule.showError('Update failed: ' + e.message); }
 }
 
 // ---- Test a skill (sandbox agent run + AI eval) ----
 
 async function _fetchTestStatus(name) {
   try {
-    const r = await fetch(
-      `${API}/api/skills/${encodeURIComponent(name)}/test-status`,
-    );
+    const r = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/test-status`);
     return r.ok ? await r.json() : { status: 'none' };
-  } catch {
-    return { status: 'none' };
-  }
+  } catch { return { status: 'none' }; }
 }
 
 function _renderTestLog(logEl, verdictEl, job, card, name) {
   if (!logEl) return;
   logEl.innerHTML = '';
-  const add = (txt, cls) => {
-    const d = document.createElement('div');
-    if (cls) d.className = cls;
-    d.textContent = txt;
-    logEl.appendChild(d);
-  };
-  for (const ev of job.log || []) {
-    if (ev.type === 'skill_test_start') {
-      add('Task: ' + ev.task, 'skill-test-task');
-      add('Model: ' + ev.model, 'skill-test-meta');
-    } else if (ev.type === 'agent_step')
-      add('— round ' + ev.round + ' —', 'skill-test-round');
-    else if (ev.type === 'tool_start')
-      add(
-        '▸ ' + ev.tool + '  ' + String(ev.command || '').slice(0, 200),
-        'skill-test-tool',
-      );
-    else if (ev.type === 'tool_output')
-      add(String(ev.output || '').slice(0, 500), 'skill-test-out');
+  const add = (txt, cls) => { const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = txt; logEl.appendChild(d); };
+  for (const ev of (job.log || [])) {
+    if (ev.type === 'skill_test_start') { add('Task: ' + ev.task, 'skill-test-task'); add('Model: ' + ev.model, 'skill-test-meta'); }
+    else if (ev.type === 'agent_step') add('— round ' + ev.round + ' —', 'skill-test-round');
+    else if (ev.type === 'tool_start') add('▸ ' + ev.tool + '  ' + String(ev.command || '').slice(0, 200), 'skill-test-tool');
+    else if (ev.type === 'tool_output') add(String(ev.output || '').slice(0, 500), 'skill-test-out');
     else if (ev.type === 'say') add(ev.text || '', 'skill-test-say');
-    else if (ev.type === 'evaluating')
-      add('Evaluating run…', 'skill-test-meta');
-    else if (ev.type === 'error')
-      add('Error: ' + (ev.error || 'run failed'), 'skill-test-err');
+    else if (ev.type === 'evaluating') add('Evaluating run…', 'skill-test-meta');
+    else if (ev.type === 'error') add('Error: ' + (ev.error || 'run failed'), 'skill-test-err');
   }
-  if (job.status === 'running')
-    add('…running (you can close this — it keeps going)', 'skill-test-meta');
+  if (job.status === 'running') add('…running (you can close this — it keeps going)', 'skill-test-meta');
   logEl.scrollTop = logEl.scrollHeight;
-  if (job.status === 'done' && job.verdict)
-    _renderTestVerdict(verdictEl, job.verdict, card, name);
+  if (job.status === 'done' && job.verdict) _renderTestVerdict(verdictEl, job.verdict, card, name);
   else if (verdictEl) verdictEl.innerHTML = '';
 }
 
 // `force` = start a fresh run even if a finished result already exists (Retry).
 async function _testSkill(card, name, force = false) {
-  if (!card.classList.contains('doclib-card-expanded'))
-    await _expandSkillCard(card, name);
+  if (!card.classList.contains('doclib-card-expanded')) await _expandSkillCard(card, name);
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
   preview.innerHTML =
@@ -1533,47 +1198,26 @@ async function _testSkill(card, name, force = false) {
     '<div class="skill-test-verdict"></div></div>';
   const logEl = preview.querySelector('.skill-test-log');
   const verdictEl = preview.querySelector('.skill-test-verdict');
-  if (card._testPoll) {
-    clearInterval(card._testPoll);
-    card._testPoll = null;
-  }
+  if (card._testPoll) { clearInterval(card._testPoll); card._testPoll = null; }
 
   // Attach to an existing job unless forcing a fresh run.
   let job = force ? { status: 'none' } : await _fetchTestStatus(name);
 
   if (job.status === 'none') {
     logEl.innerHTML = '<div class="skill-test-meta">Starting test…</div>';
-    let model = '',
-      endpoint_url = '';
+    let model = '', endpoint_url = '';
     try {
       const sm = window.sessionModule;
       model = (sm && sm.getCurrentModel && sm.getCurrentModel()) || '';
-      endpoint_url =
-        (sm && sm.getCurrentEndpointUrl && sm.getCurrentEndpointUrl()) || '';
+      endpoint_url = (sm && sm.getCurrentEndpointUrl && sm.getCurrentEndpointUrl()) || '';
     } catch (_) {}
     try {
-      const res = await fetch(
-        `${API}/api/skills/${encodeURIComponent(name)}/test`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model, endpoint_url }),
-        },
-      );
-      if (!res.ok) {
-        logEl.innerHTML =
-          '<div class="skill-test-err">Test failed: HTTP ' +
-          res.status +
-          '</div>';
-        return;
-      }
-    } catch (e) {
-      logEl.innerHTML =
-        '<div class="skill-test-err">Test failed: ' +
-        (e.message || e) +
-        '</div>';
-      return;
-    }
+      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/test`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, endpoint_url }),
+      });
+      if (!res.ok) { logEl.innerHTML = '<div class="skill-test-err">Test failed: HTTP ' + res.status + '</div>'; return; }
+    } catch (e) { logEl.innerHTML = '<div class="skill-test-err">Test failed: ' + (e.message || e) + '</div>'; return; }
     job = await _fetchTestStatus(name);
   }
 
@@ -1584,19 +1228,12 @@ async function _testSkill(card, name, force = false) {
     card._testPoll = setInterval(async () => {
       // Keep polling even if the card is collapsed (the test runs server-side);
       // only stop once the card itself is gone from the DOM.
-      if (!document.body.contains(card)) {
-        clearInterval(card._testPoll);
-        card._testPoll = null;
-        _setCardRunning(card, false);
-        return;
-      }
+      if (!document.body.contains(card)) { clearInterval(card._testPoll); card._testPoll = null; _setCardRunning(card, false); return; }
       const s = await _fetchTestStatus(name);
       // Update the expanded log only while it's still on screen.
-      if (document.body.contains(logEl))
-        _renderTestLog(logEl, verdictEl, s, card, name);
+      if (document.body.contains(logEl)) _renderTestLog(logEl, verdictEl, s, card, name);
       if (s.status !== 'running') {
-        clearInterval(card._testPoll);
-        card._testPoll = null;
+        clearInterval(card._testPoll); card._testPoll = null;
         _setCardRunning(card, false);
         // If the log isn't visible (card was collapsed), still update the
         // header dot/% so the result shows on the folded card.
@@ -1619,17 +1256,14 @@ function _setCardRunning(card, on) {
     const nameEl = card.querySelector('.skill-card-name');
     if (!nameEl) return;
     const wp = spinnerModule.createWhirlpool(12);
-    wp.element.style.cssText =
-      'display:inline-flex;width:12px;height:12px;margin:0 0 0 7px;vertical-align:middle;flex-shrink:0;';
+    wp.element.style.cssText = 'display:inline-flex;width:12px;height:12px;margin:0 0 0 7px;vertical-align:middle;flex-shrink:0;';
     // Append INSIDE the <code> name (inline-flow), not after it. The textcol
     // is a flex column, so a sibling-after lands on its own line — putting
     // the spinner inside the inline code keeps it on the title row.
     nameEl.appendChild(wp.element);
     card._testSpinner = wp;
   } else if (card._testSpinner) {
-    try {
-      card._testSpinner.destroy();
-    } catch (_) {}
+    try { card._testSpinner.destroy(); } catch (_) {}
     if (card._testSpinner.element && card._testSpinner.element.parentElement) {
       card._testSpinner.element.remove();
     }
@@ -1653,16 +1287,13 @@ function _applyVerdictToHeader(card, verdict) {
   // post-audit live update doesn't leave a stale dot from an old render.
   const header = card.querySelector('.skill-card-header');
   if (header) {
-    header.querySelectorAll('.skill-audit-dot').forEach((n) => n.remove());
+    header.querySelectorAll('.skill-audit-dot').forEach(n => n.remove());
   }
   const newConf = { pass: 95, needs_work: 60, fail: 40 }[verdict];
   const statsEl = card.querySelector('.skill-stats');
   if (statsEl && newConf != null) {
     const confEl = statsEl.querySelector('.skill-conf');
-    if (confEl) {
-      confEl.textContent = newConf + '%';
-      confEl.style.color = _confColor(newConf);
-    }
+    if (confEl) { confEl.textContent = newConf + '%'; confEl.style.color = _confColor(newConf); }
   }
   // Fold the verdict into the status (draft / published) pill — colour the
   // pill itself and append a tiny check/warn/cross glyph so the audit result
@@ -1673,41 +1304,25 @@ function _applyVerdictToHeader(card, verdict) {
     // label so the verdict reads as a real badge.
     const ICON = {
       pass: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="20 6 9 17 4 12"/></svg>',
-      needs_work:
-        '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>',
-      inconclusive:
-        '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>',
+      needs_work: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>',
+      inconclusive: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>',
       fail: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
     }[verdict];
     // Wash the pill's bg + tint the text so a glance at the badge tells you
     // pass/needs-work/fail without expanding the card.
     const tint = {
-      pass: {
-        bg: 'color-mix(in srgb, var(--color-success, #4ade80) 30%, transparent)',
-        fg: 'var(--color-success, #4ade80)',
-      },
-      needs_work: {
-        bg: 'color-mix(in srgb, var(--color-warning, #f0ad4e) 30%, transparent)',
-        fg: 'var(--color-warning, #f0ad4e)',
-      },
-      inconclusive: {
-        bg: 'color-mix(in srgb, var(--color-warning, #f0ad4e) 30%, transparent)',
-        fg: 'var(--color-warning, #f0ad4e)',
-      },
-      fail: {
-        bg: 'color-mix(in srgb, var(--color-danger, #e06c75) 30%, transparent)',
-        fg: 'var(--color-danger, #e06c75)',
-      },
+      pass:       { bg: 'color-mix(in srgb, var(--color-success, #4ade80) 30%, transparent)', fg: 'var(--color-success, #4ade80)' },
+      needs_work: { bg: 'color-mix(in srgb, var(--color-warning, #f0ad4e) 30%, transparent)', fg: 'var(--color-warning, #f0ad4e)' },
+      inconclusive: { bg: 'color-mix(in srgb, var(--color-warning, #f0ad4e) 30%, transparent)', fg: 'var(--color-warning, #f0ad4e)' },
+      fail:       { bg: 'color-mix(in srgb, var(--color-danger, #e06c75) 30%, transparent)',  fg: 'var(--color-danger, #e06c75)' },
     }[verdict];
     // The status pill (draft / published) keeps its own colours now — the
     // verdict lives in a separate "checked" pill that's inserted next to it.
     // Remove any prior audit glyph (was previously inserted inside the pill;
     // now scrub both the in-pill and sibling locations on every refresh).
-    pill.querySelectorAll('.skill-pill-verdict').forEach((n) => n.remove());
+    pill.querySelectorAll('.skill-pill-verdict').forEach(n => n.remove());
     if (pill.parentElement) {
-      pill.parentElement
-        .querySelectorAll(':scope > .skill-pill-verdict')
-        .forEach((n) => n.remove());
+      pill.parentElement.querySelectorAll(':scope > .skill-pill-verdict').forEach(n => n.remove());
     }
     if (ICON) {
       // Full "checked" pill badge — sits LEFT of the draft/published pill,
@@ -1730,117 +1345,60 @@ function _applyVerdictToHeader(card, verdict) {
   // Old free-floating .skill-verified check (next to confidence %) is no
   // longer added — the pill carries the verdict glyph now. Remove a stale
   // one in case the card was rendered by an earlier build.
-  card.querySelectorAll('.skill-verified').forEach((n) => n.remove());
+  card.querySelectorAll('.skill-verified').forEach(n => n.remove());
 }
 
 function _renderTestVerdict(el, v, card, name) {
   if (!el) return;
   const verdict = (v && v.verdict) || 'unknown';
-  const cls =
-    { pass: 'ok', needs_work: 'warn', fail: 'bad', inconclusive: 'unknown' }[
-      verdict
-    ] || 'unknown';
-  const label =
-    {
-      pass: 'PASS',
-      needs_work: 'NEEDS WORK',
-      fail: 'FAIL',
-      inconclusive: 'INCONCLUSIVE',
-      unknown: 'UNCLEAR',
-    }[verdict] || 'UNCLEAR';
-  const conf =
-    v && typeof v.confidence === 'number'
-      ? Math.round(v.confidence * 100) + '%'
-      : '';
+  const cls = { pass: 'ok', needs_work: 'warn', fail: 'bad', inconclusive: 'unknown' }[verdict] || 'unknown';
+  const label = { pass: 'PASS', needs_work: 'NEEDS WORK', fail: 'FAIL', inconclusive: 'INCONCLUSIVE', unknown: 'UNCLEAR' }[verdict] || 'UNCLEAR';
+  const conf = v && typeof v.confidence === 'number' ? Math.round(v.confidence * 100) + '%' : '';
   const issues = Array.isArray(v && v.issues) ? v.issues : [];
   // Reflect the skill's current state: if it's already published, the button
   // confirms "Approved" (click to unpublish) rather than offering to approve.
-  const isPub =
-    card && card.dataset && card.dataset.skillStatus === 'published';
+  const isPub = card && card.dataset && card.dataset.skillStatus === 'published';
   const approveLabel = isPub ? 'Approved' : 'Approve';
-  const approveCls =
-    'skill-eval-approve' +
-    (isPub ? ' is-approved' : verdict === 'pass' ? ' suggested' : '');
-  const approveTitle = isPub
-    ? 'Already approved — click to unpublish'
-    : 'Publish — appears in the skills index';
+  const approveCls = 'skill-eval-approve' + (isPub ? ' is-approved' : (verdict === 'pass' ? ' suggested' : ''));
+  const approveTitle = isPub ? 'Already approved — click to unpublish' : 'Publish — appears in the skills index';
   el.innerHTML =
-    '<div class="skill-eval-head"><span class="skill-eval-badge skill-eval-' +
-    cls +
-    '">' +
-    label +
-    (conf ? ' · ' + conf : '') +
-    '</span>' +
-    '<span class="skill-eval-summary">' +
-    esc((v && v.summary) || '') +
-    '</span></div>' +
-    (issues.length
-      ? '<ul class="skill-eval-issues">' +
-        issues.map((i) => '<li>' + esc(i) + '</li>').join('') +
-        '</ul>'
-      : '') +
+    '<div class="skill-eval-head"><span class="skill-eval-badge skill-eval-' + cls + '">' + label + (conf ? ' · ' + conf : '') + '</span>' +
+    '<span class="skill-eval-summary">' + esc((v && v.summary) || '') + '</span></div>' +
+    (issues.length ? '<ul class="skill-eval-issues">' + issues.map(i => '<li>' + esc(i) + '</li>').join('') + '</ul>' : '') +
     '<div class="doclib-card-expanded-actions skill-eval-actions-wrap">' +
-    '<button class="doclib-card-text-btn doclib-card-action-btn ' +
-    approveCls +
-    '" data-act="approve" title="' +
-    approveTitle +
-    '">' +
-    approveLabel +
-    '</button>' +
-    '<div class="doclib-action-group"><div class="doclib-action-btn-row">' +
-    '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="retry" title="Run the test again">Retry</button>' +
-    '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="copy" title="Copy the run output + verdict">Copy</button>' +
-    '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="edit">Edit</button>' +
-    '<button class="doclib-card-text-btn doclib-card-action-btn doclib-card-text-btn-danger" data-act="del"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Delete</button>' +
-    '</div></div>' +
+      '<button class="doclib-card-text-btn doclib-card-action-btn ' + approveCls + '" data-act="approve" title="' + approveTitle + '">' + approveLabel + '</button>' +
+      '<div class="doclib-action-group"><div class="doclib-action-btn-row">' +
+        '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="retry" title="Run the test again">Retry</button>' +
+        '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="copy" title="Copy the run output + verdict">Copy</button>' +
+        '<button class="doclib-card-text-btn doclib-card-action-btn" data-act="edit">Edit</button>' +
+        '<button class="doclib-card-text-btn doclib-card-action-btn doclib-card-text-btn-danger" data-act="del"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Delete</button>' +
+      '</div></div>' +
     '</div>';
   _applyVerdictToHeader(card, verdict);
-  el.querySelector('[data-act="approve"]')?.addEventListener(
-    'click',
-    async (e) => {
-      e.stopPropagation();
-      const nowPub = card.dataset.skillStatus === 'published';
-      await _setSkillStatus(name, nowPub ? 'draft' : 'published');
-      // _setSkillStatus reloads the list, but if this card survives, relabel it.
-      card.dataset.skillStatus = nowPub ? 'draft' : 'published';
-      const btn = el.querySelector('[data-act="approve"]');
-      if (btn) {
-        const pub = card.dataset.skillStatus === 'published';
-        btn.textContent = pub ? 'Approved' : 'Approve';
-        btn.title = pub
-          ? 'Already approved — click to unpublish'
-          : 'Publish — appears in the skills index';
-        btn.classList.toggle('is-approved', pub);
-        btn.classList.toggle('suggested', !pub && verdict === 'pass');
-      }
-    },
-  );
-  el.querySelector('[data-act="del"]')?.addEventListener('click', (e) => {
+  el.querySelector('[data-act="approve"]')?.addEventListener('click', async (e) => {
     e.stopPropagation();
-    _deleteSkill(name, card);
+    const nowPub = card.dataset.skillStatus === 'published';
+    await _setSkillStatus(name, nowPub ? 'draft' : 'published');
+    // _setSkillStatus reloads the list, but if this card survives, relabel it.
+    card.dataset.skillStatus = nowPub ? 'draft' : 'published';
+    const btn = el.querySelector('[data-act="approve"]');
+    if (btn) {
+      const pub = card.dataset.skillStatus === 'published';
+      btn.textContent = pub ? 'Approved' : 'Approve';
+      btn.title = pub ? 'Already approved — click to unpublish' : 'Publish — appears in the skills index';
+      btn.classList.toggle('is-approved', pub);
+      btn.classList.toggle('suggested', !pub && verdict === 'pass');
+    }
   });
-  el.querySelector('[data-act="edit"]')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    _toggleSkillEdit(card, name);
-  });
-  el.querySelector('[data-act="retry"]')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    _testSkill(card, name, true);
-  });
+  el.querySelector('[data-act="del"]')?.addEventListener('click', (e) => { e.stopPropagation(); _deleteSkill(name, card); });
+  el.querySelector('[data-act="edit"]')?.addEventListener('click', (e) => { e.stopPropagation(); _toggleSkillEdit(card, name); });
+  el.querySelector('[data-act="retry"]')?.addEventListener('click', (e) => { e.stopPropagation(); _testSkill(card, name, true); });
   el.querySelector('[data-act="copy"]')?.addEventListener('click', (e) => {
     e.stopPropagation();
     const logEl = card.querySelector('.skill-test-log');
-    const issuesTxt = issues.length
-      ? '\nIssues:\n- ' + issues.join('\n- ')
-      : '';
-    const text =
-      (logEl ? logEl.innerText.trim() + '\n\n' : '') +
-      '=== Eval: ' +
-      label +
-      (conf ? ' (' + conf + ')' : '') +
-      ' ===\n' +
-      ((v && v.summary) || '') +
-      issuesTxt;
+    const issuesTxt = issues.length ? '\nIssues:\n- ' + issues.join('\n- ') : '';
+    const text = (logEl ? logEl.innerText.trim() + '\n\n' : '') +
+      '=== Eval: ' + label + (conf ? ' (' + conf + ')' : '') + ' ===\n' + ((v && v.summary) || '') + issuesTxt;
     // Shared helper falls back to execCommand on plain HTTP (navigator.clipboard
     // is unavailable in non-secure contexts, which is why the raw call failed).
     uiModule.copyToClipboard(text);
@@ -1853,7 +1411,7 @@ let _auditPoll = null;
 let _auditSeenResults = 0;
 
 function _confirmAuditSkills(label) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     let overlay = document.getElementById('skills-audit-confirm-overlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -1861,18 +1419,18 @@ function _confirmAuditSkills(label) {
       overlay.className = 'modal';
       overlay.innerHTML =
         '<div class="modal-content styled-confirm-box">' +
-        '<div class="modal-header"><h4>Audit Skills</h4></div>' +
-        '<div class="modal-body">' +
-        '<p id="skills-audit-confirm-msg"></p>' +
-        '<label class="memory-bulk-check-all" style="margin-top:10px;display:inline-flex;align-items:center;gap:7px;">' +
-        '<input type="checkbox" id="skills-audit-skip-audited" checked />' +
-        '<span>Skip already audited</span>' +
-        '</label>' +
-        '</div>' +
-        '<div class="modal-footer">' +
-        '<button id="skills-audit-confirm-cancel" class="confirm-btn confirm-btn-secondary">Cancel</button>' +
-        '<button id="skills-audit-confirm-ok" class="confirm-btn confirm-btn-primary">Audit</button>' +
-        '</div>' +
+          '<div class="modal-header"><h4>Audit Skills</h4></div>' +
+          '<div class="modal-body">' +
+            '<p id="skills-audit-confirm-msg"></p>' +
+            '<label class="memory-bulk-check-all" style="margin-top:10px;display:inline-flex;align-items:center;gap:7px;">' +
+              '<input type="checkbox" id="skills-audit-skip-audited" checked />' +
+              '<span>Skip already audited</span>' +
+            '</label>' +
+          '</div>' +
+          '<div class="modal-footer">' +
+            '<button id="skills-audit-confirm-cancel" class="confirm-btn confirm-btn-secondary">Cancel</button>' +
+            '<button id="skills-audit-confirm-ok" class="confirm-btn confirm-btn-primary">Audit</button>' +
+          '</div>' +
         '</div>';
       document.body.appendChild(overlay);
     }
@@ -1895,15 +1453,9 @@ function _confirmAuditSkills(label) {
       document.removeEventListener('keydown', onKey);
       resolve(result);
     }
-    function onOk() {
-      cleanup({ ok: true, skipAudited: !!skip.checked });
-    }
-    function onCancel() {
-      cleanup({ ok: false, skipAudited: false });
-    }
-    function onBackdrop(e) {
-      if (e.target === overlay) onCancel();
-    }
+    function onOk() { cleanup({ ok: true, skipAudited: !!skip.checked }); }
+    function onCancel() { cleanup({ ok: false, skipAudited: false }); }
+    function onBackdrop(e) { if (e.target === overlay) onCancel(); }
     function onKey(e) {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -1926,45 +1478,28 @@ async function _auditAllSkills(opts = {}) {
   // If a run is already going, just (re)attach to it.
   let st = await _fetchAuditStatus();
   if (st.status !== 'running') {
-    const explicitNames = Array.isArray(opts.names)
-      ? opts.names.filter(Boolean)
-      : null;
+    const explicitNames = Array.isArray(opts.names) ? opts.names.filter(Boolean) : null;
     const visibleNames = _getFilteredSkills()
-      .map((sk) => sk.name || sk.id)
+      .map(sk => sk.name || sk.id)
       .filter(Boolean);
     const names = explicitNames || visibleNames;
     const label = explicitNames
       ? `${names.length} selected ${names.length === 1 ? 'skill' : 'skills'}`
       : `${names.length} visible ${names.length === 1 ? 'skill' : 'skills'}`;
     if (!names.length) {
-      uiModule.showToast(
-        explicitNames
-          ? 'No selected skills to audit'
-          : 'No visible skills to audit',
-      );
+      uiModule.showToast(explicitNames ? 'No selected skills to audit' : 'No visible skills to audit');
       return;
     }
     const confirmed = await _confirmAuditSkills(label);
     if (!confirmed.ok) return;
     try {
       const r = await fetch(`${API}/api/skills/audit-all`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scope: explicitNames ? 'selected' : 'all',
-          names,
-          skip_audited: confirmed.skipAudited,
-        }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: explicitNames ? 'selected' : 'all', names, skip_audited: confirmed.skipAudited }),
       });
-      if (!r.ok) {
-        uiModule.showError('Audit failed to start (HTTP ' + r.status + ')');
-        return;
-      }
+      if (!r.ok) { uiModule.showError('Audit failed to start (HTTP ' + r.status + ')'); return; }
       st = await _fetchAuditStatus();
-    } catch (e) {
-      uiModule.showError('Audit failed: ' + (e.message || e));
-      return;
-    }
+    } catch (e) { uiModule.showError('Audit failed: ' + (e.message || e)); return; }
     _auditSeenResults = 0;
   }
   panel.classList.remove('hidden');
@@ -1980,10 +1515,9 @@ async function _auditAllSkills(opts = {}) {
       _applyAuditResults(s);
       _highlightAuditCard(s.status === 'running' ? s.current : null);
       if (s.status !== 'running') {
-        clearInterval(_auditPoll);
-        _auditPoll = null;
+        clearInterval(_auditPoll); _auditPoll = null;
         _highlightAuditCard(null);
-        loadSkills(); // refresh statuses (some may have been demoted/edited)
+        loadSkills();  // refresh statuses (some may have been demoted/edited)
       }
     }, 1500);
   }
@@ -1991,16 +1525,13 @@ async function _auditAllSkills(opts = {}) {
 
 function _findSkillCard(name) {
   if (!name) return null;
-  return (
-    [...document.querySelectorAll('.skill-card[data-skill-name]')].find(
-      (c) => c.dataset.skillName === name,
-    ) || null
-  );
+  return [...document.querySelectorAll('.skill-card[data-skill-name]')]
+    .find(c => c.dataset.skillName === name) || null;
 }
 
 function _mergeSkillState(state) {
   if (!state || !state.name) return;
-  const idx = skills.findIndex((s) => (s.name || s.id) === state.name);
+  const idx = skills.findIndex(s => (s.name || s.id) === state.name);
   if (idx >= 0) skills[idx] = { ...skills[idx], ...state };
 }
 
@@ -2011,10 +1542,7 @@ function _applySkillStateToHeader(card, state, fallbackVerdict) {
   if (state && typeof state.confidence === 'number') {
     const conf = Math.round(state.confidence * 100);
     const confEl = card.querySelector('.skill-conf');
-    if (confEl) {
-      confEl.textContent = conf + '%';
-      confEl.style.color = _confColor(conf);
-    }
+    if (confEl) { confEl.textContent = conf + '%'; confEl.style.color = _confColor(conf); }
   }
   if (state?.status) {
     card.dataset.skillStatus = state.status;
@@ -2028,13 +1556,11 @@ function _applySkillStateToHeader(card, state, fallbackVerdict) {
   }
   const right = card.querySelector('.skill-card-right');
   if (right && state) {
-    right
-      .querySelectorAll('.skill-model-pill, .skill-necessity-pill')
-      .forEach((n) => n.remove());
+    right.querySelectorAll('.skill-model-pill, .skill-necessity-pill').forEach(n => n.remove());
     const stats = right.querySelector('.skill-stats');
     const wrap = document.createElement('span');
     wrap.innerHTML = _auditModelPills(state) + _necessityPill(state);
-    [...wrap.children].forEach((p) => {
+    [...wrap.children].forEach(p => {
       if (stats) right.insertBefore(p, stats);
       else right.appendChild(p);
     });
@@ -2049,10 +1575,7 @@ function _applyAuditResults(st) {
     if (!name) continue;
     const state = r.skill_state || null;
     _mergeSkillState(state);
-    const verdict =
-      state?.audit_verdict ||
-      r.verdict?.verdict ||
-      (r.result === 'flagged' ? 'fail' : null);
+    const verdict = state?.audit_verdict || r.verdict?.verdict || (r.result === 'flagged' ? 'fail' : null);
     _applySkillStateToHeader(_findSkillCard(name), state, verdict);
   }
   _auditSeenResults = results.length;
@@ -2061,10 +1584,8 @@ function _applyAuditResults(st) {
 // Make the card currently being audited glow, so it's obvious which one the
 // "Audit now" run is processing. Pass null to clear all highlights.
 function _highlightAuditCard(name) {
-  document.querySelectorAll('.skill-card.skill-audit-active').forEach((c) => {
-    c.classList.remove('skill-audit-active');
-    _setCardRunning(c, false);
-  });
+  document.querySelectorAll('.skill-card.skill-audit-active')
+    .forEach(c => { c.classList.remove('skill-audit-active'); _setCardRunning(c, false); });
   if (!name) return;
   const card = _findSkillCard(name);
   if (card) {
@@ -2078,107 +1599,69 @@ async function _fetchAuditStatus() {
   try {
     const r = await fetch(`${API}/api/skills/audit-all/status`);
     return r.ok ? await r.json() : { status: 'none' };
-  } catch {
-    return { status: 'none' };
-  }
+  } catch { return { status: 'none' }; }
 }
 
 function _renderAuditPanel(panel, st) {
-  if (st.status === 'none') {
-    panel.classList.add('hidden');
-    panel.innerHTML = '';
-    return;
-  }
-  const done = st.done || 0,
-    total = st.total || 0;
+  if (st.status === 'none') { panel.classList.add('hidden'); panel.innerHTML = ''; return; }
+  const done = st.done || 0, total = st.total || 0;
   const pct = total ? Math.round((done / total) * 100) : 0;
   const counts = {};
-  for (const r of st.results || [])
-    counts[r.result] = (counts[r.result] || 0) + 1;
-  const summary = Object.entries(counts)
-    .map(([k, v]) => v + ' ' + k.replace(/_/g, ' '))
-    .join(' · ');
+  for (const r of (st.results || [])) counts[r.result] = (counts[r.result] || 0) + 1;
+  const summary = Object.entries(counts).map(([k, v]) => v + ' ' + k.replace(/_/g, ' ')).join(' · ');
   const running = st.status === 'running';
   const cancelled = st.status === 'cancelled';
   const head = running
     ? `Auditing ${done}/${total}${st.current ? ' — ' + esc(st.current) : ''}`
     : cancelled
       ? `Audit cancelled — ${done}/${total}`
-      : `Audit complete — ${total} skill${total === 1 ? '' : 's'}`;
+    : `Audit complete — ${total} skill${total === 1 ? '' : 's'}`;
   panel.innerHTML =
     '<div class="skills-audit-head">' +
-    '<span class="skills-audit-title-wrap" style="display:inline-flex;align-items:center;gap:8px;">' +
-    '<span class="skills-audit-title">' +
-    head +
-    '</span>' +
-    '</span>' +
-    (running
-      ? '<button class="memory-toolbar-btn" data-act="audit-cancel">Cancel</button>'
-      : '<button class="memory-toolbar-btn" data-act="audit-close">Close</button>') +
+      '<span class="skills-audit-title-wrap" style="display:inline-flex;align-items:center;gap:8px;">' +
+        '<span class="skills-audit-title">' + head + '</span>' +
+      '</span>' +
+      (running
+        ? '<button class="memory-toolbar-btn" data-act="audit-cancel">Cancel</button>'
+        : '<button class="memory-toolbar-btn" data-act="audit-close">Close</button>') +
     '</div>' +
-    '<div class="skills-audit-bar"><div class="skills-audit-fill" style="width:' +
-    pct +
-    '%"></div></div>' +
-    (summary
-      ? '<div class="skills-audit-summary">' +
-        esc(summary) +
-        (st.teacher ? ' · teacher: ' + esc(st.teacher) : '') +
-        '</div>'
-      : '') +
-    '<div class="skills-audit-log">' +
-    (st.log || [])
-      .slice(-40)
-      .map((l) => '<div>' + esc(l) + '</div>')
-      .join('') +
-    '</div>';
+    '<div class="skills-audit-bar"><div class="skills-audit-fill" style="width:' + pct + '%"></div></div>' +
+    (summary ? '<div class="skills-audit-summary">' + esc(summary) + (st.teacher ? ' · teacher: ' + esc(st.teacher) : '') + '</div>' : '') +
+    '<div class="skills-audit-log">' + (st.log || []).slice(-40).map(l => '<div>' + esc(l) + '</div>').join('') + '</div>';
   // Whirlpool sits next to the title while the audit is actually running.
   if (running) {
     const titleWrap = panel.querySelector('.skills-audit-title-wrap');
     if (titleWrap) {
       const wp = spinnerModule.createWhirlpool(12);
-      wp.element.style.cssText =
-        'display:inline-flex;width:12px;height:12px;margin:0;vertical-align:middle;flex-shrink:0;';
+      wp.element.style.cssText = 'display:inline-flex;width:12px;height:12px;margin:0;vertical-align:middle;flex-shrink:0;';
       titleWrap.appendChild(wp.element);
     }
   }
   const cancel = panel.querySelector('[data-act="audit-cancel"]');
-  if (cancel)
-    cancel.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      cancel.disabled = true;
-      cancel.textContent = 'Cancelling...';
-      try {
-        await fetch(`${API}/api/skills/audit-all/cancel`, {
-          method: 'POST',
-          credentials: 'same-origin',
-        });
-        const s = await _fetchAuditStatus();
-        _renderAuditPanel(panel, {
-          ...s,
-          status: s.status === 'none' ? 'cancelled' : s.status,
-        });
-        _highlightAuditCard(null);
-      } catch {
-        cancel.disabled = false;
-        cancel.textContent = 'Cancel';
-      }
-    });
+  if (cancel) cancel.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    cancel.disabled = true;
+    cancel.textContent = 'Cancelling...';
+    try {
+      await fetch(`${API}/api/skills/audit-all/cancel`, { method: 'POST', credentials: 'same-origin' });
+      const s = await _fetchAuditStatus();
+      _renderAuditPanel(panel, { ...s, status: s.status === 'none' ? 'cancelled' : s.status });
+      _highlightAuditCard(null);
+    } catch {
+      cancel.disabled = false;
+      cancel.textContent = 'Cancel';
+    }
+  });
   const close = panel.querySelector('[data-act="audit-close"]');
-  if (close)
-    close.addEventListener('click', () => {
-      panel.classList.add('hidden');
-      panel.innerHTML = '';
-    });
+  if (close) close.addEventListener('click', () => { panel.classList.add('hidden'); panel.innerHTML = ''; });
   const logEl = panel.querySelector('.skills-audit-log');
   if (logEl) logEl.scrollTop = logEl.scrollHeight;
 }
 
 // ---- Select mode / bulk actions ----
 
-const _SKILLS_SELECT_BTN_DOT_SVG =
-  '<svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>';
-const _SKILLS_SELECT_BTN_X_SVG =
-  '<svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-2px;margin-right:3px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+const _SKILLS_SELECT_BTN_DOT_SVG = '<svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>';
+const _SKILLS_SELECT_BTN_X_SVG = '<svg class="memory-select-btn-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-2px;margin-right:3px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
 function _enterSelectMode() {
   _selectMode = true;
@@ -2186,10 +1669,7 @@ function _enterSelectMode() {
   const bar = document.getElementById('skills-bulk-bar');
   const btn = document.getElementById('skills-select-btn');
   if (bar) bar.classList.remove('hidden');
-  if (btn) {
-    btn.classList.add('active');
-    btn.innerHTML = _SKILLS_SELECT_BTN_X_SVG + 'Cancel';
-  }
+  if (btn) { btn.classList.add('active'); btn.innerHTML = _SKILLS_SELECT_BTN_X_SVG + 'Cancel'; }
   _updateBulkBar();
   renderSkillsList();
 }
@@ -2201,10 +1681,7 @@ function _exitSelectMode() {
   const btn = document.getElementById('skills-select-btn');
   const all = document.getElementById('skills-select-all');
   if (bar) bar.classList.add('hidden');
-  if (btn) {
-    btn.classList.remove('active');
-    btn.innerHTML = _SKILLS_SELECT_BTN_DOT_SVG + 'Select';
-  }
+  if (btn) { btn.classList.remove('active'); btn.innerHTML = _SKILLS_SELECT_BTN_DOT_SVG + 'Select'; }
   if (all) all.checked = false;
   renderSkillsList();
 }
@@ -2212,9 +1689,7 @@ function _exitSelectMode() {
 function _updateBulkBar() {
   const countEl = document.getElementById('skills-selected-count');
   const delBtn = document.getElementById('skills-bulk-delete');
-  const delNonPassingBtn = document.getElementById(
-    'skills-bulk-delete-nonpassing',
-  );
+  const delNonPassingBtn = document.getElementById('skills-bulk-delete-nonpassing');
   const pubBtn = document.getElementById('skills-bulk-publish');
   const auditBtn = document.getElementById('skills-bulk-audit');
   if (countEl) countEl.textContent = `${_selectedNames.size} Selected`;
@@ -2228,8 +1703,8 @@ function _updateBulkBar() {
       : 'No selected non-passing skills';
   }
   // Approve is only meaningful when at least one selected skill is still a draft.
-  const anyDraft = [..._selectedNames].some((n) => {
-    const sk = skills.find((s) => (s.name || s.id) === n);
+  const anyDraft = [..._selectedNames].some(n => {
+    const sk = skills.find(s => (s.name || s.id) === n);
     return sk && (sk.status || 'draft') !== 'published';
   });
   if (pubBtn) pubBtn.disabled = !anyDraft;
@@ -2238,9 +1713,9 @@ function _updateBulkBar() {
 function _toggleSelectAll() {
   const all = document.getElementById('skills-select-all');
   if (!all) return;
-  const visible = _getFilteredSkills().map((s) => s.name || s.id);
-  if (all.checked) visible.forEach((n) => _selectedNames.add(n));
-  else visible.forEach((n) => _selectedNames.delete(n));
+  const visible = _getFilteredSkills().map(s => s.name || s.id);
+  if (all.checked) visible.forEach(n => _selectedNames.add(n));
+  else visible.forEach(n => _selectedNames.delete(n));
   _updateBulkBar();
   renderSkillsList();
 }
@@ -2250,16 +1725,14 @@ async function _bulkDelete() {
   const n = _selectedNames.size;
   const ok = await uiModule.styledConfirm(
     `Delete ${n} ${n === 1 ? 'skill' : 'skills'}? This removes their SKILL.md files.`,
-    { confirmText: 'Delete', danger: true },
+    { confirmText: 'Delete', danger: true }
   );
   if (!ok) return;
   let deleted = 0;
   const deletedNames = [];
   for (const name of _selectedNames) {
     try {
-      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
       if (res.ok) {
         deleted++;
         deletedNames.push(name);
@@ -2267,13 +1740,10 @@ async function _bulkDelete() {
     } catch {}
   }
   for (const name of deletedNames) {
-    const card = document.querySelector(
-      `.skill-card[data-skill-name="${CSS.escape(name)}"]`,
-    );
+    const card = document.querySelector(`.skill-card[data-skill-name="${CSS.escape(name)}"]`);
     if (card) card.classList.add('doclib-card-deleting');
   }
-  if (deletedNames.length)
-    await new Promise((resolve) => setTimeout(resolve, 320));
+  if (deletedNames.length) await new Promise(resolve => setTimeout(resolve, 320));
   _exitSelectMode();
   await loadSkills();
   uiModule.showToast(`Deleted ${deleted}`);
@@ -2284,27 +1754,20 @@ async function _loadSkillApprovalThreshold() {
     const res = await fetch(`${API}/api/prefs`, { credentials: 'same-origin' });
     if (!res.ok) return;
     const prefs = await res.json();
-    const raw =
-      prefs.skill_min_confidence ?? prefs.skill_autosave_min_confidence;
+    const raw = prefs.skill_min_confidence ?? prefs.skill_autosave_min_confidence;
     const val = Number(raw);
-    if (Number.isFinite(val))
-      _skillApprovalThreshold = Math.max(0, Math.min(1, val));
+    if (Number.isFinite(val)) _skillApprovalThreshold = Math.max(0, Math.min(1, val));
   } catch {}
 }
 
 function _selectedNonPassingSkills() {
   const selected = new Set(_selectedNames);
-  return skills.filter((sk) => {
+  return skills.filter(sk => {
     const name = sk.name || sk.id;
     if (!selected.has(name)) return false;
     const conf = Number(sk.confidence || 0);
     const necessity = _necessityKind(sk);
-    if (
-      necessity === 'duplicate' ||
-      necessity === 'trivial' ||
-      necessity === 'irrelevant'
-    )
-      return true;
+    if (necessity === 'duplicate' || necessity === 'trivial' || necessity === 'irrelevant') return true;
     if ((sk.audit_verdict || '') !== 'pass') return true;
     return conf < _skillApprovalThreshold;
   });
@@ -2317,19 +1780,17 @@ async function _bulkDeleteNonPassing() {
     return;
   }
   const thresholdPct = Math.round(_skillApprovalThreshold * 100);
-  const names = targets.map((sk) => sk.name || sk.id).filter(Boolean);
+  const names = targets.map(sk => sk.name || sk.id).filter(Boolean);
   const ok = await uiModule.styledConfirm(
     `Delete ${names.length} selected non-passing ${names.length === 1 ? 'skill' : 'skills'}? This removes duplicates, generic/irrelevant skills, failed audits, and anything below ${thresholdPct}%.`,
-    { confirmText: 'Delete non passing', danger: true },
+    { confirmText: 'Delete non passing', danger: true }
   );
   if (!ok) return;
   let deleted = 0;
   const deletedNames = [];
   for (const name of names) {
     try {
-      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
       if (res.ok) {
         deleted++;
         deletedNames.push(name);
@@ -2338,13 +1799,10 @@ async function _bulkDeleteNonPassing() {
     } catch {}
   }
   for (const name of deletedNames) {
-    const card = document.querySelector(
-      `.skill-card[data-skill-name="${CSS.escape(name)}"]`,
-    );
+    const card = document.querySelector(`.skill-card[data-skill-name="${CSS.escape(name)}"]`);
     if (card) card.classList.add('doclib-card-deleting');
   }
-  if (deletedNames.length)
-    await new Promise((resolve) => setTimeout(resolve, 320));
+  if (deletedNames.length) await new Promise(resolve => setTimeout(resolve, 320));
   _exitSelectMode();
   await loadSkills();
   uiModule.showToast(`Deleted ${deleted} non-passing`);
@@ -2354,7 +1812,7 @@ async function _bulkApprove() {
   if (!_selectedNames.size) return;
   let published = 0;
   for (const name of _selectedNames) {
-    const sk = skills.find((s) => (s.name || s.id) === name);
+    const sk = skills.find(s => (s.name || s.id) === name);
     if (sk && sk.status === 'published') continue;
     try {
       const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}`, {
@@ -2374,8 +1832,8 @@ async function _bulkAudit() {
   if (!_selectedNames.size) return;
   const selected = new Set(_selectedNames);
   const ordered = _getFilteredSkills()
-    .map((sk) => sk.name || sk.id)
-    .filter((n) => selected.has(n));
+    .map(sk => sk.name || sk.id)
+    .filter(n => selected.has(n));
   _exitSelectMode();
   await _auditAllSkills({ names: ordered });
 }
@@ -2383,9 +1841,7 @@ async function _bulkAudit() {
 async function _showSkillSource(name) {
   let md = '';
   try {
-    const res = await fetch(
-      `${API}/api/skills/${encodeURIComponent(name)}/markdown`,
-    );
+    const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/markdown`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     md = data.markdown || '';
@@ -2415,12 +1871,8 @@ async function _showSkillSource(name) {
   document.body.appendChild(wrap);
   const ta = wrap.querySelector('#skill-md-textarea');
   ta.value = md;
-  wrap
-    .querySelector('#skill-md-close')
-    .addEventListener('click', () => wrap.remove());
-  wrap.addEventListener('click', (e) => {
-    if (e.target === wrap) wrap.remove();
-  });
+  wrap.querySelector('#skill-md-close').addEventListener('click', () => wrap.remove());
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) wrap.remove(); });
   wrap.querySelector('#skill-save-btn').addEventListener('click', async () => {
     try {
       // We use the manage_skills-style edit by going through PUT with a
@@ -2428,14 +1880,11 @@ async function _showSkillSource(name) {
       // tool call instead. We have a /api/skills/{name} PUT for fields, but
       // a full SKILL.md replace is simpler via the parsed-then-PUT approach
       // below: parse client-side by uploading via the tool route.
-      const res = await fetch(
-        `${API}/api/skills/${encodeURIComponent(name)}/markdown`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ markdown: ta.value }),
-        },
-      );
+      const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/markdown`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ markdown: ta.value }),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       uiModule.showToast('Saved');
       wrap.remove();
@@ -2462,8 +1911,7 @@ async function importSkillFromUrl() {
       body: JSON.stringify({ url }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok)
-      throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+    if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
     if (input) input.value = '';
     await loadSkills();
     const name = data.skill?.name || 'skill';
@@ -2477,40 +1925,25 @@ async function importSkillFromUrl() {
 }
 
 async function addSkill() {
-  const name =
-    document.getElementById('new-skill-name')?.value.trim() ||
-    document.getElementById('new-skill-title')?.value.trim();
-  const description =
-    document.getElementById('new-skill-description')?.value.trim() ||
-    document.getElementById('new-skill-title')?.value.trim();
-  const whenToUse =
-    document.getElementById('new-skill-when')?.value.trim() ||
-    document.getElementById('new-skill-problem')?.value.trim() ||
-    '';
-  const procedureRaw =
-    document.getElementById('new-skill-procedure')?.value.trim() ||
-    document.getElementById('new-skill-solution')?.value.trim() ||
-    '';
+  const name = document.getElementById('new-skill-name')?.value.trim()
+    || document.getElementById('new-skill-title')?.value.trim();
+  const description = document.getElementById('new-skill-description')?.value.trim()
+    || document.getElementById('new-skill-title')?.value.trim();
+  const whenToUse = document.getElementById('new-skill-when')?.value.trim()
+    || document.getElementById('new-skill-problem')?.value.trim() || '';
+  const procedureRaw = document.getElementById('new-skill-procedure')?.value.trim()
+    || document.getElementById('new-skill-solution')?.value.trim() || '';
   const tagsRaw = document.getElementById('new-skill-tags')?.value.trim();
-  const category =
-    document.getElementById('new-skill-category')?.value.trim() || 'general';
+  const category = document.getElementById('new-skill-category')?.value.trim() || 'general';
 
   if (!description && !name) {
     uiModule.showError('Description (or name) is required');
     return;
   }
   const procedure = procedureRaw
-    ? procedureRaw
-        .split('\n')
-        .map((s) => s.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '').trim())
-        .filter(Boolean)
+    ? procedureRaw.split('\n').map(s => s.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '').trim()).filter(Boolean)
     : [];
-  const tags = tagsRaw
-    ? tagsRaw
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-    : [];
+  const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
 
   try {
     const res = await fetch(`${API}/api/skills/add`, {
@@ -2527,20 +1960,10 @@ async function addSkill() {
       }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    [
-      'new-skill-name',
-      'new-skill-title',
-      'new-skill-description',
-      'new-skill-when',
-      'new-skill-problem',
-      'new-skill-procedure',
-      'new-skill-solution',
-      'new-skill-tags',
-      'new-skill-category',
-    ].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
-    });
+    ['new-skill-name', 'new-skill-title', 'new-skill-description', 'new-skill-when',
+     'new-skill-problem', 'new-skill-procedure', 'new-skill-solution', 'new-skill-tags',
+     'new-skill-category']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     await loadSkills();
     uiModule.showToast('Skill added (draft)');
   } catch (err) {
@@ -2549,3 +1972,4 @@ async function addSkill() {
 }
 
 export default { loadSkills, openSkill };
+
