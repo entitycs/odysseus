@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte';
+import { afterNavigate } from '$app/navigation';
 import { syncGroupIndicator } from '$lib/chat/group';
 import { handleSubmit } from '$lib/chat/helpers';
 import ScrollChatBottom from '$lib/components/ScrollChatBottom.svelte';
@@ -19,6 +20,11 @@ const _DEOJ_SKIP = '.sources-section, .thinking-toggle, .memory-used-pill';
 function el(id: string) {
   return document.getElementById(id);
 }
+
+afterNavigate((navigation) => {
+  const hashId = window.location.hash.replace('#', '');
+  if (hashId) sessionModule.selectSession(hashId);
+});
 
 onMount(() => {
   // Message count in the header — recount on any DOM change in

@@ -58,11 +58,7 @@ export function init() {
     }
   });
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', _initAllDropdowns);
-  } else {
-    _initAllDropdowns();
-  }
+  _initAllDropdowns();
 }
 
 function _paintSessionLoading(chatHistory, label = 'Loading chat') {
@@ -348,7 +344,8 @@ function _deselectCurrentSession(sid) {
   uiModule.el('chat-history').innerHTML = '';
   uiModule.el('current-meta').textContent = 'Odysseus Chat';
   Storage.remove('lastSessionId');
-  history.replaceState(null, '', window.location.pathname);
+  replaceState(window.location.pathname, page);
+  // history.replaceState(null, '', window.location.pathname);
   if (window.chatModule && window.chatModule.showWelcomeScreen) {
     window.chatModule.showWelcomeScreen();
   }
@@ -2137,7 +2134,8 @@ export async function selectSession(
       Storage.set('lastSessionId', id);
       // Update URL hash without triggering hashchange handler
       if (window.location.hash !== '#' + id) {
-        history.replaceState(null, '', '#' + id);
+        pushState('#' + id, {}); //todo - test vs hashchange handler
+        // history.replaceState(null, '', '#' + id);
       }
     }
     // Restore character preset for persistent chats
@@ -2504,7 +2502,8 @@ export function createDirectChat(url, modelId, endpointId) {
   _suppressNextSessionLoading = true;
   currentSessionId = null;
   Storage.remove('lastSessionId');
-  history.replaceState(null, '', window.location.pathname);
+  pushState('', page);
+  // history.replaceState(null, '', window.location.pathname);
   document
     .querySelectorAll('.list-item.active-session, .session-item.active')
     .forEach((el) => {
@@ -2606,7 +2605,8 @@ export async function materializePendingSession() {
   }
   currentSessionId = payload.id;
   Storage.set('lastSessionId', payload.id);
-  history.replaceState(null, '', '#' + payload.id);
+  replaceState('#' + payload.id, page);
+  // history.replaceState(null, '', '#' + payload.id);
 
   // Reload the sidebar in the background. Awaiting this used to block the first
   // prompt in a new/pending chat behind startup fetches and slow /api/sessions
@@ -2654,7 +2654,8 @@ export function setCurrentSessionId(id) {
   if (!id) {
     _suppressNextSessionLoading = true;
     Storage.remove('lastSessionId');
-    history.replaceState(null, '', window.location.pathname);
+    pushState('', page);
+    // history.replaceState(null, '', window.location.pathname);
     document
       .querySelectorAll('.list-item.active-session, .session-item.active')
       .forEach((el) => {
