@@ -1621,7 +1621,7 @@ def setup_chat_routes(
         if rec is None:
             if agent_runs.is_active(session_id):
                 return {"status": "streaming", "detached": True}
-            raise HTTPException(404, "No active stream for this session")
+            raise HTTPException(204, "No active stream for this session")
         return rec
 
     # ------------------------------------------------------------------ #
