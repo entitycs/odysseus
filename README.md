@@ -62,8 +62,9 @@ details:
 - Nearly all .js files from `/static/js` have been moved to `/web/lib/legacy`.
   - They have also been modified slightly, to fit the svelte environment.
     - `import {abc} from 'static/js/moduleName'` becomes `import {abc} from '$lib/legacy/moduleName'`
-    - Any 'DOM READY' code or self-firing code has been, or will be moved to the given module's `init` method.
+    - Any TOP-LEVEL 'DOM READY' code or self-firing code has been, or will be moved to the given module's `init` method.
       - eg. `document.getElementById`, `window.moduleName = moduleName`, `(function _abc(){})())`
+      - in all other instances, these are fine (though sub-optimal. They would be deprecated by the end of a full rewrite in favor of using the framework)
     - `init` at will handle one-time initialization, and be called from `onMount` (inside of a svelte page / layout / component).
   - If you're looking for an existing & more sparsely defined `init` method for a module that takes api_base as an argument, that method is now called `initLegacy`.
 
