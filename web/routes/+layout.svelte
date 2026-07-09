@@ -4,6 +4,7 @@ import Header from './Header.svelte';
 import './layout.css';
 import { onMount } from 'svelte';
 import { page } from '$app/state';
+import PasswordField from '$lib/input/PasswordField.svelte';
 import { init as sessionInit } from '$lib/legacy/sessions';
 
 let { children } = $props();
@@ -1357,9 +1358,10 @@ onMount(() => {
 				<div class="admin-card">
 					<h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Change Password</h2>
 					<div class="settings-col">
-					<input id="settings-pw-current" type="password" placeholder="Current password" autocomplete="current-password" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;">
-					<input id="settings-pw-new" type="password" placeholder="New password" autocomplete="new-password" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;">
-					<input id="settings-pw-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;">
+					<PasswordField id="settings-pw-current" placeholder="Current password" autocomplete="current-password" inputStyle="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;" />
+					<PasswordField id="settings-pw-new" label="New password" placeholder="New Password" autocomplete="new-password" inputStyle="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;" />
+					<PasswordField id="settings-pw-confirm" label="Confirm new password" placeholder="Confirm new password" autocomplete="new-password" inputStyle="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;"/>
+					<!-- <input id="settings-pw-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;"> -->
 					<div class="settings-row" style="margin-top:2px;justify-content:flex-end;">
 						<span id="settings-pw-msg" style="font-size:11px;margin-right:auto;"></span>
 						<button class="admin-btn-add" id="settings-pw-save">Update Password</button>
