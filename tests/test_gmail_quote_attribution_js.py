@@ -1,4 +1,4 @@
-"""Pin _extractQuoteMeta's Gmail attribution parsing (static/js/emailLibrary/signatureFold.js).
+"""Pin _extractQuoteMeta's Gmail attribution parsing (web/lib/legacy/emailLibrary/signatureFold.js).
 
 Driven through `node --input-type=module` (same approach as test_hex_to_rgb_js.py);
 skips when `node` is not installed.
@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
-_HELPER = _REPO / "static" / "js" / "emailLibrary" / "signatureFold.js"
+_HELPER = _REPO / "web" / "lib" / "legacy" / "emailLibrary" / "signatureFold.js"
 _HAS_NODE = shutil.which("node") is not None
 
 

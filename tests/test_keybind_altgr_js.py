@@ -13,7 +13,7 @@ delete_session, incognito, open_calendar). getModifierState('AltGraph') is true
 for AltGr but false for a genuine left Ctrl+Alt — except on macOS, where the
 Option key also sets it.
 
-The guard now lives in ONE place — `isAltGrEvent` in static/js/platform.js — and
+The guard now lives in ONE place — `isAltGrEvent` in web/lib/legacy/platform.js — and
 all three call sites (editor keyboard-shortcuts.js, root keyboard-shortcuts.js,
 settings.js) route through it. So these tests pin the shared *predicate*
 directly (both the isMac arg and the navigator-derived IS_MAC default), plus the
@@ -30,8 +30,8 @@ from pathlib import Path
 import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
-_HELPER = _REPO / "static" / "js" / "keyboard-shortcuts.js"
-_PLATFORM = _REPO / "static" / "js" / "platform.js"
+_HELPER = _REPO / "web" / "lib" / "legacy" / "keyboard-shortcuts.js"
+_PLATFORM = _REPO / "web" / "lib" / "legacy" / "platform.js"
 _HAS_NODE = shutil.which("node") is not None
 
 # Every test here shells out to `node`; skip the whole module when it is absent

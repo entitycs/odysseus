@@ -4,11 +4,7 @@
 // panel rendering, command building
 // ============================================
 
-import {
-  _clearDiagnosis,
-  _diagnose,
-  _showDiagnosis,
-} from '$lib/legacy/cookbook-diagnosis.js';
+import { _clearDiagnosis, _diagnose, _showDiagnosis } from '$lib/legacy/cookbook-diagnosis.js';
 import uiModule from '$lib/legacy/ui.js';
 
 // Shared state/functions injected by init()
@@ -64,15 +60,12 @@ export function _setPanelCheckbox(panel, field, checked) {
 
 function _firstGgufSource(model) {
   const sources = Array.isArray(model?.gguf_sources) ? model.gguf_sources : [];
-  return sources.find((src) => src && src.repo) || null;
+  return sources.find(src => src && src.repo) || null;
 }
 
 function _looksLikeGgufRepo(model) {
-  const haystack =
-    `${model?.quant_repo || ''} ${model?.repo_id || ''} ${model?.path || ''} ${model?.name || ''}`.toLowerCase();
-  return (
-    !!model?.is_gguf || haystack.includes('gguf') || haystack.includes('.gguf')
-  );
+  const haystack = `${model?.quant_repo || ''} ${model?.repo_id || ''} ${model?.path || ''} ${model?.name || ''}`.toLowerCase();
+  return !!model?.is_gguf || haystack.includes('gguf') || haystack.includes('.gguf');
 }
 
 function _ggufDownloadSource(model, backend) {
@@ -97,9 +90,7 @@ function _ggufDisplayPartFromInclude(include) {
   const parts = clean.split('/').filter(Boolean);
   const file = parts[parts.length - 1] || clean;
   const dir = parts.length > 1 ? parts[parts.length - 2] : '';
-  const quant = `${dir} ${file}`.match(
-    /\b(?:UD-)?(?:IQ[1-8]_[A-Z0-9]+|Q[2-8]_K_[MLS]|Q[2-8]_[0-9A-Z]+|Q[2-8])\b/i,
-  );
+  const quant = `${dir} ${file}`.match(/\b(?:UD-)?(?:IQ[1-8]_[A-Z0-9]+|Q[2-8]_K_[MLS]|Q[2-8]_[0-9A-Z]+|Q[2-8])\b/i);
   if (quant) return quant[0].toUpperCase().replace(/^UD-/, '');
   return file.replace(/\.gguf$/i, '').replace(/-\d{5}-of-\d{5}$/i, '');
 }
@@ -140,22 +131,12 @@ export function _buildDownloadCmd(model, backend) {
       cmd = _missingGgufCommand(model);
     } else {
       const repo = ggufSource?.repo || model.name;
-      const includePattern =
-        backend === 'llamacpp' ? _ggufIncludePattern(model, ggufSource) : null;
-      const includeArg = includePattern
-        ? `, allow_patterns=["${includePattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`
-        : '';
+      const includePattern = backend === 'llamacpp' ? _ggufIncludePattern(model, ggufSource) : null;
+      const includeArg = includePattern ? `, allow_patterns=["${includePattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]` : '';
       // Reflect the server's download target in the preview (matches the real
       // download path built server-side). '' = default HF cache.
-      const _dlDir =
-        (
-          _serverByVal?.(
-            _envState.remoteServerKey || _envState.remoteHost || '',
-          ) || {}
-        ).downloadDir || '';
-      const _localDirArg = _dlDir
-        ? `, local_dir=os.path.expanduser('${_dlDir.replace(/\/$/, '')}/${repo.split('/').pop()}')`
-        : '';
+      const _dlDir = (_serverByVal?.(_envState.remoteServerKey || _envState.remoteHost || '') || {}).downloadDir || '';
+      const _localDirArg = _dlDir ? `, local_dir=os.path.expanduser('${_dlDir.replace(/\/$/, '')}/${repo.split('/').pop()}')` : '';
       const _py = _isWindows() ? 'python' : 'python3';
       cmd = `${_py} -u -c "
 import sys, time, os
@@ -225,7 +206,7 @@ except Exception as e:
 
 function _getPanelFields(panel) {
   const vals = {};
-  panel.querySelectorAll('.hwfit-f').forEach((el) => {
+  panel.querySelectorAll('.hwfit-f').forEach(el => {
     const key = el.dataset.field;
     if (!key) return;
     if (el.type === 'checkbox') {
@@ -259,25 +240,16 @@ export function _wirePanelEvents(panel, model, backend) {
   }
 
   // All inputs: update cmd preview + sync env state
-  panel.querySelectorAll('.hwfit-f').forEach((input) => {
+  panel.querySelectorAll('.hwfit-f').forEach(input => {
     const evts = input.tagName === 'SELECT' ? ['change'] : ['input', 'change'];
     for (const evt of evts) {
       input.addEventListener(evt, () => {
         _updatePanelCmd(panel, model, backend);
         const f = input.dataset.field;
-        if (f === 'env_type') {
-          _envState.env = input.value;
-          _persistEnvState();
-        } else if (f === 'env_path') {
-          _envState.envPath = input.value;
-          _persistEnvState();
-        } else if (f === 'hf_token') {
-          _envState.hfToken = input.value;
-          _persistEnvState();
-        } else if (f === 'gpus') {
-          _envState.gpus = input.value;
-          _persistEnvState();
-        }
+        if (f === 'env_type') { _envState.env = input.value; _persistEnvState(); }
+        else if (f === 'env_path') { _envState.envPath = input.value; _persistEnvState(); }
+        else if (f === 'hf_token') { _envState.hfToken = input.value; _persistEnvState(); }
+        else if (f === 'gpus') { _envState.gpus = input.value; _persistEnvState(); }
       });
     }
   });
@@ -286,7 +258,7 @@ export function _wirePanelEvents(panel, model, backend) {
   const dlBtn = panel.querySelector('.hwfit-dl-btn');
   if (dlBtn) {
     dlBtn.addEventListener('click', () => {
-      _runModelDownload(panel, model, backend);
+      _runModelDownload(panel, model, backend)
     });
   }
 
@@ -303,19 +275,14 @@ export function _wirePanelEvents(panel, model, backend) {
   if (killBtn) {
     killBtn.addEventListener('click', () => {
       if (panel._cookbookAbort) panel._cookbookAbort.abort();
-      const outputText =
-        panel.querySelector('.cookbook-output-pre')?.textContent || '';
-      const tmuxMatch = outputText.match(
-        /Started tmux session: (cookbook-[a-f0-9]+)/,
-      );
+      const outputText = panel.querySelector('.cookbook-output-pre')?.textContent || '';
+      const tmuxMatch = outputText.match(/Started tmux session: (cookbook-[a-f0-9]+)/);
       if (tmuxMatch) {
         fetch('/api/shell/exec', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            command: `tmux kill-session -t ${tmuxMatch[1]} 2>/dev/null`,
-          }),
+          body: JSON.stringify({ command: `tmux kill-session -t ${tmuxMatch[1]} 2>/dev/null` }),
         }).catch(() => {});
       }
       const wrap = panel.querySelector('.cookbook-output-wrap');
@@ -333,9 +300,7 @@ export function _wirePanelEvents(panel, model, backend) {
       const cmd = panel.querySelector('.hwfit-panel-cmd')?.textContent || '';
       _copyText(cmd).then(() => {
         copyBtn.textContent = 'Copied';
-        setTimeout(() => {
-          copyBtn.textContent = 'Copy';
-        }, 1500);
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
       });
     });
   }
@@ -360,12 +325,10 @@ export function _wirePanelEvents(panel, model, backend) {
   if (outputCopyBtn) {
     outputCopyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const text =
-        panel.querySelector('.cookbook-output-pre')?.textContent || '';
+      const text = panel.querySelector('.cookbook-output-pre')?.textContent || '';
       _copyText(text).then(() => {
         const origHTML = outputCopyBtn.innerHTML;
-        outputCopyBtn.innerHTML =
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        outputCopyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
         outputCopyBtn.classList.add('copied');
         setTimeout(() => {
           outputCopyBtn.innerHTML = origHTML;
@@ -382,17 +345,15 @@ function _updatePanelCmd(panel, model, backend) {
   const f = _getPanelFields(panel);
   _syncEnvFromPanel(panel);
   if (backend === 'llamacpp') {
-    f._gguf_path =
-      model.gguf_sources && model.gguf_sources.length
-        ? model.gguf_sources[0].file || 'model.gguf'
-        : 'model.gguf';
+    f._gguf_path = (model.gguf_sources && model.gguf_sources.length)
+      ? model.gguf_sources[0].file || 'model.gguf'
+      : 'model.gguf';
   }
   const cmd = _buildServeCmd(f, model.name, backend);
   const prefix = _buildEnvPrefix();
   let full = prefix ? prefix + ' ' + cmd : cmd;
   if (f.extra && f.extra.trim()) full += ' ' + f.extra.trim();
-  if (_envState.remoteHost)
-    full = _sshCmd(_envState.remoteHost, full, _getPort(_envState.remoteHost));
+  if (_envState.remoteHost) full = _sshCmd(_envState.remoteHost, full, _getPort(_envState.remoteHost));
   pre.textContent = full;
 }
 
@@ -454,8 +415,7 @@ export async function _runPanelCmd(panel, cmd, opts = {}) {
           try {
             const ev = JSON.parse(line.slice(6));
             if (ev.data !== undefined) {
-              const isProgress =
-                /^FILE .+\d+%/.test(ev.data) || /\d+%\|/.test(ev.data);
+              const isProgress = /^FILE .+\d+%/.test(ev.data) || /\d+%\|/.test(ev.data);
               if (isProgress && output.textContent) {
                 const lines = output.textContent.split('\n');
                 const lastLine = lines[lines.length - 1] || '';
@@ -468,8 +428,7 @@ export async function _runPanelCmd(panel, cmd, opts = {}) {
                   output.textContent += '\n' + ev.data;
                 }
               } else {
-                output.textContent +=
-                  (output.textContent ? '\n' : '') + ev.data;
+                output.textContent += (output.textContent ? '\n' : '') + ev.data;
               }
               output.scrollTop = output.scrollHeight;
               fullOutput += ev.data + '\n';
@@ -495,8 +454,7 @@ export async function _runPanelCmd(panel, cmd, opts = {}) {
       output.textContent += (output.textContent ? '\n' : '') + '(stopped)';
     } else {
       output.classList.add('cookbook-output-error');
-      output.textContent +=
-        (output.textContent ? '\n' : '') + 'Request failed: ' + err.message;
+      output.textContent += (output.textContent ? '\n' : '') + 'Request failed: ' + err.message;
     }
   } finally {
     if (serveBtn) serveBtn.style.display = '';
@@ -513,12 +471,10 @@ export async function _runModelDownload(panel, model, backend, hostOverride) {
     uiModule.showToast(_missingGgufMessage(model));
     return;
   }
-  const repo =
-    backend === 'ollama'
-      ? model.ollama || model.ollama_name || model.name
-      : ggufSource?.repo || model.quant_repo || model.name;
-  const include =
-    backend === 'llamacpp' ? _ggufIncludePattern(model, ggufSource) : null;
+  const repo = backend === 'ollama'
+    ? (model.ollama || model.ollama_name || model.name)
+    : (ggufSource?.repo || model.quant_repo || model.name);
+  const include = backend === 'llamacpp' ? _ggufIncludePattern(model, ggufSource) : null;
 
   _syncEnvFromPanel(panel);
 
@@ -532,29 +488,16 @@ export async function _runModelDownload(panel, model, backend, hostOverride) {
   let selectedServerKey = '';
   if (hostOverride !== undefined) {
     host = hostOverride || '';
-    selectedServer = host
-      ? _serverByVal?.(host) ||
-        (_envState.servers || []).find((s) => s.host === host) ||
-        null
-      : null;
-    selectedServerKey = selectedServer
-      ? typeof window.cookbookModule?._serverKey === 'function'
-        ? window.cookbookModule._serverKey(selectedServer)
-        : ''
-      : '';
+    selectedServer = host ? (_serverByVal?.(host) || (_envState.servers || []).find(s => s.host === host) || null) : null;
+    selectedServerKey = selectedServer ? (typeof window.cookbookModule?._serverKey === 'function' ? window.cookbookModule._serverKey(selectedServer) : '') : '';
   } else {
     // No explicit host passed: resolve from the visible server dropdown rather
     // than _envState.remoteHost (unreliable — multiple state copies disagree).
-    const ssEl =
-      document.getElementById('hwfit-server-select') ||
-      document.getElementById('hwfit-dl-server');
+    const ssEl = document.getElementById('hwfit-server-select') || document.getElementById('hwfit-dl-server');
     // Dropdown values are profile keys now ('local' for local); stale host
     // strings and numeric indices still resolve for backwards compatibility.
     const _ssv = ssEl ? ssEl.value : null;
-    const _dsrv =
-      _ssv && _ssv !== 'local'
-        ? _serverByVal?.(_ssv) || _envState.servers[parseInt(_ssv)]
-        : null;
+    const _dsrv = (_ssv && _ssv !== 'local') ? (_serverByVal?.(_ssv) || _envState.servers[parseInt(_ssv)]) : null;
     if (_dsrv) {
       host = _dsrv.host;
       selectedServer = _dsrv;
@@ -563,36 +506,28 @@ export async function _runModelDownload(panel, model, backend, hostOverride) {
       host = '';
     } else {
       host = _envState.remoteHost || '';
-      selectedServer = host
-        ? (_envState.servers || []).find((s) => s.host === host) ||
-          _serverByVal?.(host) ||
-          null
-        : null;
+      selectedServer = host ? ((_envState.servers || []).find(s => s.host === host) || _serverByVal?.(host) || null) : null;
     }
   }
   const srv = selectedServer || _serverByVal?.(host) || {};
-  let env = host ? srv.env || 'none' : _envState.env || 'none';
-  const envPath = host ? srv.envPath || '' : _envState.envPath || '';
+  let env = host ? (srv.env || 'none') : (_envState.env || 'none');
+  const envPath = host ? (srv.envPath || '') : (_envState.envPath || '');
   if ((!env || env === 'none') && envPath) {
-    env = /(?:^|\/)(?:\.?venv|env)(?:\/|$)|\/bin\/activate$/i.test(envPath)
-      ? 'venv'
-      : env;
+    env = /(?:^|\/)(?:\.?venv|env)(?:\/|$)|\/bin\/activate$/i.test(envPath) ? 'venv' : env;
   }
-  const platform = host ? srv.platform || '' : _envState.platform || '';
-  const isWin = host ? platform === 'windows' : _isWindows();
+  const platform = host ? (srv.platform || '') : (_envState.platform || '');
+  const isWin = host ? (platform === 'windows') : _isWindows();
 
   const payload = { repo_id: repo, backend };
   if (include) payload.include = include;
   // Large downloads are where hf_transfer most often dies near the end. Use the
   // plain HuggingFace downloader up front for big model files; it is slower, but
   // resumes cached partials more reliably.
-  if ((model.required_gb || 0) >= 10 || backend === 'llamacpp')
-    payload.disable_hf_transfer = true;
+  if ((model.required_gb || 0) >= 10 || backend === 'llamacpp') payload.disable_hf_transfer = true;
   if (_envState.hfToken) payload.hf_token = _envState.hfToken;
   if (host) {
     payload.remote_host = host;
-    if (selectedServerKey && selectedServerKey !== 'local')
-      payload.remote_server_key = selectedServerKey;
+    if (selectedServerKey && selectedServerKey !== 'local') payload.remote_server_key = selectedServerKey;
     if (srv.name) payload.remote_server_name = srv.name;
     const _sp = srv.port || _getPort(host);
     if (_sp) payload.ssh_port = _sp;
@@ -603,24 +538,15 @@ export async function _runModelDownload(panel, model, backend, hostOverride) {
   if (srv.downloadDir) payload.local_dir = srv.downloadDir;
   if (isWin) {
     if (env === 'venv' && envPath) {
-      payload.env_prefix =
-        '& ' +
-        (envPath.endsWith('\\Scripts\\Activate.ps1')
-          ? envPath
-          : envPath + '\\Scripts\\Activate.ps1');
+      payload.env_prefix = '& ' + (envPath.endsWith('\\Scripts\\Activate.ps1') ? envPath : envPath + '\\Scripts\\Activate.ps1');
     } else if (env === 'conda' && envPath) {
       payload.env_prefix = 'conda activate ' + envPath;
     }
   } else {
     if (env === 'venv' && envPath) {
-      payload.env_prefix =
-        'source ' +
-        (envPath.endsWith('/bin/activate')
-          ? envPath
-          : envPath + '/bin/activate');
+      payload.env_prefix = 'source ' + (envPath.endsWith('/bin/activate') ? envPath : envPath + '/bin/activate');
     } else if (env === 'conda' && envPath) {
-      payload.env_prefix =
-        'eval "$(conda shell.bash hook)" && conda activate ' + envPath;
+      payload.env_prefix = 'eval "$(conda shell.bash hook)" && conda activate ' + envPath;
     }
   }
 
@@ -633,19 +559,12 @@ export async function _runModelDownload(panel, model, backend, hostOverride) {
     if (!t || t.type !== 'download') return false;
     const tRepo = t?.payload?.repo_id || t?.repo_id || t?.repo || t?.name || '';
     const tHost = t?.remoteHost || t?.payload?.remote_host || 'local';
-    return (
-      String(tRepo) === String(payload.repo_id) &&
-      String(tHost || 'local') === String(targetHost)
-    );
+    return String(tRepo) === String(payload.repo_id) && String(tHost || 'local') === String(targetHost);
   };
-  const duplicate = tasks.find(
-    (t) => sameDownload(t) && (t.status === 'running' || t.status === 'queued'),
-  );
+  const duplicate = tasks.find(t => sameDownload(t) && (t.status === 'running' || t.status === 'queued'));
   if (duplicate) {
     _renderRunningTab();
-    uiModule.showToast(
-      `${shortName} is already ${duplicate.status === 'queued' ? 'queued' : 'downloading'}`,
-    );
+    uiModule.showToast(`${shortName} is already ${duplicate.status === 'queued' ? 'queued' : 'downloading'}`);
     return;
   }
   // Also catch zombie "done" tasks — the cookbook may have lost track of a
@@ -653,36 +572,20 @@ export async function _runModelDownload(panel, model, backend, hostOverride) {
   // alive on the host. Probe it; if alive, flip back to running + treat as
   // duplicate so we don't kick off a second concurrent download writing to
   // the same target dir.
-  const zombieCandidate = tasks.find(
-    (t) =>
-      sameDownload(t) &&
-      ['done', 'error', 'crashed', 'stopped'].includes(t.status) &&
-      t.sessionId &&
-      !String(t.sessionId).startsWith('queue-'),
-  );
+  const zombieCandidate = tasks.find(t => sameDownload(t)
+    && ['done', 'error', 'crashed', 'stopped'].includes(t.status)
+    && t.sessionId && !String(t.sessionId).startsWith('queue-'));
   if (zombieCandidate) {
     try {
       const _zh = zombieCandidate.remoteHost || '';
-      const _zPort = (
-        _serverByVal?.(
-          zombieCandidate.remoteServerKey ||
-            zombieCandidate.payload?.remote_server_key ||
-            _zh,
-        ) ||
-        (_envState.servers || []).find((s) => s.host === _zh) ||
-        {}
-      ).port;
-      const _sshPf = _zh
-        ? `ssh ${_zPort && _zPort !== '22' ? `-p ${_zPort} ` : ''}${_zh} '`
-        : '';
+      const _zPort = (_serverByVal?.(zombieCandidate.remoteServerKey || zombieCandidate.payload?.remote_server_key || _zh)
+        || (_envState.servers || []).find(s => s.host === _zh) || {}).port;
+      const _sshPf = _zh ? `ssh ${_zPort && _zPort !== '22' ? `-p ${_zPort} ` : ''}${_zh} '` : '';
       const _sshSf = _zh ? `'` : '';
-      const _probePrefix = _zh
-        ? 'PATH="$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"; '
-        : '';
+      const _probePrefix = _zh ? 'PATH="$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"; ' : '';
       const _probeCmd = `${_sshPf}${_probePrefix}tmux has-session -t ${zombieCandidate.sessionId} 2>/dev/null${_sshSf}`;
       const _r = await fetch('/api/shell/exec', {
-        method: 'POST',
-        credentials: 'same-origin',
+        method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: _probeCmd, timeout: 5 }),
       });
@@ -690,49 +593,24 @@ export async function _runModelDownload(panel, model, backend, hostOverride) {
       if (_d.exit_code === 0) {
         // tmux still alive → not actually done. Revive + tell the user.
         const _fresh = _loadTasks();
-        const _ft = _fresh.find(
-          (t) => t.sessionId === zombieCandidate.sessionId,
-        );
+        const _ft = _fresh.find(t => t.sessionId === zombieCandidate.sessionId);
         if (_ft) {
           _ft.status = 'running';
           _ft._selfHealed = true;
           _saveTasks(_fresh);
         }
         _renderRunningTab();
-        uiModule.showToast(
-          `${shortName} is still downloading (was marked finished after a restart — revived)`,
-        );
+        uiModule.showToast(`${shortName} is still downloading (was marked finished after a restart — revived)`);
         return;
       }
-    } catch {
-      /* probe failed — fall through and let the user launch */
-    }
+    } catch { /* probe failed — fall through and let the user launch */ }
   }
-  const activeOnHost = tasks.find(
-    (t) =>
-      t.type === 'download' &&
-      (t.status === 'running' || t.status === 'queued') &&
-      (t.remoteHost || 'local') === targetHost,
-  );
+  const activeOnHost = tasks.find(t => t.type === 'download' && (t.status === 'running' || t.status === 'queued') && (t.remoteHost || 'local') === targetHost);
 
   if (activeOnHost) {
     const queueId = `queue-${Date.now().toString(36)}`;
     const allTasks = _loadTasks();
-    allTasks.push({
-      id: queueId,
-      sessionId: queueId,
-      name: taskName,
-      type: 'download',
-      status: 'queued',
-      output: '',
-      ts: Date.now(),
-      payload,
-      remoteHost: host,
-      remoteServerKey: payload.remote_server_key || '',
-      remoteServerName: payload.remote_server_name || '',
-      sshPort: payload.ssh_port || '',
-      platform: payload.platform || '',
-    });
+    allTasks.push({ id: queueId, sessionId: queueId, name: taskName, type: 'download', status: 'queued', output: '', ts: Date.now(), payload, remoteHost: host, remoteServerKey: payload.remote_server_key || '', remoteServerName: payload.remote_server_name || '', sshPort: payload.ssh_port || '', platform: payload.platform || '' });
     _saveTasks(allTasks);
     _renderRunningTab();
     uiModule.showToast(`Queued ${shortName} — waiting for current download`);

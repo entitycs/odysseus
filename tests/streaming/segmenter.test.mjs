@@ -6,15 +6,17 @@
 // tail separately produces the same DOM as rendering the whole text at once.
 //
 // Invariant under test everywhere:  render(text[0:n]) + render(text[n:]) === render(text)
-import { test } from 'node:test';
+
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { splitFinalized } from '../../web/lib/legacy/streamingSegmenter.js';
 import { loadMarkdown, normalizeRender } from './markdownHarness.mjs';
-import { splitFinalized } from '../../static/js/streamingSegmenter.js';
 
 const md = await loadMarkdown();
 const render = (t) => md.mdToHtml(t);
 const splitOk = (text, n) =>
-  normalizeRender(render(text.slice(0, n)) + render(text.slice(n))) === normalizeRender(render(text));
+  normalizeRender(render(text.slice(0, n)) + render(text.slice(n))) ===
+  normalizeRender(render(text));
 
 test('harness loads the real renderer', () => {
   assert.match(render('hi'), /<p>hi<\/p>/);
@@ -44,7 +46,10 @@ test('a closed code fence is finalized immediately, even as the last block', () 
   // so its hover buttons stop being recreated on every later token.
   const text = 'Here:\n\n```python\nprint(1)\n```';
   const n = splitFinalized(text, render);
-  assert.ok(n >= text.length - 1, `expected the whole closed fence finalized, got ${n} of ${text.length}`);
+  assert.ok(
+    n >= text.length - 1,
+    `expected the whole closed fence finalized, got ${n} of ${text.length}`,
+  );
   assert.ok(splitOk(text, n));
 });
 
@@ -52,14 +57,23 @@ test('does NOT finalize across an OPEN code fence', () => {
   const text = 'intro\n\n```python\nprint(1)\nprint(2)';
   const n = splitFinalized(text, render);
   // "intro" may finalize, but nothing inside the still-open fence may.
-  assert.ok(n <= 'intro\n\n'.length, `must not finalize into an open fence, got ${n}`);
+  assert.ok(
+    n <= 'intro\n\n'.length,
+    `must not finalize into an open fence, got ${n}`,
+  );
   assert.ok(splitOk(text, n));
 });
 
 test('does NOT split a loose list (blank line between items is not a boundary)', () => {
   const text = '- a\n\n- b\n\nafter';
   const n = splitFinalized(text, render);
-  assert.ok(splitOk(text, n), 'a wrong split here would turn one <ul> into two');
+  assert.ok(
+    splitOk(text, n),
+    'a wrong split here would turn one <ul> into two',
+  );
   // The list must not be cut in the middle: either nothing or the whole list.
-  assert.ok(n === 0 || n >= '- a\n\n- b\n\n'.length, `loose list was cut at ${n}`);
+  assert.ok(
+    n === 0 || n >= '- a\n\n- b\n\n'.length,
+    `loose list was cut at ${n}`,
+  );
 });
