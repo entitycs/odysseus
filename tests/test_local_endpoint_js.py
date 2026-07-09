@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
-_SRC = _REPO / "static" / "js" / "model" / "endpoint.js"
+_SRC = _REPO / "web" / "lib" / "legacy" / "model" / "endpoint.js"
 _HAS_NODE = shutil.which("node") is not None
 
 

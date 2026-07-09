@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-APP_JS = Path("static/app.js")
+APP_JS = Path("web/lib/legacy/app.js")
 
 
 def _slice(source, start_marker, end_marker):
