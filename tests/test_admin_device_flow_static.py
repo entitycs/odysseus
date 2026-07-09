@@ -5,7 +5,7 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
 _INDEX = (_REPO / "static" / "index.html").read_text(encoding="utf-8")
-_ADMIN = (_REPO / "static" / "js" / "admin.js").read_text(encoding="utf-8")
+_ADMIN = (_REPO / "web" / "lib" / "legacy" / "admin.js").read_text(encoding="utf-8")
 
 
 def _between(src: str, start: str, end: str) -> str:

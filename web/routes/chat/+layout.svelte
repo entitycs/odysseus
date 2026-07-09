@@ -1,6 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-
+import { afterNavigate } from '$app/navigation';
 // In same order as original <script> tags:
 
 import { page } from '$app/stores';
@@ -47,7 +47,6 @@ let { children } = $props();
 onMount(async () => {
   // Call init() in the same order as the original script tags.
   // If a module has no init(), this call is harmless.
-
   storage.init?.();
   ui.init?.();
   markdown.init?.();

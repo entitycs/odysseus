@@ -707,7 +707,111 @@ function _estimateMlxContextFit(model, fields, modelCtxMax, modelWeightsGb = 0, 
   }
   const raw = Math.floor(freeForKv / kvGbPerToken);
   const rounded = Math.max(1024, Math.floor(raw / 1024) * 1024);
-  const ctx = Math.min(modelMax, rounded);
+  let ctx = Math.min(modelMax, rounded);
+  let reasonSuffix = '';
+  if (isUnifiedMode) {
+    // Unified memory is not just "GPU math with a slightly bigger VRAM number".
+    // llama.cpp can spill into system RAM, so a conservative pure-VRAM KV
+    // formula makes confusing recommendations like "58G free unified" but the
+    // same context as GPU. Use a system-memory-style cap when there is real
+    // unified headroom, while keeping the GPU estimate as the minimum.
+    const unifiedCap = freeForKv >= 16
+      ? 131072
+      : (freeForKv >= 8 ? 65536 : 32768);
+    const unifiedCtx = Math.min(modelMax, unifiedCap);
+    if (unifiedCtx > ctx) {
+      ctx = unifiedCtx;
+      reasonSuffix = '; unified can spill into system RAM, slower than pure GPU';
+    }
+    const gpuUsableGb = Math.max(1, totalVramGb - Math.max(1.0, selectedCount * 0.6));
+    const gpuFreeForKv = gpuUsableGb - modelGb;
+    if (gpuFreeForKv > 0) {
+      const gpuRaw = Math.floor(gpuFreeForKv / kvGbPerToken);
+      const gpuRounded = Math.max(1024, Math.floor(gpuRaw / 1024) * 1024);
+      const gpuCtx = Math.min(modelMax, gpuRounded);
+      if (gpuCtx > ctx) {
+        ctx = gpuCtx;
+        reasonSuffix = '; at least the GPU estimate';
+      }
+    }
+  }
+  return {
+    ctx,
+    modelGb,
+    kvGbPerToken,
+    reason: `~${ctx.toLocaleString()} tokens fits llama.cpp KV (${freeForKv.toFixed(1)}G free ${isUnifiedMode ? 'unified' : 'VRAM'}${reasonSuffix})`,
+  };
+}
+
+function _estimateMlxContextFit(model, fields, modelCtxMax, modelWeightsGb = 0, fitSystem = null) {
+  const sys = fitSystem || _hwfitCache?.system || {};
+  const modelMax = Math.max(1024, _modelContextMaxForServe(model, modelCtxMax));
+  const modelGb = _modelSizeGb(model, modelWeightsGb);
+  const availableRamGb = Number(sys.available_ram_gb) || 0;
+  const totalRamGb = Number(sys.total_ram_gb) || 0;
+  const unifiedPoolGb = Math.max(availableRamGb, totalRamGb > 0 ? totalRamGb * 0.75 : 0);
+  if (!unifiedPoolGb) {
+    return {
+      ctx: Math.min(modelMax, 32768),
+      needsHardwareScan: true,
+      reason: 'scan Apple memory first; using model limit fallback',
+    };
+  }
+  if (!modelGb) {
+    return {
+      ctx: Math.min(modelMax, 32768),
+      needsModelSize: true,
+      reason: 'model weight size unknown; using MLX fallback',
+    };
+  }
+
+  const usableGb = Math.max(1, unifiedPoolGb - Math.max(4.0, unifiedPoolGb * 0.10));
+  const freeForKv = usableGb - modelGb;
+  const name = `${model?.repo_id || ''} ${model?.name || ''} ${model?.quant || ''}`.toLowerCase();
+  const totalParams = _parseParamsB(name) || Math.max(1, modelGb / 0.58);
+  const activeMatch = name.match(/\ba(\d+(?:\.\d+)?)b\b/);
+  const activeParams = activeMatch ? parseFloat(activeMatch[1]) : (/moe|minimax|deepseek|mixtral|kimi-k2/.test(name) ? Math.min(totalParams, 32) : totalParams);
+  // MLX uses unified memory. This is intentionally conservative because the
+  // server exposes max generation tokens, not a hard prefill context length.
+  const kvGbPerToken = Math.max(0.00002, 0.0000065 * activeParams);
+  if (freeForKv <= 0) {
+    return {
+      ctx: Math.min(modelMax, 2048),
+      modelGb,
+      kvGbPerToken,
+      reason: `model ${modelGb.toFixed(1)}G exceeds usable unified memory ${usableGb.toFixed(1)}G before KV`,
+    };
+  }
+  const raw = Math.floor(freeForKv / kvGbPerToken);
+  const rounded = Math.max(1024, Math.floor(raw / 1024) * 1024);
+  let ctx = Math.min(modelMax, rounded);
+  let reasonSuffix = '';
+  if (isUnifiedMode) {
+    // Unified memory is not just "GPU math with a slightly bigger VRAM number".
+    // llama.cpp can spill into system RAM, so a conservative pure-VRAM KV
+    // formula makes confusing recommendations like "58G free unified" but the
+    // same context as GPU. Use a system-memory-style cap when there is real
+    // unified headroom, while keeping the GPU estimate as the minimum.
+    const unifiedCap = freeForKv >= 16
+      ? 131072
+      : (freeForKv >= 8 ? 65536 : 32768);
+    const unifiedCtx = Math.min(modelMax, unifiedCap);
+    if (unifiedCtx > ctx) {
+      ctx = unifiedCtx;
+      reasonSuffix = '; unified can spill into system RAM, slower than pure GPU';
+    }
+    const gpuUsableGb = Math.max(1, totalVramGb - Math.max(1.0, selectedCount * 0.6));
+    const gpuFreeForKv = gpuUsableGb - modelGb;
+    if (gpuFreeForKv > 0) {
+      const gpuRaw = Math.floor(gpuFreeForKv / kvGbPerToken);
+      const gpuRounded = Math.max(1024, Math.floor(gpuRaw / 1024) * 1024);
+      const gpuCtx = Math.min(modelMax, gpuRounded);
+      if (gpuCtx > ctx) {
+        ctx = gpuCtx;
+        reasonSuffix = '; at least the GPU estimate';
+      }
+    }
+  }
   return {
     ctx,
     modelGb,
@@ -4309,3 +4413,4 @@ function _openRunningTabForRepo(repo) {
     }
   }, 180);
 }
+

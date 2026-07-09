@@ -4,17 +4,21 @@ import Header from './Header.svelte';
 import './layout.css';
 import { onMount } from 'svelte';
 import { page } from '$app/state';
+import PasswordField from '$lib/input/PasswordField.svelte';
 import { init as sessionInit } from '$lib/legacy/sessions';
 
 let { children } = $props();
 onMount(() => {
+  window._odysseusLoadTime = Date.now();
+  //----------------------------------------------------------------------------
+  // Loader
+  //----------------------------------------------------------------------------
   // Remove loader immediately on client-side mount
   const loader = document.getElementById('app-loader');
   if (loader) {
     loader.classList.add('fade');
     setTimeout(() => loader.remove(), 300);
   }
-
   // Also remove it after hydration (for full SPA transitions)
   window.addEventListener('sveltekit:start', () => {
     const loader2 = document.getElementById('app-loader');
@@ -23,6 +27,401 @@ onMount(() => {
       setTimeout(() => loader2.remove(), 300);
     }
   });
+
+  //----------------------------------------------------------------------------
+  // Theme
+  //----------------------------------------------------------------------------
+  try {
+    var t = JSON.parse(localStorage.getItem('odysseus-theme'));
+    if (t && t.colors) {
+      var s = document.documentElement.style;
+      var c = t.colors;
+      s.setProperty('--bg', c.bg);
+      s.setProperty('--fg', c.fg);
+      s.setProperty('--panel', c.panel);
+      s.setProperty('--border', c.border);
+      if (c.red) s.setProperty('--red', c.red);
+      // Set --brand-color now (= custom brand or the theme red) so the
+      // loading-screen ASCII wave shows its final colour from the first
+      // paint. Otherwise it starts on --red and visibly switches once the
+      // app boots and applyColors() fills --brand-color.
+      var _bc = (c.advanced && c.advanced.brandColor) || c.red;
+      if (_bc) s.setProperty('--brand-color', _bc);
+      // Match the mobile browser toolbar / status bar to the saved theme bg
+      // from the very first paint. Otherwise the hardcoded dark meta sits
+      // there during load and the bar "switches" colour once the app boots.
+      var mtc = document.querySelector('meta[name="theme-color"]');
+      if (mtc && c.bg) mtc.setAttribute('content', c.bg);
+      // Update favicon to match accent color
+      var ac = c.red || '#e06c75';
+      var fav = document.querySelector("link[rel='icon']");
+      if (fav)
+        fav.href =
+          'data:image/svg+xml,' +
+          encodeURIComponent(
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 4L16 22L6 22Z' fill='" +
+              ac +
+              "'/><path d='M16 8L16 22L24 22Z' fill='" +
+              ac +
+              "' opacity='0.6'/><path d='M4 24Q10 20 16 24Q22 28 28 24' stroke='" +
+              ac +
+              "' stroke-width='2.5' fill='none' stroke-linecap='round'/></svg>",
+          );
+      // Derive syntax highlighting colors from theme
+      function h2hsl(hex) {
+        hex = hex.replace('#', '');
+        var r = parseInt(hex.substring(0, 2), 16) / 255,
+          g = parseInt(hex.substring(2, 4), 16) / 255,
+          b = parseInt(hex.substring(4, 6), 16) / 255;
+        var mx = Math.max(r, g, b),
+          mn = Math.min(r, g, b),
+          h,
+          sv,
+          l = (mx + mn) / 2;
+        if (mx === mn) {
+          h = sv = 0;
+        } else {
+          var d = mx - mn;
+          sv = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+          if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+          else if (mx === g) h = ((b - r) / d + 2) / 6;
+          else h = ((r - g) / d + 4) / 6;
+        }
+        return [h * 360, sv * 100, l * 100];
+      }
+      function hsl2h(h, sv, l) {
+        h = ((h % 360) + 360) % 360;
+        sv = Math.max(0, Math.min(100, sv)) / 100;
+        l = Math.max(0, Math.min(100, l)) / 100;
+        var a = sv * Math.min(l, 1 - l);
+        function f(n) {
+          var k = (n + h / 30) % 12;
+          return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+        }
+        function th(v) {
+          return Math.round(v * 255)
+            .toString(16)
+            .padStart(2, '0');
+        }
+        return '#' + th(f(0)) + th(f(8)) + th(f(4));
+      }
+      var fH = h2hsl(c.fg),
+        bH = h2hsl(c.bg),
+        rH = h2hsl(c.red || '#e06c75');
+      var dk = bH[2] < 50;
+      s.setProperty(
+        '--hl-bg',
+        hsl2h(
+          bH[0],
+          bH[1],
+          dk ? Math.max(bH[2] - 4, 0) : Math.min(bH[2] + 4, 100),
+        ),
+      );
+      s.setProperty('--hl-fg', c.fg);
+      s.setProperty(
+        '--hl-keyword',
+        hsl2h((rH[0] + 280) % 360, Math.min(rH[1] + 10, 80), dk ? 70 : 45),
+      );
+      s.setProperty(
+        '--hl-string',
+        hsl2h(40, Math.min(fH[1] + 20, 70), dk ? 72 : 42),
+      );
+      s.setProperty(
+        '--hl-comment',
+        hsl2h(fH[0], Math.max(fH[1] - 20, 5), fH[2] * 0.5 + bH[2] * 0.5),
+      );
+      s.setProperty(
+        '--hl-function',
+        hsl2h(210, Math.min(fH[1] + 20, 75), dk ? 70 : 45),
+      );
+      s.setProperty(
+        '--hl-number',
+        hsl2h(20, Math.min(fH[1] + 15, 65), dk ? 68 : 48),
+      );
+      s.setProperty(
+        '--hl-builtin',
+        hsl2h(180, Math.min(fH[1] + 15, 60), dk ? 65 : 40),
+      );
+      s.setProperty(
+        '--hl-variable',
+        hsl2h((fH[0] + 30) % 360, Math.min(fH[1] + 5, 60), fH[2]),
+      );
+      s.setProperty(
+        '--hl-params',
+        hsl2h(
+          fH[0],
+          Math.max(fH[1] - 5, 10),
+          dk ? Math.min(fH[2] + 8, 85) : Math.max(fH[2] - 8, 25),
+        ),
+      );
+      // Apply advanced overrides if present
+      if (c.advanced) {
+        var a = c.advanced;
+        var advMap = {
+          userBubbleBg: '--user-bubble-bg',
+          aiBubbleBg: '--ai-bubble-bg',
+          bubbleBorder: '--bubble-border',
+          sidebarBg: '--sidebar-bg',
+          sectionAccent: '--section-accent',
+          brandColor: '--brand-color',
+          inputBg: '--input-bg',
+          inputBorder: '--input-border',
+          sendBtnBg: '--send-btn-bg',
+          sendBtnHover: '--send-btn-hover',
+          codeBg: '--code-bg',
+          codeFg: '--code-fg',
+          toggleBg: '--toggle-bg',
+          toggleActive: '--toggle-active',
+          accentPrimary: '--accent-primary',
+          accentError: '--accent-error',
+        };
+        for (var k in advMap) {
+          if (a[k]) s.setProperty(advMap[k], a[k]);
+        }
+      }
+    }
+    // Apply font early
+    if (t && t.font) {
+      var fm = {
+        mono: "'Fira Code', monospace",
+        sans: "system-ui, -apple-system, 'Segoe UI', sans-serif",
+        serif: "Georgia, 'Times New Roman', serif",
+      };
+      if (fm[t.font]) {
+        s.setProperty('--font-family', fm[t.font]);
+      } else {
+        s.setProperty(
+          '--font-family',
+          "'" + t.font.replace(/'/g, '') + "', sans-serif",
+        );
+      }
+    }
+    // Apply density class on html
+    if (t && t.density && t.density !== 'comfortable') {
+      document.documentElement.classList.add('density-' + t.density);
+    }
+    // Apply background pattern on body once available
+    if (t && t.bgPattern && t.bgPattern !== 'none') {
+      document.addEventListener(
+        'DOMContentLoaded',
+        function () {
+          document.body.classList.add('bg-pattern-' + t.bgPattern);
+        },
+        { once: true },
+      );
+    }
+  } catch (e) {}
+
+  //----------------------------------------------------------------------------
+  // Per-route favicon.
+  //----------------------------------------------------------------------------
+  // Bookmarking /calendar shows a calendar icon,
+  // /notes a notes icon, etc. Each shape is rendered in the current
+  // theme accent color. Falls back to the boat logo on the root path.
+  try {
+    var path = (window.location.pathname || '').toLowerCase();
+    var theme = (function () {
+      try {
+        return JSON.parse(localStorage.getItem('odysseus-theme'));
+      } catch (_) {
+        return null;
+      }
+    })();
+    var ac =
+      (theme && (theme.red || (theme.colors && theme.colors.red))) || '#e06c75';
+    // Shapes are line-stroke SVGs (no emoji glyphs). Each entry returns
+    // the inner SVG markup rendered against currentColor=`ac`.
+    var SHAPES = {
+      '/calendar':
+        "<rect x='4' y='6' width='24' height='22' rx='2' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5'/>" +
+        "<line x1='4' y1='12' x2='28' y2='12' stroke='" +
+        ac +
+        "' stroke-width='2.5'/>" +
+        "<line x1='10' y1='3' x2='10' y2='9' stroke='" +
+        ac +
+        "' stroke-width='2.5' stroke-linecap='round'/>" +
+        "<line x1='22' y1='3' x2='22' y2='9' stroke='" +
+        ac +
+        "' stroke-width='2.5' stroke-linecap='round'/>",
+      '/notes':
+        "<rect x='6' y='4' width='20' height='24' rx='2' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5'/>" +
+        "<line x1='10' y1='10' x2='22' y2='10' stroke='" +
+        ac +
+        "' stroke-width='2'/>" +
+        "<line x1='10' y1='15' x2='22' y2='15' stroke='" +
+        ac +
+        "' stroke-width='2'/>" +
+        "<line x1='10' y1='20' x2='18' y2='20' stroke='" +
+        ac +
+        "' stroke-width='2'/>",
+      '/cookbook':
+        "<path d='M5 8 L5 26 A2 2 0 0 0 7 28 L25 28 A2 2 0 0 0 27 26 L27 8' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5' stroke-linejoin='round'/>" +
+        "<path d='M9 4 L23 4 L23 8 L9 8 Z' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5' stroke-linejoin='round'/>" +
+        "<line x1='11' y1='14' x2='21' y2='14' stroke='" +
+        ac +
+        "' stroke-width='2'/>" +
+        "<line x1='11' y1='19' x2='17' y2='19' stroke='" +
+        ac +
+        "' stroke-width='2'/>",
+      '/email':
+        "<rect x='4' y='7' width='24' height='18' rx='2' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5'/>" +
+        "<path d='M5 9 L16 17 L27 9' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/>",
+      '/memory':
+        "<path d='M16 5 C10 5 6 9 6 14 C6 19 10 21 11 22 L11 26 L21 26 L21 22 C22 21 26 19 26 14 C26 9 22 5 16 5 Z' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5' stroke-linejoin='round'/>" +
+        "<line x1='12' y1='28' x2='20' y2='28' stroke='" +
+        ac +
+        "' stroke-width='2'/>",
+      '/gallery':
+        "<rect x='4' y='4' width='24' height='24' rx='2' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5'/>" +
+        "<circle cx='12' cy='12' r='2.5' fill='" +
+        ac +
+        "'/>" +
+        "<path d='M4 22 L11 16 L18 21 L23 17 L28 22' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5' stroke-linejoin='round'/>",
+      '/tasks':
+        "<rect x='4' y='4' width='24' height='24' rx='3' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5'/>" +
+        "<path d='M9 16 L14 21 L23 11' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/>",
+      '/library':
+        "<rect x='5' y='5' width='5' height='22' rx='1' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5'/>" +
+        "<rect x='13' y='5' width='5' height='22' rx='1' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5'/>" +
+        "<rect x='21' y='8' width='6' height='19' rx='1' fill='none' stroke='" +
+        ac +
+        "' stroke-width='2.5' transform='rotate(8 24 17)'/>",
+    };
+    var inner = SHAPES[path];
+    if (!inner) return; // Root path keeps the default boat icon.
+    var svg =
+      "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
+      inner +
+      '</svg>';
+    var href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+    var fav = document.querySelector("link[rel='icon']");
+    if (!fav) {
+      fav = document.createElement('link');
+      fav.rel = 'icon';
+      fav.type = 'image/svg+xml';
+      document.head.appendChild(fav);
+    }
+    fav.href = href;
+    var apple = document.querySelector("link[rel='apple-touch-icon']");
+    if (!apple) {
+      apple = document.createElement('link');
+      apple.rel = 'apple-touch-icon';
+      document.head.appendChild(apple);
+    }
+    apple.href = href;
+    // Also customize the page title so the bookmark inherits a useful name.
+    var titles = {
+      '/calendar': 'Calendar — Odysseus',
+      '/notes': 'Notes — Odysseus',
+      '/cookbook': 'Cookbook — Odysseus',
+      '/email': 'Email — Odysseus',
+      '/memory': 'Memory — Odysseus',
+      '/gallery': 'Gallery — Odysseus',
+      '/tasks': 'Tasks — Odysseus',
+      '/library': 'Library — Odysseus',
+    };
+    if (titles[path]) document.title = titles[path];
+    // Per-route Android home-screen icon. We swap the <link rel="manifest">
+    // to a per-page Blob URL with this route's SVG icon — that way "Add to
+    // Home Screen" picks up the route-specific glyph instead of the shared
+    // boat logo. Falls back silently on browsers without Blob URL support.
+    try {
+      if (inner && typeof Blob !== 'undefined') {
+        var pwa = {
+          name: titles[path] || 'Odysseus',
+          short_name: (titles[path] || 'Odysseus').split('—')[0].trim(),
+          start_url: path,
+          scope: '/',
+          display: 'standalone',
+          background_color: '#0e0e10',
+          theme_color: ac,
+          icons: [
+            {
+              src: href,
+              sizes: '192x192',
+              type: 'image/svg+xml',
+              purpose: 'any maskable',
+            },
+            {
+              src: href,
+              sizes: '512x512',
+              type: 'image/svg+xml',
+              purpose: 'any maskable',
+            },
+          ],
+        };
+        var blob = new Blob([JSON.stringify(pwa)], {
+          type: 'application/manifest+json',
+        });
+        var url = URL.createObjectURL(blob);
+        var ml = document.querySelector("link[rel='manifest']");
+        if (!ml) {
+          ml = document.createElement('link');
+          ml.rel = 'manifest';
+          document.head.appendChild(ml);
+        }
+        ml.href = url;
+      }
+    } catch (_) {}
+  } catch (e) {}
+
+  //----------------------------------------------------------------------------
+  // Tips
+  //----------------------------------------------------------------------------
+  var mobile = window.matchMedia('(max-width: 768px)').matches;
+  var desktop = [
+    'Tip: Press Ctrl+K to search across all your conversations.',
+    'Tip: Press Ctrl+B to quickly toggle the sidebar.',
+    'Tip: Shift-click the sidebar toggle to swap it to the other side.',
+    'Tip: Drag and drop files onto the chat to attach them.',
+    'Tip: Right-click a session for rename, delete, and memory options.',
+  ];
+  var phone = [
+    'Tip: Long-press a session for rename, delete, and memory options.',
+    'Tip: Tap the eye icon for Nobody mode — no history saved.',
+    'Tip: Switch to Agent mode for web search and code execution.',
+    'Tip: Use Compare mode to test different models side by side.',
+    'Tip: Attach images or files using the + button next to the input.',
+  ];
+  var tips = mobile ? phone : desktop;
+  var el = document.getElementById('welcome-tip');
+  if (el) {
+    el.textContent = 'Type /setup, then choose Local models or API.';
+  }
+  fetch('/api/version')
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (d) {
+      if (d.version) window._appVersion = d.version;
+    })
+    .catch(function () {});
 });
 </script>
 
@@ -1357,9 +1756,10 @@ onMount(() => {
 				<div class="admin-card">
 					<h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Change Password</h2>
 					<div class="settings-col">
-					<input id="settings-pw-current" type="password" placeholder="Current password" autocomplete="current-password" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;">
-					<input id="settings-pw-new" type="password" placeholder="New password" autocomplete="new-password" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;">
-					<input id="settings-pw-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;">
+					<PasswordField id="settings-pw-current" placeholder="Current password" autocomplete="current-password" inputStyle="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;" />
+					<PasswordField id="settings-pw-new" label="New password" placeholder="New Password" autocomplete="new-password" inputStyle="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;" />
+					<PasswordField id="settings-pw-confirm" label="Confirm new password" placeholder="Confirm new password" autocomplete="new-password" inputStyle="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;"/>
+					<!-- <input id="settings-pw-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--fg);font-family:inherit;font-size:12px;"> -->
 					<div class="settings-row" style="margin-top:2px;justify-content:flex-end;">
 						<span id="settings-pw-msg" style="font-size:11px;margin-right:auto;"></span>
 						<button class="admin-btn-add" id="settings-pw-save">Update Password</button>

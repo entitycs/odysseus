@@ -3,6 +3,7 @@
  * Follows the session list pattern: list items, click to open as document, archive, etc.
  */
 
+import { replaceState } from '$app/navigation';
 import {
   buildReplyAllCc,
   extractEmail,

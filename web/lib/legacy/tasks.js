@@ -6,14 +6,14 @@ import { bindMenuDismiss, dismissOrRemove } from '$lib/legacy/escMenuStack.js';
 import markdownModule from '$lib/legacy/markdown.js';
 import { sortModelIds } from '$lib/legacy/modelSort.js';
 import * as spinnerModule from '$lib/legacy/spinner.js';
+import { topPortalZ } from '$lib/legacy/toolWindowZOrder.js';
 import uiModule from '$lib/legacy/ui.js';
 import { ordinalSuffix } from '$lib/legacy/util/ordinal.js';
 import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
 
 export function init() {
   API_BASE = window.location.origin;
-  // Start polling on module load
-  startNotificationPolling();
+
   window.tasksModule = tasksModule;
 }
 let API_BASE = '';

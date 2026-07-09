@@ -77,7 +77,7 @@ vite.config.ts.timestamp-*
 
 # SvelteKit / Vite build output
 .svelte-kit/
-/build
+/build/
 /web-build
 
 # Svelte widget build output (compiled into static/svelte/)

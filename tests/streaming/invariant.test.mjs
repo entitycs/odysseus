@@ -6,11 +6,12 @@
 //
 // This is run with no DOM and no safety net, so any segmenter bug fails here
 // rather than reaching the browser.
-import { test } from 'node:test';
+
 import assert from 'node:assert/strict';
-import { loadMarkdown, normalizeRender } from './markdownHarness.mjs';
-import { splitFinalized } from '../../static/js/streamingSegmenter.js';
+import { test } from 'node:test';
+import { splitFinalized } from '../../web/lib/legacy/streamingSegmenter.js';
 import { CORPUS } from './corpus.mjs';
+import { loadMarkdown, normalizeRender } from './markdownHarness.mjs';
 
 const md = await loadMarkdown();
 const render = (t) => md.mdToHtml(t);
@@ -41,9 +42,15 @@ function simulate(text, prefixLengths, renderFn = render) {
       committed = next;
     }
 
-    const got = normalizeRender(finalizedHtml + renderFn(prefix.slice(committed)));
+    const got = normalizeRender(
+      finalizedHtml + renderFn(prefix.slice(committed)),
+    );
     const want = normalizeRender(renderFn(prefix));
-    assert.equal(got, want, `invariant broke at prefix length ${len} of ${JSON.stringify(text)}`);
+    assert.equal(
+      got,
+      want,
+      `invariant broke at prefix length ${len} of ${JSON.stringify(text)}`,
+    );
   }
 }
 
@@ -77,10 +84,22 @@ for (const [rname, renderFn] of RENDERERS) {
 // specifically exercise the self-verifying local check refusing to finalize inside
 // or across a think block that processWithThinking floats to the top.
 const THINKING_CORPUS = [
-  ['leading think then answer', '<think>Let me reason about it.</think>\n\nThe answer is 42.'],
-  ['think with internal blank lines', '<think>Step one.\n\nStep two.\n\nStep three.</think>\n\nDone — the result follows.'],
-  ['think then several paragraphs', '<thinking>analyzing the request</thinking>\n\nFirst point made here.\n\nSecond point made here.\n\nThird and final point.'],
-  ['think then code block', '<think>I should show code.</think>\n\nHere:\n\n```python\nprint("hi")\n```\n\nThat is the snippet.'],
+  [
+    'leading think then answer',
+    '<think>Let me reason about it.</think>\n\nThe answer is 42.',
+  ],
+  [
+    'think with internal blank lines',
+    '<think>Step one.\n\nStep two.\n\nStep three.</think>\n\nDone — the result follows.',
+  ],
+  [
+    'think then several paragraphs',
+    '<thinking>analyzing the request</thinking>\n\nFirst point made here.\n\nSecond point made here.\n\nThird and final point.',
+  ],
+  [
+    'think then code block',
+    '<think>I should show code.</think>\n\nHere:\n\n```python\nprint("hi")\n```\n\nThat is the snippet.',
+  ],
 ];
 for (const [name, text] of THINKING_CORPUS) {
   test(`invariant (processWithThinking) — char-by-char — ${name}`, () => {
@@ -102,6 +121,10 @@ test('streamed-to-completion output equals full render for whole corpus', () => 
       }
     }
     html += render(text.slice(committed));
-    assert.equal(normalizeRender(html), normalizeRender(render(text)), `final mismatch for ${name}`);
+    assert.equal(
+      normalizeRender(html),
+      normalizeRender(render(text)),
+      `final mismatch for ${name}`,
+    );
   }
 });

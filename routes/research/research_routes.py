@@ -283,7 +283,7 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
             raise HTTPException(404, "No research found for this session")
         status = research_handler.get_status(session_id)
         if status is None:
-            raise HTTPException(404, "No research found for this session")
+            raise HTTPException(204, "No research found for this session")
         return status
 
     @router.post("/api/research/cancel/{session_id}")
