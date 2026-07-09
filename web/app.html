@@ -246,10 +246,7 @@
 		</script>
 
 		<link rel="stylesheet" href="/static/style.css">
-		<!-- <link rel="modulepreload" href="/static/js/chat.js">
-		<link rel="modulepreload" href="/static/js/ui.js">
-		<link rel="modulepreload" href="/static/js/sessions.js">
-		<link rel="modulepreload" href="/static/js/markdown.js"> sveltekit handles automatically -->
+
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover" />
 
 		<!-- SvelteKit injection point (Head) -->
@@ -264,88 +261,13 @@
 		<div id="app-loader" style="position:fixed;inset:0;z-index:99999;background:var(--bg,#282c34);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;transition:opacity .3s">
 			<div id="loader-wave" style="color:var(--brand-color,var(--red,#e06c75));font-family:monospace;font-size:11px;opacity:.5">▁▂▃</div>
 		</div>
-		<!-- <script nonce="{{CSP_NONCE}}">
-			(function(){
-				var el=document.getElementById('loader-wave');
-				if(!el)return;
-				var frames=['▁▂▃','▂▃▄','▃▄▅','▄▅▆','▅▆▅','▆▅▄','▅▄▃','▄▃▂','▃▂▁'];
-			var i=0;
-			var iv=setInterval(function(){
-			if(!document.getElementById('app-loader')){clearInterval(iv);return}
-			el.textContent=frames[i%frames.length];
-			i++;
-		},150);
-			setTimeout(function(){var l=document.getElementById('app-loader');if(l){l.style.opacity='0';setTimeout(function(){l.remove()},300)}},5000);
-		})();
-		</script> -->
 
 		<!-- SvelteKit injection point (Body) -->
 
 		<div class="flex flex-col w-full">%sveltekit.body%</div>
 
 		<!-- From index.html-->
-        <!-- Translated to Svelte Component -->
 
-		<!-- <script  nonce="{{CSP_NONCE}}">
-		(function(){
-			const container = document.getElementById('chat-history');
-			const chatBar = document.querySelector('.chat-input-bar');
-			const bottomBtn = document.getElementById('scroll-bottom-btn');
-			if (!container || !chatBar || !bottomBtn) return;
-
-			function reposition() {
-			const barRect = chatBar.getBoundingClientRect();
-			bottomBtn.style.bottom = (window.innerHeight - barRect.top + 16) + 'px';
-			bottomBtn.style.right = (window.innerWidth - barRect.right + 8) + 'px';
-			}
-
-			function update() {
-			reposition();
-			const scrollable = container.scrollHeight > container.clientHeight + 10;
-			const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 300;
-			if (scrollable && !atBottom) {
-				bottomBtn.classList.remove('slide-out');
-				bottomBtn.classList.add('show');
-			} else if (bottomBtn.classList.contains('show')) {
-				bottomBtn.classList.add('slide-out');
-				bottomBtn.classList.remove('show');
-			}
-			}
-
-			let _scrollRaf = null;
-			let _scrollTimeout = null;
-			let _scrollingToBottom = false;
-
-			function cancelAutoScroll() {
-			if (_scrollRaf) { cancelAnimationFrame(_scrollRaf); _scrollRaf = null; }
-			if (_scrollTimeout) { clearTimeout(_scrollTimeout); _scrollTimeout = null; }
-			_scrollingToBottom = false;
-		}
-
-			container.addEventListener('scroll', update, {passive:true});
-			container.addEventListener('wheel', () => { if (_scrollingToBottom) cancelAutoScroll(); }, {passive:true});
-			container.addEventListener('touchstart', () => { if (_scrollingToBottom) cancelAutoScroll(); }, {passive:true});
-
-			bottomBtn.addEventListener('click', () => {
-			cancelAutoScroll();
-			const target = container.scrollHeight - container.clientHeight;
-			_scrollingToBottom = true;
-			function step() {
-				if (!_scrollingToBottom) return;
-				const diff = target - container.scrollTop;
-				if (diff <= 8) { container.scrollTop = target; _scrollingToBottom = false; return; }
-				container.scrollTop += diff * 0.2;
-				_scrollRaf = requestAnimationFrame(step);
-			}
-			step();
-			_scrollTimeout = setTimeout(() => { if (_scrollingToBottom) { container.scrollTop = target; _scrollingToBottom = false; } }, 1500);
-		});
-			new ResizeObserver(reposition).observe(chatBar);
-			new MutationObserver(update).observe(container, {childList:true, subtree:true});
-			window.addEventListener('resize', reposition);
-			update();
-		})();
-		</script> -->
 		<script  nonce="{{CSP_NONCE}}">
 		(function(){
 		var mobile = window.matchMedia('(max-width: 768px)').matches;
@@ -373,41 +295,6 @@
 		}).catch(function(){});
 	})();
 	</script>
-		<!-- Load modules in this order -->
-		<!-- <script type="module" src="/static/js/storage.js"></script>
-		<script type="module" src="/static/js/ui.js"></script>
-		<script type="module" src="/static/js/markdown.js"></script>
-		<script type="module" src="/static/js/dragSort.js"></script>
-		<script type="module" src="/static/js/sessions.js"></script>
-		<script type="module" src="/static/js/memory.js"></script>
-		<script type="module" src="/static/js/skills.js"></script> -->
-		<!-- <script type="module" src="/static/js/tourHints.js"></script>
-		<script type="module" src="/static/js/tourAutoplay.js"></script> -->
-		<!-- <script type="module" src="/static/js/fileHandler.js"></script>
-		<script type="module" src="/static/js/voiceRecorder.js"></script> -->
-		<!-- <script type="module" src="/static/js/models.js"></script>  This must come BEFORE app.js -->
-		<!-- <script type="module" src="/static/js/rag.js"></script>
-		<script type="module" src="/static/js/presets.js"></script>
-		<script type="module" src="/static/js/search.js"></script>
-		<script type="module" src="/static/js/spinner.js"></script>
-		<script type="module" src="/static/js/tts-ai.js"></script>
-		<script type="module" src="/static/js/document.js"></script>
-		<script type="module" src="/static/js/gallery.js"></script>
-		<script type="module" src="/static/js/chatRenderer.js"></script>
-		<script type="module" src="/static/js/codeRunner.js"></script>
-		<script type="module" src="/static/js/chatStream.js"></script>
-		<script type="module" src="/static/js/chat.js?v=20260609ws"></script>
-		<script type="module" src="/static/js/cookbook.js"></script>
-		<script src="/static/js/cookbookSchedule.js"></script>
-		<script type="module" src="/static/js/search-chat.js"></script>
-		<script type="module" src="/static/js/compare/index.js"></script>
-		<script type="module" src="/static/js/theme.js"></script>
-		<script type="module" src="/static/js/censor.js"></script>
-		<script type="module" src="/static/js/settings.js"></script>
-		<script type="module" src="/static/js/admin.js"></script>
-		<script type="module" src="/static/js/assistant.js"></script> -->
-		<!-- <script type="module" src="/static/app.js"></script>  app.js must be LAST -->
-		<!-- <script type="module" src="/static/js/init.js"></script> -->
 		<script type="module" src="/static/js/a11y.js"></script>
 
 		<script  nonce="{{CSP_NONCE}}">if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>

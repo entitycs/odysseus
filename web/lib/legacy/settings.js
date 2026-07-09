@@ -2920,16 +2920,17 @@ function initAccount() {
     .catch(() => {});
 
   // Update password placeholder and policy from server
-  fetch('/api/auth/policy', { credentials: 'same-origin' })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((policy) => {
-      if (!policy) return;
-      _authPolicy = policy;
-      const pwNew = el('settings-pw-new');
-      if (pwNew)
-        pwNew.placeholder = `New password (min ${policy.password_min_length})`;
-    })
-    .catch(() => {});
+  // Moved to PasswordField.svelte (Component)
+  // fetch('/api/auth/policy', { credentials: 'same-origin' })
+  //   .then((r) => (r.ok ? r.json() : null))
+  //   .then((policy) => {
+  //     if (!policy) return;
+  //     _authPolicy = policy;
+  //     const pwNew = el('settings-pw-new');
+  //     if (pwNew)
+  //       pwNew.placeholder = `New password (min ${policy.password_min_length})`;
+  //   })
+  //   .catch(() => {});
 
   // Change password
   const saveBtn = el('settings-pw-save');
