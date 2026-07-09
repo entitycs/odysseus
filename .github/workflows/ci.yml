@@ -96,7 +96,7 @@ jobs:
       - name: node --check
         run: |
           shopt -s globstar nullglob
-          for f in static/app.js static/js/**/*.js; do
+          for f in web/lib/legacy/app.js web/lib/legacy/**/*.js; do
             node --check "$f"
           done
 
