@@ -39,29 +39,41 @@ def _run_markdown_case(markdown: str, render_expr: str = "mod.mdToHtml(input)"):
         };
         globalThis.MutationObserver = class { observe() {} };
 
-        let source = fs.readFileSync('./static/js/markdown.js', 'utf8');
+        let source = fs.readFileSync('./web/lib/legacy/markdown.js', 'utf8');
+
+        // Remove ui.js import entirely
         source = source.replace(
-          /import uiModule from ['"]\.\/ui\.js['"];/,
+          /import\s+[^;]*['"]\.\/ui\.js['"]\s*;/g,
           ''
         );
+
+        // Inline splitTableRow instead of importing tableRow.js
         source = source.replace(
-          /import \{ splitTableRow \} from ['"]\.\/markdown\/tableRow\.js['"];/,
+          /import\s+[^;]*tableRow\.js['"]\s*;/g,
           `function splitTableRow(row) {
-            return (row || '').replace(/^\\s*\\|/, '').replace(/\\|\\s*$/, '').split('|').map(c => c.trim());
+            return (row || '').replace(/^\\s*\\|/, '').replace(/\\|\\s*$/, '')
+              .split('|').map(c => c.trim());
           }`
         );
-        // markdown.js imports the emoji-shortcode helpers relatively (issue #345),
-        // which a data: URL module can't resolve. Inline the REAL helpers (minus
-        // their export keywords) so the renderer's shortcode pass behaves exactly
-        // as it does in the browser.
-        const emojiSource = fs.readFileSync('./static/js/emojiShortcodes.js', 'utf8')
+
+        // Load emojiShortcodes.js and convert it to inline code
+        const emojiSource = fs.readFileSync('web/lib/legacy/emojiShortcodes.js', 'utf8')
           .replace(/^export default .*$/m, '')
           .replace(/export const /g, 'const ')
           .replace(/export function /g, 'function ');
+
+        // Inline ANY import referencing emojiShortcodes.js (do this BEFORE stripping $lib)
         source = source.replace(
-          /import \{ replaceEmojiShortcodes, hasEmojiShortcode \} from ['"]\.\/emojiShortcodes\.js['"];/,
-          () => emojiSource
+          /import\s+[^;]*emojiShortcodes\.js['"]\s*;/g,
+          emojiSource
         );
+
+        // NOW strip ALL SvelteKit alias imports ($lib/...)
+        source = source.replace(
+          /import\s+[^;]*['"]\$lib\/[^'"]+['"]\s*;/g,
+          ''
+        );
+
         source = source.replace(
           /var escapeHtml = uiModule\.esc;/,
           `var escapeHtml = (value) => String(value ?? '')
@@ -72,12 +84,14 @@ def _run_markdown_case(markdown: str, render_expr: str = "mod.mdToHtml(input)"):
             .replace(/'/g, '&#39;');`
         );
 
+
         const moduleUrl = 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
         const mod = await import(moduleUrl);
         const input = JSON.parse(process.argv[1]);
         console.log(JSON.stringify({ html: __RENDER_EXPR__ }));
         """
     ).replace("__RENDER_EXPR__", render_expr)
+
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script, json.dumps(markdown)],
         cwd=_REPO,
@@ -85,6 +99,7 @@ def _run_markdown_case(markdown: str, render_expr: str = "mod.mdToHtml(input)"):
         timeout=15,
         text=True,
     )
+
     if result.returncode != 0:
         raise AssertionError(f"node failed:\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}")
     return json.loads(result.stdout.splitlines()[-1])["html"]

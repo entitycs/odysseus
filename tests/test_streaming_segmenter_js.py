@@ -1,6 +1,6 @@
 """Runs the Node-based streaming-render segmenter suite (tests/streaming/*.test.mjs).
 
-Covers the pure incremental-render segmenter (static/js/streamingSegmenter.js):
+Covers the pure incremental-render segmenter (web/lib/legacy/streamingSegmenter.js):
 unit boundaries plus a streaming-invariant fuzz that feeds a markdown corpus in
 token-by-token and asserts the freeze/tail split always matches a single full
 render. Pure JS — no DOM, no extra dependencies. Skipped when node is

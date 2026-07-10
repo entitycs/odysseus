@@ -6,54 +6,39 @@ import { bindMenuDismiss, dismissOrRemove } from '$lib/legacy/escMenuStack.js';
 import markdownModule from '$lib/legacy/markdown.js';
 import { sortModelIds } from '$lib/legacy/modelSort.js';
 import * as spinnerModule from '$lib/legacy/spinner.js';
+import { topPortalZ } from '$lib/legacy/toolWindowZOrder.js';
 import uiModule from '$lib/legacy/ui.js';
 import { ordinalSuffix } from '$lib/legacy/util/ordinal.js';
 import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
 
-let API_BASE = '';
 let _open = false;
-let _tasksCascadeNext = false; // play the domino-in entrance on the next render
+let _tasksCascadeNext = false;   // play the domino-in entrance on the next render
 let _tasks = [];
-let _tasksFetched = false; // first-fetch sentinel — `false` → show loading row instead of "No tasks yet"
+let _tasksFetched = false;   // first-fetch sentinel — `false` → show loading row instead of "No tasks yet"
 let _escHandler = null;
 let _viewingRuns = null; // task id when viewing run history
 let _clockInterval = null;
 let _taskFailurePending = false;
 
-const DAYS_OF_WEEK = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export function init() {
   API_BASE = window.location.origin;
-  // Start polling on module load
-  startNotificationPolling();
+
   window.tasksModule = tasksModule;
 }
 
 function _setTaskFailurePending(active) {
   _taskFailurePending = !!active;
-  document
-    .getElementById('tool-tasks-btn')
-    ?.classList.toggle('task-failure-pending', _taskFailurePending);
-  document
-    .getElementById('rail-tasks')
-    ?.classList.toggle('task-failure-pending', _taskFailurePending);
+  document.getElementById('tool-tasks-btn')?.classList.toggle('task-failure-pending', _taskFailurePending);
+  document.getElementById('rail-tasks')?.classList.toggle('task-failure-pending', _taskFailurePending);
 }
 
 // ---- API ----
 
 async function _fetchTasks() {
   try {
-    const res = await fetch(`${API_BASE}/api/tasks`, {
-      credentials: 'same-origin',
-    });
+    const res = await fetch(`${API_BASE}/api/tasks`, { credentials: 'same-origin' });
     const data = await res.json();
     _tasks = data.tasks || [];
   } catch (e) {
@@ -65,9 +50,7 @@ async function _fetchTasks() {
 
 async function _runFirstOpenOnboarding() {
   try {
-    const res = await fetch(`${API_BASE}/api/tasks/onboarding`, {
-      credentials: 'same-origin',
-    });
+    const res = await fetch(`${API_BASE}/api/tasks/onboarding`, { credentials: 'same-origin' });
     if (!res.ok) return;
     const state = await res.json();
     if (state.opened) return;
@@ -107,17 +90,13 @@ async function _updateTask(id, data) {
 
 async function _deleteTask(id) {
   const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
-    method: 'DELETE',
-    credentials: 'same-origin',
+    method: 'DELETE', credentials: 'same-origin',
   });
   if (!res.ok) throw new Error('Failed to delete task');
 }
 
 function _taskCardById(id) {
-  const safe =
-    window.CSS && CSS.escape
-      ? CSS.escape(String(id))
-      : String(id).replace(/"/g, '\\"');
+  const safe = (window.CSS && CSS.escape) ? CSS.escape(String(id)) : String(id).replace(/"/g, '\\"');
   return document.querySelector(`.task-card[data-id="${safe}"]`);
 }
 
@@ -128,33 +107,27 @@ function _animateTaskRemoval(ids) {
     card.style.maxHeight = `${Math.max(card.getBoundingClientRect().height, card.scrollHeight)}px`;
     card.classList.add('memory-tidy-removing');
   }
-  return new Promise((resolve) => setTimeout(resolve, 520));
+  return new Promise(resolve => setTimeout(resolve, 520));
 }
 
 async function _pauseTask(id) {
   const res = await fetch(`${API_BASE}/api/tasks/${id}/pause`, {
-    method: 'POST',
-    credentials: 'same-origin',
+    method: 'POST', credentials: 'same-origin',
   });
   if (!res.ok) throw new Error('Failed to pause task');
 }
 
 async function _resumeTask(id) {
   const res = await fetch(`${API_BASE}/api/tasks/${id}/resume`, {
-    method: 'POST',
-    credentials: 'same-origin',
+    method: 'POST', credentials: 'same-origin',
   });
   if (!res.ok) throw new Error('Failed to resume task');
 }
 
 async function _runNow(id, force = false) {
-  const res = await fetch(
-    `${API_BASE}/api/tasks/${id}/run${force ? '?force=true' : ''}`,
-    {
-      method: 'POST',
-      credentials: 'same-origin',
-    },
-  );
+  const res = await fetch(`${API_BASE}/api/tasks/${id}/run${force ? '?force=true' : ''}`, {
+    method: 'POST', credentials: 'same-origin',
+  });
   if (!res.ok) {
     // Surface the backend's actual reason — 409 means "already running",
     // 404 task missing, etc. Previously every error rendered as the same
@@ -185,12 +158,9 @@ async function _stopTask(id) {
 }
 
 async function _fetchRuns(taskId, limit = 10) {
-  const res = await fetch(
-    `${API_BASE}/api/tasks/${taskId}/runs?limit=${limit}`,
-    {
-      credentials: 'same-origin',
-    },
-  );
+  const res = await fetch(`${API_BASE}/api/tasks/${taskId}/runs?limit=${limit}`, {
+    credentials: 'same-origin',
+  });
   if (!res.ok) return [];
   const data = await res.json();
   return data.runs || [];
@@ -200,9 +170,7 @@ let _outputTargets = null;
 async function _fetchOutputTargets() {
   if (_outputTargets) return _outputTargets;
   try {
-    const res = await fetch(`${API_BASE}/api/tasks/meta/output-targets`, {
-      credentials: 'same-origin',
-    });
+    const res = await fetch(`${API_BASE}/api/tasks/meta/output-targets`, { credentials: 'same-origin' });
     const data = await res.json();
     _outputTargets = data.targets || [];
   } catch (e) {
@@ -215,9 +183,7 @@ let _builtinActions = null;
 async function _fetchActions() {
   if (_builtinActions) return _builtinActions;
   try {
-    const res = await fetch(`${API_BASE}/api/tasks/meta/actions`, {
-      credentials: 'same-origin',
-    });
+    const res = await fetch(`${API_BASE}/api/tasks/meta/actions`, { credentials: 'same-origin' });
     const data = await res.json();
     _builtinActions = data.actions || [];
   } catch (e) {
@@ -230,9 +196,7 @@ let _urgentEmailSettings = null;
 async function _fetchUrgentEmailSettings() {
   if (_urgentEmailSettings) return _urgentEmailSettings;
   try {
-    const res = await fetch('/api/auth/settings', {
-      credentials: 'same-origin',
-    });
+    const res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
     _urgentEmailSettings = await res.json();
   } catch (e) {
     _urgentEmailSettings = { urgent_email_prompt: '' };
@@ -255,13 +219,99 @@ async function _saveUrgentEmailSettings(prompt) {
   });
 }
 
+const _EMAIL_ACCOUNT_ACTIONS = new Set([
+  'summarize_emails',
+  'draft_email_replies',
+  'email_auto_translate',
+  'extract_email_events',
+  'check_email_urgency',
+]);
+
+let _emailAccounts = null;
+async function _fetchEmailAccountsForTasks() {
+  if (_emailAccounts) return _emailAccounts;
+  try {
+    const res = await fetch(`${API_BASE}/api/email/accounts`, { credentials: 'same-origin' });
+    const data = await res.json();
+    _emailAccounts = Array.isArray(data.accounts) ? data.accounts : [];
+  } catch (e) {
+    _emailAccounts = [];
+  }
+  return _emailAccounts;
+}
+
+function _taskPromptConfig(prompt) {
+  const raw = (prompt || '').trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    const cfg = {};
+    for (const line of raw.split(/\r?\n/)) {
+      const idx = line.indexOf('=');
+      if (idx <= 0) continue;
+      const key = line.slice(0, idx).trim();
+      const val = line.slice(idx + 1).trim();
+      if (key) cfg[key] = val;
+    }
+    return cfg;
+  }
+}
+
+function _parseTaskEmailOutputTarget(output) {
+  const raw = String(output || '').trim();
+  if (!raw) return { enabled: false, to: '', accountId: '' };
+  if (raw === 'email') return { enabled: true, to: '', accountId: '' };
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(raw)) return { enabled: true, to: raw, accountId: '' };
+  if (!raw.startsWith('email:')) return { enabled: false, to: '', accountId: '' };
+  let payload = raw.slice('email:'.length).trim();
+  let accountId = '';
+  const marker = '|account=';
+  const markerIdx = payload.indexOf(marker);
+  if (markerIdx >= 0) {
+    accountId = payload.slice(markerIdx + marker.length).trim();
+    payload = payload.slice(0, markerIdx).trim();
+  }
+  return {
+    enabled: true,
+    to: payload && payload !== 'self' ? payload : '',
+    accountId,
+  };
+}
+
+function _buildTaskEmailOutputTarget(to, accountId) {
+  const cleanTo = String(to || '').trim();
+  const cleanAccount = String(accountId || '').trim();
+  const base = `email:${cleanTo || 'self'}`;
+  return cleanAccount ? `${base}|account=${cleanAccount}` : (cleanTo ? base : 'email');
+}
+
+async function _renderEmailActionOptions(action, existing, extra) {
+  if (!_EMAIL_ACCOUNT_ACTIONS.has(action)) return;
+  const accounts = (await _fetchEmailAccountsForTasks()).filter(a => a && a.enabled !== false);
+  const cfg = _taskPromptConfig(existing?.prompt || '');
+  const current = String(cfg.account_id || cfg.email_account_id || '');
+  const options = [
+    `<option value="" ${current ? '' : 'selected'}>All accounts</option>`,
+    ...accounts.map(a => {
+      const id = String(a.id || '');
+      const label = a.name || a.from_address || a.imap_user || id.slice(0, 8);
+      const suffix = a.is_default ? ' (default)' : '';
+      return `<option value="${_escHtml(id)}" ${id === current ? 'selected' : ''}>${_escHtml(label + suffix)}</option>`;
+    }),
+  ].join('');
+  extra.insertAdjacentHTML('afterbegin', `
+    <label class="task-form-label">Email account</label>
+    <select id="task-form-email-account" class="task-form-input">${options}</select>
+  `);
+}
+
 let _triggerEvents = null;
 async function _fetchEvents() {
   if (_triggerEvents) return _triggerEvents;
   try {
-    const res = await fetch(`${API_BASE}/api/tasks/meta/events`, {
-      credentials: 'same-origin',
-    });
+    const res = await fetch(`${API_BASE}/api/tasks/meta/events`, { credentials: 'same-origin' });
     const data = await res.json();
     _triggerEvents = data.events || [];
   } catch (e) {
@@ -358,67 +408,46 @@ function _absoluteTime(iso) {
 }
 
 function _statusDot(status) {
-  const colors = {
-    active: '#4caf50',
-    paused: '#ff9800',
-    completed: '#888',
-    error: '#f44336',
-  };
+  const colors = { active: '#4caf50', paused: '#ff9800', completed: '#888', error: '#f44336', failed: '#f44336' };
   const c = colors[status] || '#888';
   return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};box-shadow:0 0 6px ${c}, 0 0 3px ${c};flex-shrink:0;position:relative;top:4px;"></span>`;
 }
 
 const _TASK_ICONS = {
   // Chats
-  tidy_sessions:
-    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  tidy_sessions:       '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   // Documents
-  tidy_documents:
-    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  tidy_documents:      '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
   // Memory (brain)
-  consolidate_memory:
-    '<path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/>',
+  consolidate_memory:  '<path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/>',
   // Research (magnifying glass)
-  tidy_research:
-    '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  tidy_research:       '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   // Calendar
-  tidy_calendar:
-    '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  tidy_calendar:       '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
   // Email
-  summarize_emails:
-    '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
-  draft_email_replies:
-    '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
-  extract_email_events:
-    '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M7 14h5"/><path d="M7 18h8"/>',
-  classify_events:
-    '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 15h.01M12 15h.01M16 15h.01"/>',
-  learn_sender_signatures: '<path d="M20 6 9 17l-5-5"/><path d="M14 6h6v6"/>',
-  check_email_urgency:
-    '<path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>',
+  summarize_emails:    '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  draft_email_replies: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
+  email_auto_translate:'<path d="M5 8h9"/><path d="M9 4v4"/><path d="M4 13c2.2-.2 4.2-1.1 5.5-2.8"/><path d="M10.5 13c-1.1-.6-2-1.5-2.7-2.8"/><path d="M14 20l4-9 4 9"/><path d="M15.4 17h5.2"/>',
+  extract_email_events:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M7 14h5"/><path d="M7 18h8"/>',
+  classify_events:    '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 15h.01M12 15h.01M16 15h.01"/>',
+  learn_sender_signatures:'<path d="M20 6 9 17l-5-5"/><path d="M14 6h6v6"/>',
+  check_email_urgency: '<path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>',
   // Skills
-  test_skills:
-    '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
-  audit_skills:
-    '<path d="M9 11l3 3L22 4"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v15H6.5A2.5 2.5 0 0 0 4 19.5z"/>',
+  test_skills:         '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  audit_skills:        '<path d="M9 11l3 3L22 4"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v15H6.5A2.5 2.5 0 0 0 4 19.5z"/>',
   // Assistant
-  daily_brief: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  daily_brief:         '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
   // Generic action fallback (gear)
-  _action_default:
-    '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  _action_default:     '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   // LLM task fallback (chat bubble)
-  _llm_default:
-    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  _llm_default:        '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
 };
 
 function _taskIcon(task) {
   const action = task.action;
   let path = _TASK_ICONS[action];
   if (!path) {
-    path =
-      task.task_type === 'action'
-        ? _TASK_ICONS._action_default
-        : _TASK_ICONS._llm_default;
+    path = task.task_type === 'action' ? _TASK_ICONS._action_default : _TASK_ICONS._llm_default;
   }
   return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;flex-shrink:0;position:relative;top:-4px;">${path}</svg>`;
 }
@@ -426,6 +455,7 @@ function _taskIcon(task) {
 const _MODEL_BACKED_ACTIONS = new Set([
   'summarize_emails',
   'draft_email_replies',
+  'email_auto_translate',
   'extract_email_events',
   'classify_events',
   'learn_sender_signatures',
@@ -439,16 +469,7 @@ function _taskAiMark(task) {
   const kind = task?.task_type || task?.kind || '';
   const action = task?.action || '';
   const aiAction = _MODEL_BACKED_ACTIONS.has(action);
-  if (
-    !(
-      kind === 'llm' ||
-      kind === 'research' ||
-      task?.model ||
-      task?.endpointUrl ||
-      aiAction
-    )
-  )
-    return '';
+  if (!(kind === 'llm' || kind === 'research' || task?.model || task?.endpointUrl || aiAction)) return '';
   return '<svg class="task-ai-mark" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-label="Uses model" title="Uses model"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>';
 }
 
@@ -491,14 +512,8 @@ function _buildTimePicker(containerId, hour, minute) {
 }
 
 function _getTimePickerValue(containerId) {
-  const h = parseInt(
-    document.getElementById(containerId + '-hour')?.value ?? '9',
-    10,
-  );
-  const m = parseInt(
-    document.getElementById(containerId + '-min')?.value ?? '0',
-    10,
-  );
+  const h = parseInt(document.getElementById(containerId + '-hour')?.value ?? '9', 10);
+  const m = parseInt(document.getElementById(containerId + '-min')?.value ?? '0', 10);
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
@@ -525,20 +540,7 @@ function _buildDatePicker(containerId, initialDate) {
   }
 
   // Month select
-  const MONTHS = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const monthSel = document.createElement('select');
   monthSel.className = 'task-form-input task-date-select';
   monthSel.id = containerId + '-month';
@@ -579,10 +581,7 @@ function _buildDatePicker(containerId, initialDate) {
 
 function _getDatePickerValue(containerId) {
   const y = parseInt(document.getElementById(containerId + '-year')?.value, 10);
-  const m = parseInt(
-    document.getElementById(containerId + '-month')?.value,
-    10,
-  );
+  const m = parseInt(document.getElementById(containerId + '-month')?.value, 10);
   const d = parseInt(document.getElementById(containerId + '-day')?.value, 10);
   return new Date(y, m, d);
 }
@@ -591,66 +590,45 @@ function _getDatePickerValue(containerId) {
 
 const _CATEGORY_MAP = {
   // action -> category
-  tidy_sessions: 'Chats',
-  tidy_documents: 'Documents',
-  consolidate_memory: 'Memory',
-  tidy_research: 'Research',
-  tidy_calendar: 'Calendar',
-  classify_events: 'Calendar',
-  ping_events: 'Calendar',
+  tidy_sessions:        'Chats',
+  tidy_documents:       'Documents',
+  consolidate_memory:   'Memory',
+  tidy_research:        'Research',
+  tidy_calendar:        'Calendar',
+  classify_events:      'Calendar',
+  ping_events:          'Calendar',
   extract_email_events: 'Calendar',
-  summarize_emails: 'Email',
-  draft_email_replies: 'Email',
-  learn_sender_signatures: 'Email',
-  check_email_urgency: 'Email',
-  daily_brief: 'Assistant',
-  test_skills: 'Skills',
-  audit_skills: 'Skills',
-  ssh_command: 'System',
-  run_script: 'System',
-  run_local: 'System',
-  cookbook_serve: 'Cookbook',
+  summarize_emails:           'Email',
+  draft_email_replies:        'Email',
+  email_auto_translate:       'Email',
+  learn_sender_signatures:    'Email',
+  check_email_urgency:        'Email',
+  daily_brief:                'Assistant',
+  test_skills:                'Skills',
+  audit_skills:               'Skills',
+  ssh_command:          'System',
+  run_script:           'System',
+  run_local:            'System',
+  cookbook_serve:       'Cookbook',
 };
 // Cookbook serves listed FIRST so a just-saved schedule shows at the
 // top instead of scrolling off the bottom of the list. The remaining
 // order is preserved for backwards-compatibility with users who've
 // learned where things are.
-const _CATEGORY_ORDER = [
-  'Cookbook',
-  'Other',
-  'Calendar',
-  'Email',
-  'Chats',
-  'Documents',
-  'Memory',
-  'Research',
-  'Skills',
-  'Assistant',
-  'System',
-];
+const _CATEGORY_ORDER = ['Cookbook', 'Other', 'Calendar', 'Email', 'Chats', 'Documents', 'Memory', 'Research', 'Skills', 'Assistant', 'System'];
 const _CATEGORY_ICONS = {
-  Calendar:
-    '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
-  Email:
-    '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
-  Chats:
-    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-  Documents:
-    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
-  Memory:
-    '<path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/>',
-  Research:
-    '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
-  Skills:
-    '<path d="M9 11l3 3L22 4"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v15H6.5A2.5 2.5 0 0 0 4 19.5z"/>',
-  Assistant:
-    '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 18a5 5 0 0 1 10 0"/>',
-  System:
-    '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+  Calendar:  '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  Email:     '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  Chats:     '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  Documents: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+  Memory:    '<path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/>',
+  Research:  '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  Skills:    '<path d="M9 11l3 3L22 4"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v15H6.5A2.5 2.5 0 0 0 4 19.5z"/>',
+  Assistant: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 18a5 5 0 0 1 10 0"/>',
+  System:    '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
   // Cookbook icon — matches the recipe-book glyph used on the sidebar.
-  Cookbook:
-    '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
-  Other: '<circle cx="12" cy="12" r="3"/>',
+  Cookbook:  '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+  Other:     '<circle cx="12" cy="12" r="3"/>',
 };
 
 function _categoryFor(task) {
@@ -666,35 +644,25 @@ function _categoryFor(task) {
 
 // ---- Multi-select mode (mirrors the library's Select / bulk-bar) ----
 function _taskEnterSelect() {
-  _taskSelectMode = true;
-  _taskSelected.clear();
+  _taskSelectMode = true; _taskSelected.clear();
   document.getElementById('tasks-bulk-bar')?.classList.remove('hidden');
   const _sb = document.getElementById('tasks-select-btn');
-  if (_sb) {
-    _sb.classList.add('active');
-    _sb.textContent = 'Cancel';
-  }
+  if (_sb) { _sb.classList.add('active'); _sb.textContent = 'Cancel'; }
   _taskUpdateBulkCount();
   _renderList();
 }
 function _taskExitSelect() {
-  _taskSelectMode = false;
-  _taskSelected.clear();
+  _taskSelectMode = false; _taskSelected.clear();
   document.getElementById('tasks-bulk-bar')?.classList.add('hidden');
   const _sb = document.getElementById('tasks-select-btn');
-  if (_sb) {
-    _sb.classList.remove('active');
-    _sb.textContent = 'Select';
-  }
-  const sa = document.getElementById('tasks-select-all');
-  if (sa) sa.checked = false;
+  if (_sb) { _sb.classList.remove('active'); _sb.textContent = 'Select'; }
+  const sa = document.getElementById('tasks-select-all'); if (sa) sa.checked = false;
   _renderList();
 }
 function _taskToggleSelectAll() {
   const sa = document.getElementById('tasks-select-all');
   if (!sa) return;
-  if (sa.checked) _tasks.forEach((t) => _taskSelected.add(t.id));
-  else _taskSelected.clear();
+  if (sa.checked) _tasks.forEach(t => _taskSelected.add(t.id)); else _taskSelected.clear();
   _taskUpdateBulkCount();
   _renderList();
 }
@@ -708,21 +676,15 @@ async function _taskBulkDelete() {
   const ids = [..._taskSelected];
   if (!ids.length) return;
   const ok = uiModule?.styledConfirm
-    ? await uiModule.styledConfirm(
-        `Delete ${ids.length} task${ids.length > 1 ? 's' : ''}? This cannot be undone.`,
-        { confirmText: 'Delete', danger: true },
-      )
+    ? await uiModule.styledConfirm(`Delete ${ids.length} task${ids.length > 1 ? 's' : ''}? This cannot be undone.`, { confirmText: 'Delete', danger: true })
     : confirm(`Delete ${ids.length} task(s)?`);
   if (!ok) return;
-  const results = await Promise.allSettled(ids.map((id) => _deleteTask(id)));
+  const results = await Promise.allSettled(ids.map(id => _deleteTask(id)));
   const deletedIds = ids.filter((_, i) => results[i].status === 'fulfilled');
   await _animateTaskRemoval(deletedIds);
-  if (uiModule)
-    uiModule.showToast(
-      `Deleted ${deletedIds.length} task${deletedIds.length > 1 ? 's' : ''}`,
-    );
+  if (uiModule) uiModule.showToast(`Deleted ${deletedIds.length} task${deletedIds.length > 1 ? 's' : ''}`);
   await _fetchTasks();
-  _taskExitSelect(); // clears selection + re-renders the fresh list
+  _taskExitSelect();  // clears selection + re-renders the fresh list
 }
 
 // Category filter chips (library-style tags) — solo-select: click one to
@@ -731,13 +693,9 @@ function _renderTaskChips() {
   const bar = document.getElementById('tasks-filter-chips');
   if (!bar) return;
   const counts = {};
-  for (const t of _tasks) {
-    const c = _categoryFor(t);
-    counts[c] = (counts[c] || 0) + 1;
-  }
+  for (const t of _tasks) { const c = _categoryFor(t); counts[c] = (counts[c] || 0) + 1; }
   const cats = Object.keys(counts).sort((a, b) => {
-    const ia = _CATEGORY_ORDER.indexOf(a),
-      ib = _CATEGORY_ORDER.indexOf(b);
+    const ia = _CATEGORY_ORDER.indexOf(a), ib = _CATEGORY_ORDER.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
   });
   if (_taskFilter && !counts[_taskFilter]) _taskFilter = null;
@@ -749,10 +707,7 @@ function _renderTaskChips() {
     const b = document.createElement('button');
     b.className = 'memory-cat-chip' + (active ? ' active' : '');
     b.textContent = label;
-    b.addEventListener('click', () => {
-      _taskFilter = value;
-      _renderList();
-    });
+    b.addEventListener('click', () => { _taskFilter = value; _renderList(); });
     bar.appendChild(b);
   };
   mkChip(`all (${_tasks.length})`, null, !_taskFilter);
@@ -762,6 +717,7 @@ function _renderTaskChips() {
 const _TASK_CACHE_LABELS = {
   summarize_emails: 'email summaries',
   draft_email_replies: 'AI reply drafts',
+  email_auto_translate: 'email translations',
   extract_email_events: 'email calendar cache',
   learn_sender_signatures: 'sender signatures',
   check_email_urgency: 'email tags',
@@ -779,10 +735,7 @@ function _renderList() {
   const _tabCount = document.getElementById('tasks-tab-count');
   if (_tabCount) _tabCount.textContent = _tasks.length;
   const _headCount = document.getElementById('tasks-head-count');
-  if (_headCount)
-    _headCount.textContent = _tasks.length
-      ? `${_tasks.length} task${_tasks.length !== 1 ? 's' : ''}`
-      : '';
+  if (_headCount) _headCount.textContent = _tasks.length ? `${_tasks.length} task${_tasks.length !== 1 ? 's' : ''}` : '';
 
   if (_tasks.length === 0) {
     // Differentiate "still loading" from "really empty" so the first paint
@@ -791,8 +744,7 @@ function _renderList() {
     if (!_tasksFetched) {
       list.appendChild(spinnerModule.createLoadingRow('Loading…'));
     } else {
-      list.innerHTML =
-        '<div style="opacity:0.4;font-size:12px;text-align:center;padding:24px 0;">No tasks yet. Create one to get started.</div>';
+      list.innerHTML = '<div style="opacity:0.4;font-size:12px;text-align:center;padding:24px 0;">No tasks yet. Create one to get started.</div>';
     }
     return;
   }
@@ -802,54 +754,43 @@ function _renderList() {
   // Filter by the active category tag + search query, then flatten into one
   // list (the tag chips replace the old per-category collapsible headers).
   const q = _taskSearch.trim().toLowerCase();
-  const visible = _tasks.filter((t) => {
+  const visible = _tasks.filter(t => {
     if (_taskFilter && _categoryFor(t) !== _taskFilter) return false;
-    if (
-      q &&
-      !`${t.name} ${t.prompt || ''} ${t.action || ''}`.toLowerCase().includes(q)
-    )
-      return false;
+    if (q && !(`${t.name} ${t.prompt || ''} ${t.action || ''}`.toLowerCase().includes(q))) return false;
     return true;
   });
   const _statusRank = { active: 0, paused: 1, completed: 2 };
   visible.sort((a, b) => {
     if (_taskSort === 'name') return (a.name || '').localeCompare(b.name || '');
     if (_taskSort === 'status') {
-      const sa = _statusRank[a.status] ?? 9,
-        sb = _statusRank[b.status] ?? 9;
+      const sa = _statusRank[a.status] ?? 9, sb = _statusRank[b.status] ?? 9;
       if (sa !== sb) return sa - sb;
       return (a.name || '').localeCompare(b.name || '');
     }
     // 'recent' (default): category order, then name.
-    const ia = _CATEGORY_ORDER.indexOf(_categoryFor(a)),
-      ib = _CATEGORY_ORDER.indexOf(_categoryFor(b));
+    const ia = _CATEGORY_ORDER.indexOf(_categoryFor(a)), ib = _CATEGORY_ORDER.indexOf(_categoryFor(b));
     if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     return (a.name || '').localeCompare(b.name || '');
   });
   if (visible.length === 0) {
-    list.innerHTML =
-      '<div style="opacity:0.4;font-size:12px;text-align:center;padding:24px 0;">No matching tasks.</div>';
+    list.innerHTML = '<div style="opacity:0.4;font-size:12px;text-align:center;padding:24px 0;">No matching tasks.</div>';
     return;
   }
 
   for (const task of visible) {
     const card = document.createElement('div');
-    card.className =
-      'memory-item task-card' +
-      (task.status === 'paused' ? ' task-paused' : '');
+    card.className = 'memory-item task-card' + (task.status === 'paused' ? ' task-paused' : '');
     card.dataset.id = task.id;
 
     // Title row: icon + name (left); status pill + chevron/actions (right).
     // The status pill replaces the old dot and doubles as pause/resume.
     const titleRow = document.createElement('div');
-    titleRow.style.cssText =
-      'display:flex;align-items:center;gap:6px;cursor:pointer;';
-    const statusBadge =
-      task.status === 'paused'
-        ? `<span class="task-status-badge task-state-badge task-paused-badge" data-task-status-action="resume" title="Paused - click to resume" style="position:relative;top:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 19 12 7 20 7 4"/></svg><span class="task-state-label">paused</span></span>`
-        : task.status === 'active'
-          ? `<span class="task-status-badge task-state-badge task-active-badge" data-task-status-action="pause" title="Active - click to pause" style="position:relative;top:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span class="task-state-label">active</span></span>`
-          : '';
+    titleRow.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
+    const statusBadge = task.status === 'paused'
+      ? `<button type="button" class="task-status-badge task-state-badge task-paused-badge" data-task-status-action="resume" title="Paused - click to resume" style="position:relative;top:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span class="task-state-label">paused</span></button>`
+      : task.status === 'active'
+        ? `<button type="button" class="task-status-badge task-state-badge task-active-badge" data-task-status-action="pause" title="Active - click to pause" style="position:relative;top:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 19 12 7 20 7 4"/></svg><span class="task-state-label">active</span></button>`
+        : '';
     const builtinBadge = task.is_builtin
       ? `<span class="task-builtin-badge${task.is_modified ? ' modified' : ''}" title="${task.is_modified ? 'Built-in task — edited from its default' : 'Built-in task'}">built-in${task.is_modified ? ' · edited' : ''}</span>`
       : '';
@@ -863,80 +804,27 @@ function _renderList() {
     menuBtn.title = 'Actions';
     menuBtn.style.position = 'relative';
     menuBtn.style.top = '4px';
-    menuBtn.innerHTML =
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+    menuBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
     menuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const items = [];
-      // Run now stays in the kebab too (alongside the new Run button on the
-      // card) for users coming from muscle-memory / mobile long-press.
-      if (task.status !== 'completed')
-        items.push({
-          label: 'Run now',
-          icon: '<polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
-          action: () => _doRunNow(task.id),
-        });
-      items.push({
-        label: 'Edit',
-        icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
-        action: () => _showForm(task),
-      });
-      if (task.status === 'active')
-        items.push({
-          label: 'Pause',
-          icon: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
-          action: () => _doPause(task.id),
-        });
-      else if (task.status === 'paused')
-        items.push({
-          label: 'Resume',
-          icon: '<polygon points="5 3 19 12 5 21 5 3"/>',
-          action: () => _doResume(task.id),
-        });
-      items.push({
-        label: 'History',
-        icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-        action: () => _showRunHistory(task.id, task.name),
-      });
+      // Run now stays in the kebab too for users coming from muscle-memory /
+      // mobile long-press. The expanded card also shows it next to Edit.
+      if (task.status !== 'completed') items.push({ label: 'Run now', icon: '<polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>', action: () => _doRunNow(task.id) });
+      items.push({ label: 'Edit', icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>', action: () => _showForm(task) });
+      if (task.status === 'active') items.push({ label: 'Pause', icon: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>', action: () => _doPause(task.id) });
+      else if (task.status === 'paused') items.push({ label: 'Resume', icon: '<polygon points="5 3 19 12 5 21 5 3"/>', action: () => _doResume(task.id) });
+      items.push({ label: 'History', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', action: () => _showRunHistory(task.id, task.name) });
       if (task.is_builtin && task.is_modified) {
-        items.push({
-          label: 'Revert to default',
-          icon: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
-          action: () => _doRevert(task.id),
-        });
+        items.push({ label: 'Revert to default', icon: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>', action: () => _doRevert(task.id) });
       }
       if (_taskClearCacheLabel(task)) {
-        items.push({
-          label: 'Clear cache',
-          icon: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/>',
-          action: () => _doClearTaskCache(task.id, _taskClearCacheLabel(task)),
-        });
+        items.push({ label: 'Clear cache', icon: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/>', action: () => _doClearTaskCache(task.id, _taskClearCacheLabel(task)) });
       }
-      items.push({
-        label: 'Delete',
-        icon: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
-        action: () => _doDelete(task.id),
-        danger: true,
-      });
+      items.push({ label: 'Delete', icon: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>', action: () => _doDelete(task.id), danger: true });
       _showTaskDropdown(menuBtn, items);
     });
     actionsWrap.appendChild(menuBtn);
-    // Run now — promoted out of the kebab onto the card itself for one-click
-    // manual triggering. Hidden for completed tasks (same gate as before).
-    if (task.status !== 'completed') {
-      const runBtn = document.createElement('button');
-      runBtn.className =
-        'task-status-badge task-run-now-badge task-card-run-btn';
-      runBtn.title = 'Run now';
-      runBtn.style.cssText = 'position:relative;top:1px;margin-right:4px;';
-      runBtn.innerHTML =
-        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>Run</span>';
-      runBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        _doRunNow(task.id);
-      });
-      actionsWrap.insertBefore(runBtn, menuBtn);
-    }
     titleRow.appendChild(actionsWrap);
 
     // Content area
@@ -947,12 +835,8 @@ function _renderList() {
 
     // Slim meta line (always visible): schedule · next · run count.
     const metaParts = [_scheduleLabel(task)];
-    if (task.next_run && task.status === 'active')
-      metaParts.push('Next: ' + _relativeTime(task.next_run));
-    if (task.run_count > 0)
-      metaParts.push(
-        task.run_count + ' run' + (task.run_count !== 1 ? 's' : ''),
-      );
+    if (task.next_run && task.status === 'active') metaParts.push('Next: ' + _relativeTime(task.next_run));
+    if (task.run_count > 0) metaParts.push(task.run_count + ' run' + (task.run_count !== 1 ? 's' : ''));
     const meta = document.createElement('div');
     meta.className = 'memory-item-meta';
     meta.style.cssText = 'font-size:10px;opacity:0.4;margin-top:-1px;';
@@ -963,8 +847,7 @@ function _renderList() {
     if (statusPill) {
       statusPill.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (statusPill.dataset.taskStatusAction === 'pause')
-          await _doPause(task.id);
+        if (statusPill.dataset.taskStatusAction === 'pause') await _doPause(task.id);
         else await _doResume(task.id);
       });
     }
@@ -972,16 +855,33 @@ function _renderList() {
     // Expandable detail (revealed on click) — like the library doc/chat cards:
     // extra meta + last-run result + description.
     const detail = document.createElement('div');
-    detail.style.cssText =
-      'display:none;margin-top:7px;padding:8px 0 2px;border-top:1px solid var(--border);';
+    detail.style.cssText = 'display:none;margin-top:7px;padding:8px 0 2px;border-top:1px solid var(--border);position:relative;';
+    const detailActions = document.createElement('div');
+    detailActions.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;margin-top:7px;';
+    if (task.status !== 'completed') {
+      const runBtn = document.createElement('button');
+      runBtn.className = 'memory-toolbar-btn task-detail-run-btn';
+      runBtn.title = 'Run now';
+      runBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Run';
+      runBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        _doRunNow(task.id);
+      });
+      detailActions.appendChild(runBtn);
+    }
+    const editBtn = document.createElement('button');
+    editBtn.className = 'memory-toolbar-btn task-detail-edit-btn';
+    editBtn.title = 'Edit task';
+    editBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit';
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _showForm(task);
+    });
+    detailActions.appendChild(editBtn);
     const extra = [];
     if (task.last_run) extra.push('Last: ' + _relativeTime(task.last_run));
-    if (task.output_target && task.output_target !== 'session')
-      extra.push(
-        '→ ' + task.output_target.replace(/^mcp__/, '').replace(/__/g, ' › '),
-      );
-    if (task.model)
-      extra.push('model: ' + (task.model.split('/').pop() || task.model));
+    if (task.output_target && task.output_target !== 'session') extra.push('→ ' + task.output_target.replace(/^mcp__/, '').replace(/__/g, ' › '));
+    if (task.model) extra.push('model: ' + (task.model.split('/').pop() || task.model));
     if (extra.length) {
       const ex = document.createElement('div');
       ex.style.cssText = 'font-size:10px;opacity:0.4;margin-bottom:6px;';
@@ -989,7 +889,7 @@ function _renderList() {
       detail.appendChild(ex);
     }
     if (task.last_run_status) {
-      const isErr = task.last_run_status === 'error';
+      const isErr = task.last_run_status === 'error' || task.last_run_status === 'failed';
       const color = isErr ? 'var(--red,#e06c75)' : 'var(--green,#50fa7b)';
       const result = (task.last_run_result || '').trim();
       const prev = result.length > 200 ? result.slice(0, 200) + '…' : result;
@@ -997,26 +897,23 @@ function _renderList() {
       lr.style.cssText = `font-size:11px;margin-bottom:6px;padding:4px 8px;border-left:2px solid ${color};background:color-mix(in srgb, ${color} 8%, transparent);border-radius:2px;line-height:1.4;cursor:pointer;`;
       lr.innerHTML = `<span style="font-weight:600;color:${color};">${isErr ? '✗' : '✓'}</span> <span style="opacity:0.9;">${_esc(prev) || (isErr ? 'Failed (no detail)' : 'Success (no output)')}</span>`;
       lr.title = 'Open full history';
-      lr.addEventListener('click', (e) => {
-        e.stopPropagation();
-        _showRunHistory(task.id, task.name);
-      });
+      lr.addEventListener('click', (e) => { e.stopPropagation(); _showRunHistory(task.id, task.name); });
       detail.appendChild(lr);
     }
     const taskType = task.task_type || 'llm';
     const p = task.prompt || '';
     if (p || taskType === 'action') {
       const desc = document.createElement('div');
-      desc.style.cssText =
-        'font-size:11px;opacity:0.6;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;';
+      desc.style.cssText = 'font-size:11px;opacity:0.6;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;';
       if (taskType === 'action') {
-        const am = (_builtinActions || []).find((a) => a.name === task.action);
+        const am = (_builtinActions || []).find(a => a.name === task.action);
         desc.textContent = am?.description || task.action || '—';
       } else {
         desc.textContent = p;
       }
       detail.appendChild(desc);
     }
+    detail.appendChild(detailActions);
     content.appendChild(detail);
 
     // Select-mode checkbox (mirrors the library's .memory-select-cb).
@@ -1028,29 +925,23 @@ function _renderList() {
       cb.checked = _taskSelected.has(task.id);
       cb.addEventListener('click', (e) => e.stopPropagation());
       cb.addEventListener('change', () => {
-        if (cb.checked) _taskSelected.add(task.id);
-        else _taskSelected.delete(task.id);
+        if (cb.checked) _taskSelected.add(task.id); else _taskSelected.delete(task.id);
         card.classList.toggle('selected', cb.checked);
         _taskUpdateBulkCount();
         const sa = document.getElementById('tasks-select-all');
-        if (sa)
-          sa.checked =
-            _tasks.length > 0 && _tasks.every((t) => _taskSelected.has(t.id));
+        if (sa) sa.checked = _tasks.length > 0 && _tasks.every(t => _taskSelected.has(t.id));
       });
       titleRow.insertBefore(cb, titleRow.firstChild);
     }
 
     // Title-row click: in select mode toggle the checkbox; otherwise expand.
     titleRow.addEventListener('click', (e) => {
-      if (card._suppressNextClick) return; // long-press just opened the menu
+      if (card._suppressNextClick) return;  // long-press just opened the menu
       if (e.target.closest('.memory-item-actions')) return;
       if (_taskSelectMode) {
         if (e.target.classList.contains('memory-select-cb')) return;
         const cb = titleRow.querySelector('.memory-select-cb');
-        if (cb) {
-          cb.checked = !cb.checked;
-          cb.dispatchEvent(new Event('change'));
-        }
+        if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
         return;
       }
       const open = detail.style.display === 'none';
@@ -1073,7 +964,7 @@ function _renderList() {
   // very first render of the panel.
   if (_tasksCascadeNext && list.children.length) {
     list.classList.remove('tasks-just-opened');
-    void list.offsetWidth; // force reflow so the class re-fires on re-add
+    void list.offsetWidth;  // force reflow so the class re-fires on re-add
     list.classList.add('tasks-just-opened');
     setTimeout(() => list.classList.remove('tasks-just-opened'), 900);
   }
@@ -1084,10 +975,7 @@ function _btn(label, onClick) {
   const b = document.createElement('button');
   b.className = 'task-btn';
   b.textContent = label;
-  b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onClick();
-  });
+  b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
   return b;
 }
 
@@ -1100,163 +988,99 @@ function _esc(s) {
 // Long-press a task card (mobile) to open its ⋮ actions menu. Hold 500ms;
 // moving the finger >10px or releasing early cancels. Mirrors the library.
 function _attachTaskLongPress(card, menuBtn) {
-  let hold = null,
-    start = null;
-  const cancel = () => {
-    if (hold) {
-      clearTimeout(hold);
-      hold = null;
-    }
-    start = null;
-  };
+  let hold = null, start = null;
+  const cancel = () => { if (hold) { clearTimeout(hold); hold = null; } start = null; };
   card.addEventListener('pointerdown', (e) => {
-    if (
-      e.target.closest(
-        '.memory-item-actions, .memory-select-cb, button, a, input',
-      )
-    )
-      return;
+    if (e.target.closest('.memory-item-actions, .memory-select-cb, button, a, input')) return;
     start = { x: e.clientX, y: e.clientY };
     hold = setTimeout(() => {
       hold = null;
       card._suppressNextClick = true;
-      setTimeout(() => {
-        card._suppressNextClick = false;
-      }, 400);
-      if (navigator.vibrate) {
-        try {
-          navigator.vibrate(15);
-        } catch (_) {}
-      }
+      setTimeout(() => { card._suppressNextClick = false; }, 400);
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
       menuBtn.click();
     }, 500);
   });
   card.addEventListener('pointermove', (e) => {
-    if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10)
-      cancel();
+    if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
   });
   card.addEventListener('pointerup', cancel);
   card.addEventListener('pointercancel', cancel);
 }
 
 function _showTaskDropdown(anchor, items) {
-  // Remove any existing dropdown
-  document.querySelectorAll('.task-dropdown').forEach(dismissOrRemove);
+  const existing = document.querySelector('.task-dropdown');
+  if (existing && existing._anchor === anchor) {
+    if (typeof existing._dismiss === 'function') existing._dismiss();
+    else existing.remove();
+    return;
+  }
+  document.querySelectorAll('.task-dropdown').forEach(d => {
+    if (typeof d._dismiss === 'function') d._dismiss();
+    else dismissOrRemove(d);
+  });
   const dd = document.createElement('div');
   dd.className = 'task-dropdown';
-  dd.style.cssText =
-    'position:fixed;z-index:100000;background:var(--panel);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:4px;min-width:120px;';
-  items.forEach((item) => {
+  dd._anchor = anchor;
+  dd.style.cssText = `position:fixed;z-index:${topPortalZ()};background:var(--panel);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:4px;min-width:120px;`;
+  items.forEach(item => {
     const btn = document.createElement('button');
-    btn.style.cssText =
-      'display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 10px;border:none;background:none;color:var(--fg);font-size:11px;font-family:inherit;cursor:pointer;border-radius:4px;transition:background 0.1s;';
+    btn.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 10px;border:none;background:none;color:var(--fg);font-size:11px;font-family:inherit;cursor:pointer;border-radius:4px;transition:background 0.1s;';
     if (item.danger) btn.style.color = 'var(--color-error)';
     if (item.icon) {
       btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.6;flex-shrink:0;">${item.icon}</svg><span>${item.label}</span>`;
     } else {
       btn.textContent = item.label;
     }
-    btn.addEventListener('mouseenter', () => {
-      btn.style.background = 'color-mix(in srgb, var(--fg) 8%, transparent)';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.background = 'none';
-    });
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      close();
-      item.action();
-    });
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'color-mix(in srgb, var(--fg) 8%, transparent)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = 'none'; });
+    btn.addEventListener('click', (e) => { e.stopPropagation(); close(); item.action(); });
     dd.appendChild(btn);
   });
   document.body.appendChild(dd);
+  // Sit above the currently-raised tool modal at any stack depth (#4720): the
+  // modal bring-to-front counter climbs unbounded, so a hardcoded z eventually
+  // loses. topPortalZ() derives the value from the live tool-window stack.
+  dd.style.zIndex = String(topPortalZ());
   const rect = anchor.getBoundingClientRect();
   let top = rect.bottom + 4;
   let left = rect.right - dd.offsetWidth;
   if (left < 8) left = 8;
-  if (top + dd.offsetHeight > window.innerHeight - 8)
-    top = rect.top - dd.offsetHeight - 4;
+  if (top + dd.offsetHeight > window.innerHeight - 8) top = rect.top - dd.offsetHeight - 4;
   dd.style.top = top + 'px';
   dd.style.left = left + 'px';
   const openedAt = performance.now();
-  const close = bindMenuDismiss(
-    dd,
-    () => {
-      dd.remove();
-    },
-    (ev) => {
-      // Ignore any clicks that occur within 250ms of the open (covers touch
-      // "ghost click" duplicates that were firing right after pointerup and
-      // removing the dropdown before the user could see it) — treat as inside.
-      if (performance.now() - openedAt < 250) return false;
-      return !dd.contains(ev.target);
-    },
-  );
+  const close = bindMenuDismiss(dd, () => { dd.remove(); }, (ev) => {
+    // Ignore any clicks that occur within 250ms of the open (covers touch
+    // "ghost click" duplicates that were firing right after pointerup and
+    // removing the dropdown before the user could see it) — treat as inside.
+    if (performance.now() - openedAt < 250) return false;
+    return !dd.contains(ev.target);
+  });
+  dd._dismiss = () => {
+    close();
+  };
 }
 
 // ---- Presets ----
 
 const _TASK_PRESETS = [
-  {
-    label: 'Prompt on schedule',
-    desc: 'Run a prompt daily, weekly, etc.',
-    taskType: 'llm',
-    triggerType: 'schedule',
-  },
-  {
-    label: 'Prompt on event',
-    desc: 'Trigger every N sessions or messages',
-    taskType: 'llm',
-    triggerType: 'event',
-  },
-  {
-    label: 'Research on schedule',
-    desc: 'Run deep research on a topic',
-    taskType: 'research',
-    triggerType: 'schedule',
-  },
-  {
-    label: 'Research on event',
-    desc: 'Run deep research after app events',
-    taskType: 'research',
-    triggerType: 'event',
-  },
-  {
-    label: 'Action on schedule',
-    desc: 'Run tidy/cleanup on a timer',
-    taskType: 'action',
-    triggerType: 'schedule',
-  },
-  {
-    label: 'Action on event',
-    desc: 'Run tidy/cleanup every N sessions or messages',
-    taskType: 'action',
-    triggerType: 'event',
-  },
-  {
-    label: 'Webhook triggered',
-    desc: 'Trigger via external HTTP call',
-    taskType: 'llm',
-    triggerType: 'webhook',
-  },
+  { label: 'Prompt on schedule',    desc: 'Run a prompt daily, weekly, etc.',             taskType: 'llm',      triggerType: 'schedule' },
+  { label: 'Prompt on event',       desc: 'Trigger every N sessions or messages',         taskType: 'llm',      triggerType: 'event' },
+  { label: 'Research on schedule',  desc: 'Run deep research on a topic',                 taskType: 'research', triggerType: 'schedule' },
+  { label: 'Research on event',     desc: 'Run deep research after app events',           taskType: 'research', triggerType: 'event' },
+  { label: 'Action on schedule',    desc: 'Run tidy/cleanup on a timer',                  taskType: 'action',   triggerType: 'schedule' },
+  { label: 'Action on event',       desc: 'Run tidy/cleanup every N sessions or messages', taskType: 'action', triggerType: 'event' },
+  { label: 'Webhook triggered',     desc: 'Trigger via external HTTP call',               taskType: 'llm',      triggerType: 'webhook' },
 ];
 
 // Icon for each preset, keyed off task/trigger type (24x24 stroke SVG).
 function _presetIcon(p) {
-  const wrap = (inner) =>
-    `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;flex-shrink:0;">${inner}</svg>`;
-  if (p.taskType === 'research')
-    return wrap('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>');
-  if (p.taskType === 'action')
-    return wrap(
-      '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10z"/>',
-    ); // sparkle
-  if (p.triggerType === 'webhook')
-    return wrap(
-      '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/>',
-    ); // link
-  if (p.triggerType === 'event')
-    return wrap('<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'); // activity pulse
+  const wrap = (inner) => `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;flex-shrink:0;">${inner}</svg>`;
+  if (p.taskType === 'research') return wrap('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>');
+  if (p.taskType === 'action') return wrap('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10z"/>'); // sparkle
+  if (p.triggerType === 'webhook') return wrap('<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/>'); // link
+  if (p.triggerType === 'event') return wrap('<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'); // activity pulse
   return wrap('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'); // clock (scheduled prompt)
 }
 
@@ -1266,23 +1090,18 @@ function _showPresetPicker() {
   const body = modal.querySelector('.modal-body');
   if (!body) return;
 
-  let html =
-    '<div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">';
-  html +=
-    '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;"><h2 style="margin:0;padding:0;line-height:1;">Add Task</h2></div>';
-  html +=
-    '<p class="memory-desc" style="position:relative;top:4px;">Describe a task for the AI to draft, or pick a type below to set one up manually.</p>';
+  let html = '<div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">';
+  html += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;"><h2 style="margin:0;padding:0;line-height:1;">Add Task</h2></div>';
+  html += '<p class="memory-desc" style="position:relative;top:4px;">Describe a task for the AI to draft, or pick a type below to set one up manually.</p>';
   // flex-wrap + min-width:0 on the input lets the row collapse cleanly
   // on narrow modal widths instead of pushing the AI button past the
   // right edge. margin-left:-4px nudges the compose row 4px into the
   // description bar above so the input lines up with it visually.
-  html +=
-    '<div class="task-ai-compose" style="display:flex;gap:6px;margin:6px 0 10px -4px;flex-wrap:wrap;align-items:center;">' +
-    '<input type="text" id="task-ai-input" class="memory-search-input" style="flex:1 1 220px;min-width:0;" placeholder="Describe a task — e.g. &quot;every weekday 7am summarize my unread email&quot;" />' +
-    '<button class="memory-toolbar-btn active" id="task-ai-btn" title="Draft a task with AI" style="white-space:nowrap;height:28px;flex:0 0 auto;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Draft with AI</button>' +
-    '</div>';
-  html +=
-    '<div class="memory-list" style="max-height:none;flex:1;gap:0px;margin-top:2px;padding-right:8px;">';
+  html += '<div class="task-ai-compose" style="display:flex;gap:6px;margin:6px 0 10px -4px;flex-wrap:wrap;align-items:center;">'
+    + '<input type="text" id="task-ai-input" class="memory-search-input" style="flex:1 1 220px;min-width:0;" placeholder="Describe a task — e.g. &quot;every weekday 7am summarize my unread email&quot;" />'
+    + '<button class="memory-toolbar-btn active" id="task-ai-btn" title="Draft a task with AI" style="white-space:nowrap;height:28px;flex:0 0 auto;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Draft with AI</button>'
+    + '</div>';
+  html += '<div class="memory-list" style="max-height:none;flex:1;gap:0px;margin-top:2px;padding-right:8px;">';
   _TASK_PRESETS.forEach((p, i) => {
     html += `<button class="memory-item task-card" data-idx="${i}" style="cursor:pointer;text-align:left;width:100%;font-family:inherit;">
       <div style="flex:1;min-width:0;">
@@ -1295,26 +1114,19 @@ function _showPresetPicker() {
   html += '</div>';
   body.innerHTML = html;
 
-  body.querySelectorAll('.memory-item[data-idx]').forEach((card) => {
+  body.querySelectorAll('.memory-item[data-idx]').forEach(card => {
     card.addEventListener('click', () => {
       const p = _TASK_PRESETS[parseInt(card.dataset.idx, 10)];
       _showForm(null, p.taskType, p.triggerType);
     });
   });
-  document
-    .getElementById('task-preset-cancel')
-    ?.addEventListener('click', () => _renderMainView());
+  document.getElementById('task-preset-cancel')?.addEventListener('click', () => _renderMainView());
 
   // Describe a task in plain language → AI drafts the structured task + opens the form.
   const aiInput = document.getElementById('task-ai-input');
   const aiBtn = document.getElementById('task-ai-btn');
   if (aiBtn && aiInput) {
-    aiInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        aiBtn.click();
-      }
-    });
+    aiInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); aiBtn.click(); } });
     aiBtn.addEventListener('click', () => _aiDraftTask(aiInput, aiBtn));
   }
 }
@@ -1328,8 +1140,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
   if (!body) return;
 
   const curTaskType = existing?.task_type || initTaskType || 'llm';
-  const curTriggerType =
-    existing?.trigger_type || initTriggerType || 'schedule';
+  const curTriggerType = existing?.trigger_type || initTriggerType || 'schedule';
 
   body.innerHTML = `
     <div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
@@ -1363,6 +1174,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
       <select id="task-form-output" class="task-form-input">
         <option value="session">Session</option>
       </select>
+      <div id="task-form-output-extra"></div>
 
       <label class="task-form-label">Model <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — overrides session default)</span></label>
       <select id="task-form-model" class="task-form-input">
@@ -1374,10 +1186,13 @@ function _showForm(existing, initTaskType, initTriggerType) {
         <option value="">None</option>
       </select>
 
-      <label class="task-form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="checkbox" id="task-form-notif" ${existing && existing.notifications_enabled === false ? '' : 'checked'} style="margin:0;cursor:pointer;">
-        <span>Notifications</span>
-        <span style="opacity:0.55;font-weight:normal;font-size:10px;">— uncheck to silence completion notifications for this task (helpful for chatty cron jobs)</span>
+      <label class="task-form-notif-toggle">
+        <input type="checkbox" id="task-form-notif" ${existing && existing.notifications_enabled === false ? '' : 'checked'}>
+        <span class="task-form-notif-switch" aria-hidden="true"></span>
+        <span class="task-form-notif-copy">
+          <span>Notifications</span>
+          <span>Silence completion alerts for chatty cron jobs.</span>
+        </span>
       </label>
 
       <div class="task-form-actions">
@@ -1396,10 +1211,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
   function renderTypeOpts() {
     typeOpts.innerHTML = '';
     if (taskType === 'llm' || taskType === 'research') {
-      const placeholder =
-        taskType === 'research'
-          ? 'What should be researched?'
-          : 'What should the AI do?';
+      const placeholder = taskType === 'research' ? 'What should be researched?' : 'What should the AI do?';
       const _personaOpts = [
         ['', 'Default (no persona)'],
         ['socrates', 'Socrates'],
@@ -1409,12 +1221,8 @@ function _showForm(existing, initTaskType, initTriggerType) {
         ['odysseus', 'Odysseus'],
       ];
       const _curPersona = (existing?.character_id || '').toLowerCase();
-      const _personaOptsHtml = _personaOpts
-        .map(
-          ([v, label]) =>
-            `<option value="${v}" ${v === _curPersona ? 'selected' : ''}>${label}</option>`,
-        )
-        .join('');
+      const _personaOptsHtml = _personaOpts.map(([v, label]) =>
+        `<option value="${v}" ${v === _curPersona ? 'selected' : ''}>${label}</option>`).join('');
       typeOpts.innerHTML = `
         <label class="task-form-label">${taskType === 'research' ? 'Research question' : 'Prompt'}</label>
         <textarea id="task-form-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="${placeholder}">${existing?.prompt || ''}</textarea>
@@ -1434,27 +1242,30 @@ function _showForm(existing, initTaskType, initTriggerType) {
         const sel = document.getElementById('task-form-action');
         const extra = document.getElementById('task-form-action-extra');
         if (!sel || !extra) return;
-        if (sel.value !== 'check_email_urgency') {
+        const action = sel.value;
+        if (!_EMAIL_ACCOUNT_ACTIONS.has(action)) {
           extra.innerHTML = '';
           return;
         }
-        extra.innerHTML = `
-          <label class="task-form-label">Email triage rules</label>
-          <textarea id="task-form-urgent-email-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="What should count as urgent? e.g. deadlines, blockers, people waiting outside."></textarea>
-          <div class="memory-desc" style="font-size:11px;margin-top:4px;">Pause/resume and schedule are controlled by this task. It tags urgent, reply-soon, newsletter, marketing, and spam. Urgent/reply-soon emails use your reminder settings.</div>
-        `;
-        const settings = await _fetchUrgentEmailSettings();
-        const promptEl = document.getElementById(
-          'task-form-urgent-email-prompt',
-        );
-        if (promptEl && !promptEl.dataset.loaded) {
-          promptEl.value = settings.urgent_email_prompt || '';
-          promptEl.dataset.loaded = '1';
+        extra.innerHTML = '';
+        await _renderEmailActionOptions(action, existing, extra);
+        if (action === 'check_email_urgency') {
+          extra.insertAdjacentHTML('beforeend', `
+            <label class="task-form-label">Email triage rules</label>
+            <textarea id="task-form-urgent-email-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="What should count as urgent? e.g. deadlines, blockers, people waiting outside."></textarea>
+            <div class="memory-desc" style="font-size:11px;margin-top:4px;">Pause/resume and schedule are controlled by this task. It tags work, personal, urgent, action-needed, finance, legal, travel, newsletter, marketing, spam, and related mail categories. Urgent/reply-soon emails use your reminder settings.</div>
+          `);
+          const settings = await _fetchUrgentEmailSettings();
+          const promptEl = document.getElementById('task-form-urgent-email-prompt');
+          if (promptEl && !promptEl.dataset.loaded) {
+            promptEl.value = settings.urgent_email_prompt || '';
+            promptEl.dataset.loaded = '1';
+          }
+          const notifEl = document.getElementById('task-form-notif');
+          if (notifEl && !existing?.id) notifEl.checked = false;
         }
-        const notifEl = document.getElementById('task-form-notif');
-        if (notifEl && !existing?.id) notifEl.checked = false;
       };
-      _fetchActions().then((actions) => {
+      _fetchActions().then(actions => {
         const sel = document.getElementById('task-form-action');
         if (!sel) return;
         sel.innerHTML = '';
@@ -1475,9 +1286,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
     const btn = e.target.closest('.task-toggle-btn');
     if (!btn) return;
     taskType = btn.dataset.val;
-    typeToggle
-      .querySelectorAll('.task-toggle-btn')
-      .forEach((b) => b.classList.toggle('active', b.dataset.val === taskType));
+    typeToggle.querySelectorAll('.task-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.val === taskType));
     renderTypeOpts();
   });
   renderTypeOpts();
@@ -1493,7 +1302,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
       triggerOpts.innerHTML = `
         <label class="task-form-label">Frequency</label>
         <select id="task-form-schedule" class="task-form-input">
-          <option value="daily" ${!existing || existing.schedule === 'daily' ? 'selected' : ''}>Daily</option>
+          <option value="daily" ${(!existing || existing.schedule === 'daily') ? 'selected' : ''}>Daily</option>
           <option value="weekly" ${existing?.schedule === 'weekly' ? 'selected' : ''}>Weekly</option>
           <option value="monthly" ${existing?.schedule === 'monthly' ? 'selected' : ''}>Monthly</option>
           <option value="once" ${existing?.schedule === 'once' ? 'selected' : ''}>Once</option>
@@ -1507,8 +1316,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
       `;
 
       // Build time picker
-      let initH = 9,
-        initM = 0;
+      let initH = 9, initM = 0;
       if (existing && existing.scheduled_time) {
         const [uh, um] = existing.scheduled_time.split(':').map(Number);
         const d = new Date();
@@ -1525,8 +1333,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
         schedOpts.innerHTML = '';
         const sched = schedSelect.value;
         const timeSection = document.getElementById('task-form-time-section');
-        if (timeSection)
-          timeSection.style.display = sched === 'cron' ? 'none' : '';
+        if (timeSection) timeSection.style.display = sched === 'cron' ? 'none' : '';
         if (sched === 'weekly') {
           const label = document.createElement('label');
           label.className = 'task-form-label';
@@ -1552,8 +1359,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
           inp.type = 'number';
           inp.id = 'task-form-day';
           inp.className = 'task-form-input';
-          inp.min = 1;
-          inp.max = 31;
+          inp.min = 1; inp.max = 31;
           inp.value = existing?.scheduled_day ?? 1;
           schedOpts.appendChild(inp);
         } else if (sched === 'once') {
@@ -1565,12 +1371,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
           dateWrap.className = 'task-date-picker';
           dateWrap.id = 'task-form-date';
           schedOpts.appendChild(dateWrap);
-          _buildDatePicker(
-            'task-form-date',
-            existing?.scheduled_date
-              ? new Date(existing.scheduled_date)
-              : new Date(),
-          );
+          _buildDatePicker('task-form-date', existing?.scheduled_date ? new Date(existing.scheduled_date) : new Date());
         } else if (sched === 'cron') {
           const label = document.createElement('label');
           label.className = 'task-form-label';
@@ -1585,13 +1386,13 @@ function _showForm(existing, initTaskType, initTriggerType) {
           schedOpts.appendChild(inp);
           const hint = document.createElement('div');
           hint.style.cssText = 'font-size:10px;opacity:0.4;margin-top:2px;';
-          hint.textContent =
-            'min hour day month weekday — e.g. "0 */2 * * *" = every 2 hours';
+          hint.textContent = 'min hour day month weekday — e.g. "0 */2 * * *" = every 2 hours';
           schedOpts.appendChild(hint);
         }
       }
       schedSelect.addEventListener('change', updateScheduleOpts);
       updateScheduleOpts();
+
     } else if (triggerType === 'event') {
       triggerOpts.innerHTML = `
         <label class="task-form-label">Event</label>
@@ -1601,7 +1402,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
         <label class="task-form-label">Every N occurrences</label>
         <input type="number" id="task-form-trigger-count" class="task-form-input" min="1" max="1000" value="${existing?.trigger_count || 5}" />
       `;
-      _fetchEvents().then((events) => {
+      _fetchEvents().then(events => {
         const sel = document.getElementById('task-form-event');
         if (!sel) return;
         sel.innerHTML = '';
@@ -1624,15 +1425,12 @@ function _showForm(existing, initTaskType, initTriggerType) {
           </div>
           <div style="font-size:10px;opacity:0.4;margin-top:4px;">POST this URL from any external service to trigger the task. No auth needed.</div>
         `;
-        document
-          .getElementById('task-form-webhook-copy')
-          ?.addEventListener('click', () => {
-            navigator.clipboard.writeText(url);
-            if (uiModule) uiModule.showToast('Copied');
-          });
+        document.getElementById('task-form-webhook-copy')?.addEventListener('click', () => {
+          navigator.clipboard.writeText(url);
+          if (uiModule) uiModule.showToast('Copied');
+        });
       } else {
-        triggerOpts.innerHTML =
-          '<div style="font-size:11px;opacity:0.5;margin-top:4px;">Webhook URL will be generated when the task is saved.</div>';
+        triggerOpts.innerHTML = '<div style="font-size:11px;opacity:0.5;margin-top:4px;">Webhook URL will be generated when the task is saved.</div>';
       }
     }
   }
@@ -1641,65 +1439,95 @@ function _showForm(existing, initTaskType, initTriggerType) {
     const btn = e.target.closest('.task-toggle-btn');
     if (!btn) return;
     triggerType = btn.dataset.val;
-    triggerToggle
-      .querySelectorAll('.task-toggle-btn')
-      .forEach((b) =>
-        b.classList.toggle('active', b.dataset.val === triggerType),
-      );
+    triggerToggle.querySelectorAll('.task-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.val === triggerType));
     renderTriggerOpts();
   });
   renderTriggerOpts();
 
   // Populate output targets
-  _fetchOutputTargets().then((targets) => {
+  const renderOutputExtra = async () => {
+    const outputSel = document.getElementById('task-form-output');
+    const extra = document.getElementById('task-form-output-extra');
+    if (!outputSel || !extra) return;
+    const currentTo = document.getElementById('task-form-output-email-to')?.value;
+    const currentAccountId = document.getElementById('task-form-output-email-account')?.value;
+    extra.innerHTML = '';
+    if (outputSel.value !== 'email') return;
+    const parsed = _parseTaskEmailOutputTarget(existing?.output_target || '');
+    if (currentTo != null) parsed.to = currentTo;
+    if (currentAccountId != null) parsed.accountId = currentAccountId;
+    const accounts = (await _fetchEmailAccountsForTasks()).filter(a => a && a.enabled !== false);
+    const options = [
+      `<option value="" ${parsed.accountId ? '' : 'selected'}>Default sending account</option>`,
+      ...accounts.map(a => {
+        const id = String(a.id || '');
+        const label = a.name || a.from_address || a.imap_user || id.slice(0, 8);
+        const suffix = a.is_default ? ' (default)' : '';
+        return `<option value="${_escHtml(id)}" ${id === parsed.accountId ? 'selected' : ''}>${_escHtml(label + suffix)}</option>`;
+      }),
+    ].join('');
+    extra.innerHTML = `
+      <div class="task-form-output-email" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:6px;">
+        <label>
+          <span class="task-form-label" style="margin-top:0;">From</span>
+          <select id="task-form-output-email-account" class="task-form-input">${options}</select>
+        </label>
+        <label>
+          <span class="task-form-label" style="margin-top:0;">To</span>
+          <input id="task-form-output-email-to" class="task-form-input" type="email" value="${_escHtml(parsed.to)}" placeholder="Me / selected account" />
+        </label>
+      </div>
+      <div class="memory-desc" style="font-size:10px;margin-top:3px;">Leave To blank to send to the selected account’s own address.</div>
+    `;
+  };
+
+  _fetchOutputTargets().then(targets => {
     const outputSel = document.getElementById('task-form-output');
     if (!outputSel || targets.length <= 1) return;
     outputSel.innerHTML = '';
+    const existingEmailOutput = _parseTaskEmailOutputTarget(existing?.output_target || '');
     let matchedOutput = false;
     for (const t of targets) {
       const opt = document.createElement('option');
       opt.value = t.value;
       opt.textContent = t.label;
-      if (existing?.output_target === t.value) {
+      if (existingEmailOutput.enabled && t.value === 'email') {
+        opt.selected = true;
+        matchedOutput = true;
+      } else if (!existingEmailOutput.enabled && existing?.output_target === t.value) {
         opt.selected = true;
         matchedOutput = true;
       }
       outputSel.appendChild(opt);
     }
-    if (existing?.output_target && !matchedOutput) {
+    if (existing?.output_target && !matchedOutput && !existingEmailOutput.enabled) {
       const opt = document.createElement('option');
       opt.value = existing.output_target;
-      opt.textContent = existing.output_target.includes('@')
-        ? `Email: ${existing.output_target}`
-        : existing.output_target;
+      opt.textContent = existing.output_target.includes('@') ? `Email: ${existing.output_target}` : existing.output_target;
       opt.selected = true;
       outputSel.appendChild(opt);
     }
+    outputSel.addEventListener('change', renderOutputExtra);
+    renderOutputExtra();
   });
 
   // Populate model dropdown from /api/models. Value is "endpoint_url::model"
   // so a single field encodes both the model name and which endpoint to call.
   // Blank value (option 0) = inherit session default.
   fetch(`${API_BASE}/api/models`, { credentials: 'same-origin' })
-    .then((r) => r.json())
-    .then((data) => {
+    .then(r => r.json())
+    .then(data => {
       const modelSel = document.getElementById('task-form-model');
       if (!modelSel) return;
-      const items = (data.items || []).filter(
-        (it) => (it.model_type || 'llm') === 'llm',
-      );
-      const curKey =
-        existing?.endpoint_url && existing?.model
-          ? `${existing.endpoint_url}::${existing.model}`
-          : '';
+      const items = (data.items || []).filter(it => (it.model_type || 'llm') === 'llm');
+      const curKey = existing?.endpoint_url && existing?.model
+        ? `${existing.endpoint_url}::${existing.model}`
+        : '';
       for (const it of items) {
         if (it.offline || !it.models || it.models.length === 0) continue;
         const group = document.createElement('optgroup');
         group.label = it.endpoint_name || it.host || 'endpoint';
-        const all = sortModelIds([
-          ...(it.models || []),
-          ...(it.models_extra || []),
-        ]);
+        const all = sortModelIds([...(it.models || []), ...(it.models_extra || [])]);
         for (const m of all) {
           const opt = document.createElement('option');
           opt.value = `${it.url}::${m}`;
@@ -1724,7 +1552,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
   // Populate chain dropdown
   const chainSel = document.getElementById('task-form-chain');
   if (chainSel) {
-    const otherTasks = _tasks.filter((t) => !existing || t.id !== existing.id);
+    const otherTasks = _tasks.filter(t => !existing || t.id !== existing.id);
     for (const t of otherTasks) {
       const opt = document.createElement('option');
       opt.value = t.id;
@@ -1742,8 +1570,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
   // Esc on the form goes back to the Add tab's preset picker (not the Tasks
   // tab — Cancel handles that). Capture-phase + stopImmediatePropagation so
   // app.js's generic modal-dismiss doesn't close the whole Tasks window first.
-  if (window._tasksFormEsc)
-    document.removeEventListener('keydown', window._tasksFormEsc, true);
+  if (window._tasksFormEsc) document.removeEventListener('keydown', window._tasksFormEsc, true);
   window._tasksFormEsc = (e) => {
     if (e.key !== 'Escape') return;
     if (!document.getElementById('task-form-save')) {
@@ -1753,13 +1580,7 @@ function _showForm(existing, initTaskType, initTriggerType) {
       return;
     }
     const t = e.target;
-    if (
-      t &&
-      (t.tagName === 'INPUT' ||
-        t.tagName === 'TEXTAREA' ||
-        t.tagName === 'SELECT' ||
-        t.isContentEditable)
-    ) {
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
       t.blur();
       return;
     }
@@ -1770,137 +1591,134 @@ function _showForm(existing, initTaskType, initTriggerType) {
   document.addEventListener('keydown', window._tasksFormEsc, true);
 
   // Save
-  document
-    .getElementById('task-form-save')
-    .addEventListener('click', async () => {
-      const nameEl = document.getElementById('task-form-name');
-      const outputTarget =
-        document.getElementById('task-form-output')?.value || 'session';
+  document.getElementById('task-form-save').addEventListener('click', async () => {
+    const nameEl = document.getElementById('task-form-name');
+    const outputSelValue = document.getElementById('task-form-output')?.value || 'session';
+    let outputTarget = outputSelValue;
+    if (outputSelValue === 'email') {
+      const to = document.getElementById('task-form-output-email-to')?.value || '';
+      const accountId = document.getElementById('task-form-output-email-account')?.value || '';
+      outputTarget = _buildTaskEmailOutputTarget(to, accountId);
+    }
 
-      const payload = {
-        task_type: taskType,
-        trigger_type: triggerType,
-        output_target: outputTarget,
-      };
-      if (nameEl) payload.name = nameEl.value.trim() || undefined;
+    const payload = {
+      task_type: taskType,
+      trigger_type: triggerType,
+      output_target: outputTarget,
+    };
+    if (nameEl) payload.name = nameEl.value.trim() || undefined;
 
-      // Model / endpoint override. Blank = inherit session default. Otherwise
-      // value is `endpoint_url::model_id`.
-      const modelVal = document.getElementById('task-form-model')?.value || '';
-      if (modelVal) {
-        const idx = modelVal.indexOf('::');
-        if (idx > 0) {
-          payload.endpoint_url = modelVal.slice(0, idx);
-          payload.model = modelVal.slice(idx + 2);
+    // Model / endpoint override. Blank = inherit session default. Otherwise
+    // value is `endpoint_url::model_id`.
+    const modelVal = document.getElementById('task-form-model')?.value || '';
+    if (modelVal) {
+      const idx = modelVal.indexOf('::');
+      if (idx > 0) {
+        payload.endpoint_url = modelVal.slice(0, idx);
+        payload.model = modelVal.slice(idx + 2);
+      }
+    } else {
+      // Explicitly clear so a previously-pinned task can return to default.
+      payload.endpoint_url = '';
+      payload.model = '';
+    }
+
+    // Chain
+    const chainVal = document.getElementById('task-form-chain')?.value;
+    payload.then_task_id = chainVal || '';
+
+    // Notifications toggle — defaults to true if absent.
+    const notifEl = document.getElementById('task-form-notif');
+    if (notifEl) payload.notifications_enabled = !!notifEl.checked;
+
+    // Task type specifics
+    if (taskType === 'llm' || taskType === 'research') {
+      const prompt = document.getElementById('task-form-prompt')?.value?.trim();
+      if (!prompt) {
+        if (uiModule) uiModule.showError('Prompt is required');
+        return;
+      }
+      payload.prompt = prompt;
+      const personaVal = document.getElementById('task-form-persona')?.value || '';
+      payload.character_id = personaVal;
+    } else {
+      // Non-llm/research tasks: explicitly clear any persona on switch.
+      payload.character_id = '';
+      const action = document.getElementById('task-form-action')?.value;
+      if (!action) {
+        if (uiModule) uiModule.showError('Select an action');
+        return;
+      }
+      payload.action = action;
+      if (_EMAIL_ACCOUNT_ACTIONS.has(action)) {
+        const accountId = document.getElementById('task-form-email-account')?.value || '';
+        payload.prompt = accountId ? JSON.stringify({ account_id: accountId }) : '';
+      }
+      if (action === 'check_email_urgency') {
+        const urgentPrompt = document.getElementById('task-form-urgent-email-prompt')?.value || '';
+        try {
+          await _saveUrgentEmailSettings(urgentPrompt);
+        } catch (e) {
+          if (uiModule) uiModule.showError('Failed to save urgency rules');
+          return;
         }
+      }
+    }
+
+    // Trigger specifics
+    if (triggerType === 'schedule') {
+      const schedSelect = document.getElementById('task-form-schedule');
+      payload.schedule = schedSelect?.value || 'daily';
+
+      if (payload.schedule === 'cron') {
+        const cronVal = document.getElementById('task-form-cron')?.value?.trim();
+        if (!cronVal) {
+          if (uiModule) uiModule.showError('Cron expression is required');
+          return;
+        }
+        payload.cron_expression = cronVal;
       } else {
-        // Explicitly clear so a previously-pinned task can return to default.
-        payload.endpoint_url = '';
-        payload.model = '';
-      }
+        const timeVal = _getTimePickerValue('task-form-time-wrap');
+        payload.scheduled_time = _localTimeToUtc(timeVal);
 
-      // Chain
-      const chainVal = document.getElementById('task-form-chain')?.value;
-      payload.then_task_id = chainVal || '';
+        const dayInput = document.getElementById('task-form-day');
+        if (dayInput) payload.scheduled_day = parseInt(dayInput.value, 10);
 
-      // Notifications toggle — defaults to true if absent.
-      const notifEl = document.getElementById('task-form-notif');
-      if (notifEl) payload.notifications_enabled = !!notifEl.checked;
-
-      // Task type specifics
-      if (taskType === 'llm' || taskType === 'research') {
-        const prompt = document
-          .getElementById('task-form-prompt')
-          ?.value?.trim();
-        if (!prompt) {
-          if (uiModule) uiModule.showError('Prompt is required');
-          return;
+        if (payload.schedule === 'once' && document.getElementById('task-form-date')) {
+          const pickedDate = _getDatePickerValue('task-form-date');
+          const [h, m] = timeVal.split(':').map(Number);
+          pickedDate.setHours(h, m, 0, 0);
+          payload.scheduled_date = pickedDate.toISOString();
         }
-        payload.prompt = prompt;
-        const personaVal =
-          document.getElementById('task-form-persona')?.value || '';
-        payload.character_id = personaVal;
+      }
+    } else if (triggerType === 'event') {
+      const evSel = document.getElementById('task-form-event');
+      const countInput = document.getElementById('task-form-trigger-count');
+      if (!evSel?.value) {
+        if (uiModule) uiModule.showError('Select an event');
+        return;
+      }
+      payload.trigger_event = evSel.value;
+      payload.trigger_count = parseInt(countInput?.value || '5', 10);
+    }
+    // webhook: no extra fields needed, token is auto-generated server-side
+
+    try {
+      // Edit only when we have a real existing task (has an id). A draft
+      // object passed for AI pre-fill has no id → create via POST.
+      if (existing && existing.id) {
+        await _updateTask(existing.id, payload);
+        if (uiModule) uiModule.showToast('Task updated');
       } else {
-        // Non-llm/research tasks: explicitly clear any persona on switch.
-        payload.character_id = '';
-        const action = document.getElementById('task-form-action')?.value;
-        if (!action) {
-          if (uiModule) uiModule.showError('Select an action');
-          return;
-        }
-        payload.action = action;
-        if (action === 'check_email_urgency') {
-          const urgentPrompt =
-            document.getElementById('task-form-urgent-email-prompt')?.value ||
-            '';
-          try {
-            await _saveUrgentEmailSettings(urgentPrompt);
-          } catch (e) {
-            if (uiModule) uiModule.showError('Failed to save urgency rules');
-            return;
-          }
-        }
+        await _createTask(payload);
+        if (uiModule) uiModule.showToast('Task created');
       }
-
-      // Trigger specifics
-      if (triggerType === 'schedule') {
-        const schedSelect = document.getElementById('task-form-schedule');
-        payload.schedule = schedSelect?.value || 'daily';
-
-        if (payload.schedule === 'cron') {
-          const cronVal = document
-            .getElementById('task-form-cron')
-            ?.value?.trim();
-          if (!cronVal) {
-            if (uiModule) uiModule.showError('Cron expression is required');
-            return;
-          }
-          payload.cron_expression = cronVal;
-        } else {
-          const timeVal = _getTimePickerValue('task-form-time-wrap');
-          payload.scheduled_time = _localTimeToUtc(timeVal);
-
-          const dayInput = document.getElementById('task-form-day');
-          if (dayInput) payload.scheduled_day = parseInt(dayInput.value, 10);
-
-          if (
-            payload.schedule === 'once' &&
-            document.getElementById('task-form-date')
-          ) {
-            const pickedDate = _getDatePickerValue('task-form-date');
-            const [h, m] = timeVal.split(':').map(Number);
-            pickedDate.setHours(h, m, 0, 0);
-            payload.scheduled_date = pickedDate.toISOString();
-          }
-        }
-      } else if (triggerType === 'event') {
-        const evSel = document.getElementById('task-form-event');
-        const countInput = document.getElementById('task-form-trigger-count');
-        if (!evSel?.value) {
-          if (uiModule) uiModule.showError('Select an event');
-          return;
-        }
-        payload.trigger_event = evSel.value;
-        payload.trigger_count = parseInt(countInput?.value || '5', 10);
-      }
-      // webhook: no extra fields needed, token is auto-generated server-side
-
-      try {
-        // Edit only when we have a real existing task (has an id). A draft
-        // object passed for AI pre-fill has no id → create via POST.
-        if (existing && existing.id) {
-          await _updateTask(existing.id, payload);
-          if (uiModule) uiModule.showToast('Task updated');
-        } else {
-          await _createTask(payload);
-          if (uiModule) uiModule.showToast('Task created');
-        }
-        await _fetchTasks();
-        _switchTab('tasks');
-      } catch (e) {
-        if (uiModule) uiModule.showError(e.message);
-      }
-    });
+      await _fetchTasks();
+      _switchTab('tasks');
+    } catch (e) {
+      if (uiModule) uiModule.showError(e.message);
+    }
+  });
 }
 
 // ---- Run History ----
@@ -1923,17 +1741,11 @@ async function _showRunHistory(taskId, taskName) {
   </div>`;
 
   if (runs.length === 0) {
-    html +=
-      '<div style="opacity:0.4;font-size:12px;text-align:center;padding:24px 0;">No runs yet.</div>';
+    html += '<div style="opacity:0.4;font-size:12px;text-align:center;padding:24px 0;">No runs yet.</div>';
   } else {
     html += '<div class="task-runs-list">';
     for (const run of runs) {
-      const statusClass =
-        run.status === 'success'
-          ? 'task-run-success'
-          : run.status === 'error'
-            ? 'task-run-error'
-            : 'task-run-running';
+      const statusClass = run.status === 'success' ? 'task-run-success' : (run.status === 'error' || run.status === 'failed') ? 'task-run-error' : 'task-run-running';
       html += `<div class="task-run-item ${statusClass}">
         <div class="task-run-item-header">
           ${_statusDot(run.status === 'success' ? 'active' : run.status)}
@@ -1963,9 +1775,7 @@ async function _showRunHistory(taskId, taskName) {
     resultEl.style.cursor = 'pointer';
     resultEl.addEventListener('click', () => {
       expanded = !expanded;
-      resultEl.textContent = expanded
-        ? run.result
-        : run.result.slice(0, 300) + '…';
+      resultEl.textContent = expanded ? run.result : run.result.slice(0, 300) + '…';
     });
   });
 }
@@ -1978,9 +1788,7 @@ async function _doPause(id) {
     if (uiModule) uiModule.showToast('Task paused');
     await _fetchTasks();
     _renderMainView();
-  } catch (e) {
-    if (uiModule) uiModule.showError(e.message);
-  }
+  } catch (e) { if (uiModule) uiModule.showError(e.message); }
 }
 
 async function _doResume(id) {
@@ -1989,18 +1797,13 @@ async function _doResume(id) {
     if (uiModule) uiModule.showToast('Task resumed');
     await _fetchTasks();
     _renderMainView();
-  } catch (e) {
-    if (uiModule) uiModule.showError(e.message);
-  }
+  } catch (e) { if (uiModule) uiModule.showError(e.message); }
 }
 
 async function _doRunNow(id, force = false) {
   try {
     await _runNow(id, force);
-    if (uiModule)
-      uiModule.showToast(
-        force ? 'Task triggered in parallel' : 'Task triggered',
-      );
+    if (uiModule) uiModule.showToast(force ? 'Task triggered in parallel' : 'Task triggered');
   } catch (e) {
     // Mirror the polling notification surface so the user sees the same kind
     // of feedback they get for finished/failed tasks — a real browser
@@ -2008,15 +1811,8 @@ async function _doRunNow(id, force = false) {
     const msg = e.message || 'Failed to trigger task';
     let fired = false;
     try {
-      if (
-        typeof Notification !== 'undefined' &&
-        Notification.permission === 'granted'
-      ) {
-        new Notification('Task', {
-          body: msg,
-          tag: 'task-runnow-' + id,
-          icon: '/static/favicon.ico',
-        });
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification('Task', { body: msg, tag: 'task-runnow-' + id, icon: '/static/favicon.ico' });
         fired = true;
       }
     } catch (_) {}
@@ -2026,10 +1822,7 @@ async function _doRunNow(id, force = false) {
 
 async function _doDelete(id) {
   const ok = uiModule?.styledConfirm
-    ? await uiModule.styledConfirm(
-        'Delete this task and all its run history?',
-        { confirmText: 'Delete', danger: true },
-      )
+    ? await uiModule.styledConfirm('Delete this task and all its run history?', { confirmText: 'Delete', danger: true })
     : confirm('Delete this task and all its run history?');
   if (!ok) return;
   try {
@@ -2038,56 +1831,36 @@ async function _doDelete(id) {
     if (uiModule) uiModule.showToast('Task deleted');
     await _fetchTasks();
     _renderMainView();
-  } catch (e) {
-    if (uiModule) uiModule.showError(e.message);
-  }
+  } catch (e) { if (uiModule) uiModule.showError(e.message); }
 }
 
 async function _doRevert(id) {
   const ok = uiModule?.styledConfirm
-    ? await uiModule.styledConfirm(
-        'Revert this built-in task to its default schedule and settings?',
-        { confirmText: 'Revert' },
-      )
+    ? await uiModule.styledConfirm('Revert this built-in task to its default schedule and settings?', { confirmText: 'Revert' })
     : confirm('Revert this built-in task to its default?');
   if (!ok) return;
   try {
-    const res = await fetch(`${API_BASE}/api/tasks/${id}/revert`, {
-      method: 'POST',
-      credentials: 'same-origin',
-    });
+    const res = await fetch(`${API_BASE}/api/tasks/${id}/revert`, { method: 'POST', credentials: 'same-origin' });
     if (!res.ok) throw new Error('Failed to revert task');
     if (uiModule) uiModule.showToast('Reverted to default');
     await _fetchTasks();
     _renderMainView();
-  } catch (e) {
-    if (uiModule) uiModule.showError(e.message);
-  }
+  } catch (e) { if (uiModule) uiModule.showError(e.message); }
 }
 
 async function _doClearTaskCache(id, label = 'cache') {
   const ok = uiModule?.styledConfirm
-    ? await uiModule.styledConfirm(`Clear cached ${label} for this task?`, {
-        confirmText: 'Clear',
-      })
+    ? await uiModule.styledConfirm(`Clear cached ${label} for this task?`, { confirmText: 'Clear' })
     : confirm(`Clear cached ${label} for this task?`);
   if (!ok) return;
   try {
-    const res = await fetch(
-      `${API_BASE}/api/tasks/${encodeURIComponent(id)}/clear-cache`,
-      {
-        method: 'POST',
-        credentials: 'same-origin',
-      },
-    );
+    const res = await fetch(`${API_BASE}/api/tasks/${encodeURIComponent(id)}/clear-cache`, {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok)
-      throw new Error(data.detail || data.error || `HTTP ${res.status}`);
-    const n =
-      Object.values(data.cleared || {}).reduce(
-        (a, b) => a + Number(b || 0),
-        0,
-      ) + Number(data.files || 0);
+    if (!res.ok || !data.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+    const n = Object.values(data.cleared || {}).reduce((a, b) => a + Number(b || 0), 0) + Number(data.files || 0);
     if (uiModule) uiModule.showToast(`Cleared ${label}${n ? ` (${n})` : ''}`);
   } catch (e) {
     if (uiModule) uiModule.showError(`Clear cache failed: ${e.message || e}`);
@@ -2096,13 +1869,10 @@ async function _doClearTaskCache(id, label = 'cache') {
 
 async function _doToggleAll() {
   // If any task is active → pause all. Else resume all paused tasks.
-  const hasActive = _tasks.some((t) => t.status === 'active');
-  const targets = _tasks.filter(
-    (t) => t.status === (hasActive ? 'active' : 'paused'),
-  );
+  const hasActive = _tasks.some(t => t.status === 'active');
+  const targets = _tasks.filter(t => t.status === (hasActive ? 'active' : 'paused'));
   if (targets.length === 0) {
-    if (uiModule)
-      uiModule.showToast('No tasks to ' + (hasActive ? 'pause' : 'resume'));
+    if (uiModule) uiModule.showToast('No tasks to ' + (hasActive ? 'pause' : 'resume'));
     return;
   }
   const verb = hasActive ? 'Pause' : 'Resume';
@@ -2110,14 +1880,13 @@ async function _doToggleAll() {
   if (uiModule?.styledConfirm) {
     confirmed = await uiModule.styledConfirm(
       `${verb} all ${targets.length} ${hasActive ? 'active' : 'paused'} task(s)?`,
-      { confirmText: verb + ' all' },
+      { confirmText: verb + ' all' }
     );
   } else if (typeof confirm === 'function') {
     confirmed = confirm(`${verb} ${targets.length} task(s)?`);
   }
   if (!confirmed) return;
-  let ok = 0,
-    fails = [];
+  let ok = 0, fails = [];
   for (const t of targets) {
     try {
       if (hasActive) await _pauseTask(t.id);
@@ -2129,10 +1898,7 @@ async function _doToggleAll() {
   }
   if (uiModule) {
     if (fails.length === 0) uiModule.showToast(`${verb}d all ${ok} task(s)`);
-    else
-      uiModule.showError(
-        `${verb}d ${ok}/${targets.length} — failed: ${fails.slice(0, 3).join(', ')}`,
-      );
+    else uiModule.showError(`${verb}d ${ok}/${targets.length} — failed: ${fails.slice(0, 3).join(', ')}`);
   }
   await _fetchTasks();
   _renderMainView();
@@ -2141,12 +1907,10 @@ async function _doToggleAll() {
 function _syncPauseAllButton() {
   const btn = document.getElementById('tasks-pause-all-btn');
   if (!btn) return;
-  const pauseIco =
-    '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
-  const playIco =
-    '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
-  const hasActive = _tasks.some((t) => t.status === 'active');
-  const hasPaused = _tasks.some((t) => t.status === 'paused');
+  const pauseIco = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+  const playIco = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:3px;"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
+  const hasActive = _tasks.some(t => t.status === 'active');
+  const hasPaused = _tasks.some(t => t.status === 'paused');
   if (hasActive) {
     btn.innerHTML = pauseIco + 'Pause all';
     btn.title = 'Pause every active task';
@@ -2172,7 +1936,7 @@ function _switchTab(tab) {
   _activeTab = tab;
   const modal = document.getElementById('tasks-modal');
   if (!modal) return;
-  modal.querySelectorAll('.tasks-tab').forEach((b) => {
+  modal.querySelectorAll('.tasks-tab').forEach(b => {
     const on = b.dataset.tab === tab;
     b.setAttribute('aria-selected', on ? 'true' : 'false');
     b.classList.toggle('active', on);
@@ -2189,7 +1953,7 @@ async function _renderActivityView() {
   const body = modal?.querySelector('.modal-body');
   if (!body) return;
   body.innerHTML = `
-    <div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+    <div class="admin-card tasks-activity-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;">
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
         <h2 style="margin:0;padding:0;line-height:1;">Activity</h2>
         <button class="memory-toolbar-btn" id="tasks-activity-refresh" title="Refresh" style="margin-left:auto;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button>
@@ -2199,27 +1963,22 @@ async function _renderActivityView() {
         <input type="text" id="tasks-activity-search" placeholder="Filter activity…" class="memory-search-input" style="flex:1;" />
       </div>
       <div class="tasks-activity-filters" id="tasks-activity-chips" style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap;"></div>
-      <div id="tasks-activity-list" class="memory-list" style="flex:1;overflow:auto;font-size:13px;"></div>
+      <div id="tasks-activity-list" class="memory-list tasks-activity-list" style="flex:1;overflow:auto;font-size:13px;min-height:0;"></div>
     </div>
   `;
 
-  document
-    .getElementById('tasks-activity-refresh')
-    .addEventListener('click', _renderActivityView);
+  document.getElementById('tasks-activity-refresh').addEventListener('click', _renderActivityView);
 
   // Solo filter: clicking a chip shows ONLY that group (a category, or
   // Errors). Clicking the active chip again clears the filter (show all).
   // At most one chip is active at a time. _solo holds the active key, or null.
   let _afQuery = '';
-  let _solo = null; // 'cat:<Category>' | 'status:error' | null
+  let _solo = null;  // 'cat:<Category>' | 'status:error' | null
 
   const _entryCat = (e) => _categoryLabel(e.taskName);
   const _entryStatus = (e) =>
-    e.status === 'success' || _classifyResult(e.result) === 'ok'
-      ? 'ok'
-      : e.status === 'error' || _classifyResult(e.result) === 'error'
-        ? 'error'
-        : 'info';
+    (e.status === 'success' || _classifyResult(e.result) === 'ok') ? 'ok'
+    : (e.status === 'error' || e.status === 'failed' || _classifyResult(e.result) === 'error') ? 'error' : 'info';
   const _isNotification = (e) => e.output_target === 'notification';
 
   const _matchesSolo = (e) => {
@@ -2237,20 +1996,27 @@ async function _renderActivityView() {
     const list = document.getElementById('tasks-activity-list');
     if (!list) return;
     const q = _afQuery.trim().toLowerCase();
-    const filtered = _activityEntries.filter((e) => {
+    const filtered = _activityEntries.filter(e => {
       if (!_matchesSolo(e)) return false;
-      if (q && !`${e.taskName} ${e.result}`.toLowerCase().includes(q))
-        return false;
+      if (q && !(`${e.taskName} ${e.result}`.toLowerCase().includes(q))) return false;
       return true;
     });
     if (filtered.length === 0) {
-      list.innerHTML =
-        '<div style="opacity:0.5;padding:12px;">No matching activity.</div>';
+      list.innerHTML = '<div style="opacity:0.5;padding:12px;">No matching activity.</div>';
       return;
     }
-    list.innerHTML = _stackActivityEntries(filtered)
-      .map(_renderActivityEntry)
-      .join('');
+    list.innerHTML = _stackActivityEntries(filtered).map(_renderActivityEntry).join('');
+    if (_activityHasMore && !q) {
+      list.insertAdjacentHTML('beforeend', `
+        <button type="button" class="memory-toolbar-btn tasks-activity-load-more" id="tasks-activity-load-more" style="width:100%;justify-content:center;margin-top:6px;">
+          Load more
+        </button>
+      `);
+      list.querySelector('#tasks-activity-load-more')?.addEventListener('click', () => {
+        _activityLimit = Math.min(200, _activityLimit + 40);
+        _renderActivityView();
+      });
+    }
     _wireActivityRows(list);
   };
 
@@ -2265,29 +2031,22 @@ async function _renderActivityView() {
       const c = _entryCat(e);
       if (!cats.includes(c)) cats.push(c);
     }
-    const hasErrors = _activityEntries.some(
-      (e) => !_isNotification(e) && _entryStatus(e) === 'error',
-    );
+    const hasErrors = _activityEntries.some(e => !_isNotification(e) && _entryStatus(e) === 'error');
     // Count notifications that would actually display under the chip — applies
     // the active search query so the badge matches what you'd see, not a
     // misleading total.
     const _q = _afQuery.trim().toLowerCase();
-    const notifCount = _activityEntries.filter(
-      (e) =>
-        _isNotification(e) &&
-        (!_q || `${e.taskName} ${e.result}`.toLowerCase().includes(_q)),
+    const notifCount = _activityEntries.filter(e =>
+      _isNotification(e) && (!_q || `${e.taskName} ${e.result}`.toLowerCase().includes(_q))
     ).length;
     // Active chip is highlighted; when one is soloed the rest dim ('off').
     // Library-style .memory-cat-chip, with an "all" chip; the active one
     // highlights. Solo-select: clicking shows only that group.
     const cls = (active) => 'memory-cat-chip' + (active ? ' active' : '');
     let html = `<button class="${cls(!_solo)}" data-key="">all</button>`;
-    html += cats
-      .map(
-        (c) =>
-          `<button class="${cls(_solo === 'cat:' + c)}" data-key="cat:${c}">${_escHtml(c)}</button>`,
-      )
-      .join('');
+    html += cats.map(c =>
+      `<button class="${cls(_solo === 'cat:' + c)}" data-key="cat:${c}">${_escHtml(c)}</button>`
+    ).join('');
     if (hasErrors) {
       html += `<button class="${cls(_solo === 'status:error')}" data-key="status:error">errors</button>`;
     }
@@ -2295,10 +2054,10 @@ async function _renderActivityView() {
       html += `<button class="${cls(_solo === 'notifications')}" data-key="notifications">notifications <span style="opacity:0.6;font-weight:normal;">${notifCount}</span></button>`;
     }
     chipBar.innerHTML = html;
-    chipBar.querySelectorAll('.memory-cat-chip').forEach((chip) => {
+    chipBar.querySelectorAll('.memory-cat-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         const key = chip.dataset.key;
-        _solo = key ? (_solo === key ? null : key) : null; // "all" or re-click clears
+        _solo = key ? (_solo === key ? null : key) : null;  // "all" or re-click clears
         _buildChips();
         _applyFilter();
       });
@@ -2306,12 +2065,7 @@ async function _renderActivityView() {
   };
 
   const searchEl = document.getElementById('tasks-activity-search');
-  if (searchEl)
-    searchEl.addEventListener('input', () => {
-      _afQuery = searchEl.value;
-      _buildChips();
-      _applyFilter();
-    });
+  if (searchEl) searchEl.addEventListener('input', () => { _afQuery = searchEl.value; _buildChips(); _applyFilter(); });
 
   const _actList = document.getElementById('tasks-activity-list');
   if (_activityEntries.length) {
@@ -2322,24 +2076,21 @@ async function _renderActivityView() {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/tasks/runs/recent?limit=100`, {
-      credentials: 'same-origin',
-    });
+    const res = await fetch(`${API_BASE}/api/tasks/runs/recent?limit=${_activityLimit}&max_result_chars=6000`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const runs = data.runs || [];
+    _activityHasMore = !!data.has_more && _activityLimit < 200;
     const list = document.getElementById('tasks-activity-list');
     if (!list) return;
     if (runs.length === 0) {
-      list.innerHTML =
-        '<div style="opacity:0.5;padding:12px;">No activity yet. Scheduled tasks will log here once they run.</div>';
+      list.innerHTML = '<div style="opacity:0.5;padding:12px;">No activity yet. Scheduled tasks will log here once they run.</div>';
       return;
     }
-    _activityEntries = runs.map((r) => {
+    _activityEntries = runs.map(r => {
       let resultText = r.result || r.error || '';
       if (!resultText) {
-        if (r.status === 'queued')
-          resultText = '_Queued — waiting for a free slot…_';
+        if (r.status === 'queued')  resultText = '_Queued — waiting for a free slot…_';
         if (r.status === 'running') resultText = '_Running…_';
       }
       return {
@@ -2348,9 +2099,7 @@ async function _renderActivityView() {
         // in chat" (llm/research) and "Copy log" (action). Was hardcoded
         // 'task', which never matched and made Open-in-chat dead code.
         kind: r.task_type || 'llm',
-        taskName:
-          r.task_name ||
-          (r.task_type === 'action' ? r.action || 'Action' : 'Task'),
+        taskName: r.task_name || (r.task_type === 'action' ? (r.action || 'Action') : 'Task'),
         taskId: r.task_id,
         action: r.action || '',
         result: resultText,
@@ -2368,16 +2117,18 @@ async function _renderActivityView() {
     _applyFilter();
   } catch (e) {
     const list = document.getElementById('tasks-activity-list');
-    if (list)
-      list.innerHTML = `<div style="opacity:0.5;padding:12px;">Failed to load activity: ${_escHtml(e.message || String(e))}</div>`;
+    if (list) list.innerHTML = `<div style="opacity:0.5;padding:12px;">Failed to load activity: ${_escHtml(e.message || String(e))}</div>`;
   }
 }
 
 let _activityEntries = [];
+let _activityLimit = 40;
+let _activityHasMore = false;
 
 function _stackActivityEntries(entries) {
   const out = [];
   const byKey = new Map();
+  const maxStack = 8;
   const hourBucket = (ts) => {
     const d = ts ? new Date(ts) : null;
     if (!d || Number.isNaN(d.getTime())) return '';
@@ -2405,15 +2156,16 @@ function _stackActivityEntries(entries) {
       /^Email\b/i.test(entry.taskName || '') ? hourBucket(entry.ts) : '',
     ].join('\u0001');
     const existing = byKey.get(key);
-    if (existing && entry.status !== 'running' && entry.status !== 'queued') {
+    if (
+      existing
+      && entry.status !== 'running'
+      && entry.status !== 'queued'
+      && (existing.repeatCount || 1) < maxStack
+    ) {
       existing.repeatCount = (existing.repeatCount || 1) + 1;
       continue;
     }
-    const stacked = {
-      ...entry,
-      repeatCount: 1,
-      sourceIdx: _activityEntries.indexOf(entry),
-    };
+    const stacked = { ...entry, repeatCount: 1, sourceIdx: _activityEntries.indexOf(entry) };
     byKey.set(key, stacked);
     out.push(stacked);
   }
@@ -2447,12 +2199,10 @@ function _startActivityTimers(root) {
   }, 1000);
 }
 function _tickActivityTimers(root) {
-  const els = (root || document).querySelectorAll(
-    '.task-log-running-elapsed[data-since]',
-  );
+  const els = (root || document).querySelectorAll('.task-log-running-elapsed[data-since]');
   if (!els.length) return false;
   const now = Date.now();
-  els.forEach((el) => {
+  els.forEach(el => {
     const since = parseInt(el.dataset.since, 10);
     if (since) el.textContent = _fmtElapsed(now - since);
   });
@@ -2464,14 +2214,13 @@ function _wireActivityRows(list) {
   // Replace the [data-spin-here] placeholders in running/queued rows with the
   // app's whirlpool spinner element (createElement, with a stop hook so the
   // poll's next render clears them cleanly).
-  list.querySelectorAll('[data-spin-here]').forEach((slot) => {
+  list.querySelectorAll('[data-spin-here]').forEach(slot => {
     try {
       const wp = spinnerModule.createWhirlpool(12);
       // Right-side placement (next to the "Running" label) — small left
       // margin to separate from the text, no right margin so the spinner
       // sits flush with the row's right edge.
-      wp.element.style.cssText =
-        'display:inline-flex;width:12px;height:12px;margin:0 0 0 6px;vertical-align:middle;';
+      wp.element.style.cssText = 'display:inline-flex;width:12px;height:12px;margin:0 0 0 6px;vertical-align:middle;';
       slot.replaceWith(wp.element);
     } catch (_) {
       slot.textContent = '…';
@@ -2480,57 +2229,47 @@ function _wireActivityRows(list) {
   // Kick the live elapsed-timer interval (running rows only — queued has no
   // counter). No-op when there's nothing to tick.
   _startActivityTimers(list);
-  list.querySelectorAll('.task-log-row').forEach((row) => {
+  list.querySelectorAll('.task-log-row').forEach(row => {
     // Click anywhere on the row to toggle expand.
     // Buttons inside still get their own handlers via stopPropagation.
     if (!row.classList.contains('is-skipped')) {
       row.addEventListener('click', () => row.classList.toggle('expanded'));
     }
-    row
-      .querySelector('.task-log-row-toggle')
-      ?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        row.classList.toggle('expanded');
-      });
+    row.querySelector('.task-log-row-toggle')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      row.classList.toggle('expanded');
+    });
     row.querySelector('.task-log-open-chat')?.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(row.dataset.entryIdx, 10);
       const entry = _activityEntries[idx];
       if (entry) _openResultInChat(entry);
     });
-    row
-      .querySelector('.task-log-open-report')
-      ?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const idx = parseInt(row.dataset.entryIdx, 10);
-        const entry = _activityEntries[idx];
-        if (entry?.researchId)
-          window.open(
-            `${API_BASE}/api/research/report/${encodeURIComponent(entry.researchId)}`,
-            '_blank',
-          );
-      });
+    row.querySelector('.task-log-open-report')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(row.dataset.entryIdx, 10);
+      const entry = _activityEntries[idx];
+      if (entry?.researchId) window.open(`${API_BASE}/api/research/report/${encodeURIComponent(entry.researchId)}`, '_blank');
+    });
     row.querySelector('.task-log-force-run')?.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(row.dataset.entryIdx, 10);
       const entry = _activityEntries[idx];
       if (entry?.taskId) _doRunNow(entry.taskId, true);
     });
-    row
-      .querySelector('.task-log-stop')
-      ?.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const idx = parseInt(row.dataset.entryIdx, 10);
-        const entry = _activityEntries[idx];
-        if (!entry?.taskId) return;
-        try {
-          await _stopTask(entry.taskId);
-          uiModule.showToast('Task stopped');
-          _renderActivityView();
-        } catch (err) {
-          uiModule.showError(err.message || 'Failed to stop task');
-        }
-      });
+    row.querySelector('.task-log-stop')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const idx = parseInt(row.dataset.entryIdx, 10);
+      const entry = _activityEntries[idx];
+      if (!entry?.taskId) return;
+      try {
+        await _stopTask(entry.taskId);
+        uiModule.showToast('Task stopped');
+        _renderActivityView();
+      } catch (err) {
+        uiModule.showError(err.message || 'Failed to stop task');
+      }
+    });
     row.querySelector('.task-log-run-again')?.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(row.dataset.entryIdx, 10);
@@ -2546,19 +2285,14 @@ function _wireActivityRows(list) {
       try {
         uiModule.copyToClipboard(txt);
         uiModule.showToast('Log copied');
-      } catch (_) {
-        uiModule.showError('Copy failed');
-      }
+      } catch (_) { uiModule.showError('Copy failed'); }
     });
-    row
-      .querySelector('.task-log-clear-cache')
-      ?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const idx = parseInt(row.dataset.entryIdx, 10);
-        const entry = _activityEntries[idx];
-        if (entry?.taskId)
-          _doClearTaskCache(entry.taskId, _taskClearCacheLabel(entry));
-      });
+    row.querySelector('.task-log-clear-cache')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(row.dataset.entryIdx, 10);
+      const entry = _activityEntries[idx];
+      if (entry?.taskId) _doClearTaskCache(entry.taskId, _taskClearCacheLabel(entry));
+    });
   });
 }
 
@@ -2569,39 +2303,24 @@ async function _openResultInChat(entry) {
     // Pick an endpoint/model. Prefer the model the task actually ran on
     // (if it's currently reachable), else fall back to the first online
     // endpoint. The user can switch models in the chat anyway.
-    let url = '',
-      model = '',
-      epId = '';
+    let url = '', model = '', epId = '';
     const items = (() => {
-      try {
-        return window.modelsModule && window.modelsModule.getCachedItems
-          ? window.modelsModule.getCachedItems()
-          : [];
-      } catch {
-        return [];
-      }
+      try { return (window.modelsModule && window.modelsModule.getCachedItems) ? window.modelsModule.getCachedItems() : []; }
+      catch { return []; }
     })();
     if (entry.model) {
       // Find an online endpoint that serves the task's model.
-      const match = items.find(
-        (it) => !it.offline && (it.models || []).includes(entry.model),
-      );
-      if (match) {
-        url = match.url;
-        model = entry.model;
-        epId = match.endpoint_id || '';
-      } else if (entry.endpointUrl) {
+      const match = items.find(it => !it.offline && (it.models || []).includes(entry.model));
+      if (match) { url = match.url; model = entry.model; epId = match.endpoint_id || ''; }
+      else if (entry.endpointUrl) {
         // Endpoint known but not in the live list (e.g. cookbook model
         // not currently served) — try it anyway with skip_validation.
-        url = entry.endpointUrl;
-        model = entry.model;
+        url = entry.endpointUrl; model = entry.model;
       }
     }
     if (!url) {
       try {
-        const dcRes = await fetch(`${API_BASE}/api/default-chat`, {
-          credentials: 'same-origin',
-        });
+        const dcRes = await fetch(`${API_BASE}/api/default-chat`, { credentials: 'same-origin' });
         const dc = dcRes.ok ? await dcRes.json() : {};
         url = dc.endpoint_url || '';
         model = dc.model || model || '';
@@ -2613,28 +2332,13 @@ async function _openResultInChat(entry) {
       // and an endpoint may list one first (e.g. text-embedding-ada-002).
       const _isChatModel = (m) => {
         const l = (m || '').toLowerCase();
-        return (
-          !!l &&
-          ![
-            'text-embedding',
-            'embedding',
-            'tts-',
-            'whisper',
-            'text-moderation',
-            'moderation-',
-            'dall-e',
-            'rerank',
-          ].some((p) => l.includes(p))
-        );
+        return !!l && !['text-embedding', 'embedding', 'tts-', 'whisper', 'text-moderation', 'moderation-', 'dall-e', 'rerank'].some(p => l.includes(p));
       };
-      const online =
-        items.find(
-          (it) => !it.offline && (it.models || []).some(_isChatModel),
-        ) || items.find((it) => !it.offline && (it.models || []).length);
+      const online = items.find(it => !it.offline && (it.models || []).some(_isChatModel))
+        || items.find(it => !it.offline && (it.models || []).length);
       if (online) {
         url = online.url;
-        model =
-          (online.models || []).find(_isChatModel) || (online.models || [])[0];
+        model = (online.models || []).find(_isChatModel) || (online.models || [])[0];
         epId = online.endpoint_id || '';
       }
     }
@@ -2645,44 +2349,26 @@ async function _openResultInChat(entry) {
     if (url) fd.append('endpoint_url', url);
     if (model) fd.append('model', model);
     if (epId) fd.append('endpoint_id', epId);
-    const res = await fetch(`${API_BASE}/api/session`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      body: fd,
-    });
-    if (!res.ok) {
-      uiModule.showToast(`Couldn't create chat (HTTP ${res.status})`);
-      return;
-    }
+    const res = await fetch(`${API_BASE}/api/session`, { method: 'POST', credentials: 'same-origin', body: fd });
+    if (!res.ok) { uiModule.showToast(`Couldn't create chat (HTTP ${res.status})`); return; }
     const sess = await res.json();
     const sid = sess.id || sess.session_id;
-    if (!sid) {
-      uiModule.showToast('Chat created but no session id returned');
-      return;
-    }
+    if (!sid) { uiModule.showToast('Chat created but no session id returned'); return; }
 
     // Seed the conversation: a framing user line + the result as assistant.
     await fetch(`${API_BASE}/api/session/${sid}/inject_messages`, {
-      method: 'POST',
-      credentials: 'same-origin',
+      method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [
-          {
-            role: 'user',
-            content: `Here is the latest run of my scheduled task "${entry.taskName}". Let's review it.`,
-          },
-          { role: 'assistant', content: entry.result || '(no output)' },
-        ],
-      }),
+      body: JSON.stringify({ messages: [
+        { role: 'user', content: `Here is the latest run of my scheduled task "${entry.taskName}". Let's review it.` },
+        { role: 'assistant', content: entry.result || '(no output)' },
+      ] }),
     });
 
     closeTasks();
     if (window.sessionModule) {
-      if (window.sessionModule.loadSessions)
-        await window.sessionModule.loadSessions();
-      if (window.sessionModule.selectSession)
-        window.sessionModule.selectSession(sid);
+      if (window.sessionModule.loadSessions) await window.sessionModule.loadSessions();
+      if (window.sessionModule.selectSession) window.sessionModule.selectSession(sid);
     }
   } catch (e) {
     uiModule.showToast(`Open in chat failed: ${e.message || e}`);
@@ -2691,10 +2377,7 @@ async function _openResultInChat(entry) {
 
 function _classifyResult(text) {
   const t = (text || '').toLowerCase();
-  if (
-    /\b(error|failed|failure|exception|traceback|could not|couldn't)\b/.test(t)
-  )
-    return 'error';
+  if (/\b(error|failed|failure|exception|traceback|could not|couldn't)\b/.test(t)) return 'error';
   if (/\b(done|completed|success|ok|finished)\b/.test(t)) return 'ok';
   return 'info';
 }
@@ -2703,22 +2386,13 @@ function _classifyResult(text) {
 // hue derived from the task name's hash, so a recurring custom task keeps
 // the same color from one run to the next.
 const _CATEGORY_HUES = [
-  {
-    hue: 210,
-    kw: /\b(email|inbox|mail|smtp|imap|reply|summary|spam|urgency)\b/i,
-  }, // blue   — email
-  {
-    hue: 280,
-    kw: /\b(research|web ?search|deep[-_ ]research|sources?|investigate)\b/i,
-  }, // purple — research
-  {
-    hue: 35,
-    kw: /\b(cookbook|model[-_ ]?(serve|download)|hf|huggingface|vllm|llama|ollama)\b/i,
-  }, // amber — cookbook
-  { hue: 150, kw: /\b(calendar|event|meeting|appointment|schedule)\b/i }, // green  — calendar
-  { hue: 330, kw: /\b(reminder|note|notify|alert)\b/i }, // pink   — reminders
-  { hue: 10, kw: /\b(check[-_ ]?in|morning|evening|daily|standup)\b/i }, // red    — check-ins
-  { hue: 190, kw: /\b(memory|memories|remember|recall)\b/i }, // teal   — memory
+  { hue: 210, kw: /\b(email|inbox|mail|smtp|imap|reply|summary|spam|urgency)\b/i },     // blue   — email
+  { hue: 280, kw: /\b(research|web ?search|deep[-_ ]research|sources?|investigate)\b/i },// purple — research
+  { hue:  35, kw: /\b(cookbook|model[-_ ]?(serve|download)|hf|huggingface|vllm|llama|ollama)\b/i }, // amber — cookbook
+  { hue: 150, kw: /\b(calendar|event|meeting|appointment|schedule)\b/i },                // green  — calendar
+  { hue: 330, kw: /\b(reminder|note|notify|alert)\b/i },                                 // pink   — reminders
+  { hue:  10, kw: /\b(check[-_ ]?in|morning|evening|daily|standup)\b/i },                // red    — check-ins
+  { hue: 190, kw: /\b(memory|memories|remember|recall)\b/i },                            // teal   — memory
 ];
 
 function _hashHue(s) {
@@ -2728,7 +2402,7 @@ function _hashHue(s) {
 }
 
 function _categoryHue(taskName, kind) {
-  if (kind === 'you') return 220; // user message — neutral blue-grey
+  if (kind === 'you') return 220;          // user message — neutral blue-grey
   const t = (taskName || '').toLowerCase();
   for (const c of _CATEGORY_HUES) {
     if (c.kw.test(t)) return c.hue;
@@ -2739,28 +2413,13 @@ function _categoryHue(taskName, kind) {
 // Coarse category label for the activity filter chips. Mirrors the
 // hue keyword groups so the chip color matches the row stripe.
 const _CATEGORY_LABELS = [
-  {
-    label: 'email',
-    kw: /\b(email|inbox|mail|smtp|imap|reply|spam|urgency)\b/i,
-  },
-  {
-    label: 'research',
-    kw: /\b(research|web ?search|deep[-_ ]research|sources?|investigate)\b/i,
-  },
-  {
-    label: 'cookbook',
-    kw: /\b(cookbook|model[-_ ]?(serve|download)|hf|huggingface|vllm|llama|ollama)\b/i,
-  },
-  {
-    label: 'calendar',
-    kw: /\b(calendar|event|meeting|appointment|schedule)\b/i,
-  },
+  { label: 'email',     kw: /\b(email|inbox|mail|smtp|imap|reply|spam|urgency)\b/i },
+  { label: 'research',  kw: /\b(research|web ?search|deep[-_ ]research|sources?|investigate)\b/i },
+  { label: 'cookbook',  kw: /\b(cookbook|model[-_ ]?(serve|download)|hf|huggingface|vllm|llama|ollama)\b/i },
+  { label: 'calendar',  kw: /\b(calendar|event|meeting|appointment|schedule)\b/i },
   { label: 'reminders', kw: /\b(reminder|note|notify|alert)\b/i },
-  {
-    label: 'check-in',
-    kw: /\b(check[-_ ]?in|morning|evening|daily|standup)\b/i,
-  },
-  { label: 'memory', kw: /\b(memory|memories|remember|recall)\b/i },
+  { label: 'check-in',  kw: /\b(check[-_ ]?in|morning|evening|daily|standup)\b/i },
+  { label: 'memory',    kw: /\b(memory|memories|remember|recall)\b/i },
 ];
 function _categoryLabel(taskName) {
   const t = (taskName || '').toLowerCase();
@@ -2771,27 +2430,19 @@ function _categoryLabel(taskName) {
 function _renderActivityEntry(entry) {
   // Canonical index into _activityEntries (map() passes the FILTERED
   // index, which would be wrong) — used by the Open-in-chat handler.
-  const entryIdx = Number.isInteger(entry.sourceIdx)
-    ? entry.sourceIdx
-    : _activityEntries.indexOf(entry);
-  const repeatBadge =
-    entry.repeatCount > 1
-      ? `<span class="task-log-repeat" title="${entry.repeatCount} similar activity rows">+${entry.repeatCount - 1} repeats</span>`
-      : '';
+  const entryIdx = Number.isInteger(entry.sourceIdx) ? entry.sourceIdx : _activityEntries.indexOf(entry);
+  const repeatBadge = entry.repeatCount > 1
+    ? `<span class="task-log-repeat" title="${entry.repeatCount} similar activity rows">+${entry.repeatCount - 1} repeats</span>`
+    : '';
   const tsLabel = _relativeTime(entry.ts);
   const tsAbs = entry.ts ? new Date(entry.ts).toLocaleString() : '';
   // Prefer the run's own status (queued / running / success / error / skipped)
   // over heuristic text classification. Fall back to text-scan for older
   // rows where entry.status is missing.
   let status;
-  if (
-    entry.status === 'queued' ||
-    entry.status === 'running' ||
-    entry.status === 'skipped' ||
-    entry.status === 'aborted'
-  ) {
+  if (entry.status === 'queued' || entry.status === 'running' || entry.status === 'skipped' || entry.status === 'aborted') {
     status = entry.status;
-  } else if (entry.status === 'error') {
+  } else if (entry.status === 'error' || entry.status === 'failed') {
     status = 'error';
   } else if (entry.status === 'success') {
     status = 'ok';
@@ -2799,10 +2450,9 @@ function _renderActivityEntry(entry) {
     status = _classifyResult(entry.result);
   }
   const statusDot = `<span class="task-log-status task-log-status-${status}" title="${status}"></span>`;
-  const failedTag =
-    status === 'error'
-      ? '<span class="task-log-failed-tag">(failed)</span>'
-      : '';
+  const failedTag = status === 'error'
+    ? '<span class="task-log-failed-tag">(failed)</span>'
+    : '';
   // Render the result through markdown so code blocks, lists, links look right.
   let resultHtml;
   const _isRunning = entry.status === 'running' || entry.status === 'queued';
@@ -2813,9 +2463,7 @@ function _renderActivityEntry(entry) {
     resultHtml = '';
   } else {
     try {
-      resultHtml = markdownModule.processWithThinking(
-        markdownModule.squashOutsideCode(entry.result || ''),
-      );
+      resultHtml = markdownModule.processWithThinking(markdownModule.squashOutsideCode(entry.result || ''));
     } catch {
       resultHtml = `<pre style="white-space:pre-wrap;word-break:break-word;">${_escHtml(entry.result || '')}</pre>`;
     }
@@ -2827,46 +2475,29 @@ function _renderActivityEntry(entry) {
   // contain "\n[N] ..." sequences that the prefix regex would otherwise mangle.
   {
     const tagRe = /(^|<p>|<br\s*\/?>|\n)\[([^\]\n<>]{1,40})\]\s*/g;
-    const replaceTags = (s) =>
-      s.replace(tagRe, '$1<span class="task-log-account-tag">$2</span> ');
+    const replaceTags = (s) => s.replace(tagRe, '$1<span class="task-log-account-tag">$2</span> ');
     // Split on whole <pre>...</pre> blocks (greedy match per block); only
     // transform the outside-of-pre segments. Then do the same for any stray
     // inline <code>...</code> spans inside the surviving outside text.
     const parts = resultHtml.split(/(<pre[\s\S]*?<\/pre>)/i);
-    resultHtml = parts
-      .map((seg, i) => {
-        if (i % 2 === 1) return seg; // odd indices = the <pre>…</pre> chunks, leave intact
-        const codeParts = seg.split(/(<code[\s\S]*?<\/code>)/i);
-        return codeParts
-          .map((cs, j) => (j % 2 === 1 ? cs : replaceTags(cs)))
-          .join('');
-      })
-      .join('');
+    resultHtml = parts.map((seg, i) => {
+      if (i % 2 === 1) return seg;  // odd indices = the <pre>…</pre> chunks, leave intact
+      const codeParts = seg.split(/(<code[\s\S]*?<\/code>)/i);
+      return codeParts.map((cs, j) => j % 2 === 1 ? cs : replaceTags(cs)).join('');
+    }).join('');
   }
   const lineCount = (entry.result || '').split('\n').length;
   const long = (entry.result || '').length > 600 || lineCount > 8;
   const promptHtml = entry.prompt
     ? `<details class="task-log-prompt"><summary>Prompt</summary><pre>${_escHtml(entry.prompt)}</pre></details>`
     : '';
-  const hue = _categoryHue(entry.taskName, entry.kind);
+  const hue = status === 'error' ? 0 : _categoryHue(entry.taskName, entry.kind);
+  const rowStatusClass = ` task-log-row-${status}`;
   // CSS vars feed the colored title + accent stripe.
   const styleVars = `--cat-hue:${hue};`;
-  const _runningPlaceholder =
-    /^(Starting…|Starting\.\.\.|_Running…_|_Running\.\.\._|_Queued\b)/i.test(
-      (entry.result || '').trim(),
-    );
-  const hasResult = !!(
-    entry.result &&
-    entry.result.trim() &&
-    entry.status !== 'running' &&
-    entry.status !== 'queued'
-  );
-  const hasRunningProgress = !!(
-    entry.result &&
-    entry.result.trim() &&
-    !_runningPlaceholder &&
-    (entry.status === 'running' || entry.status === 'queued')
-  );
+  const _runningPlaceholder = /^(Starting…|Starting\.\.\.|_Running…_|_Running\.\.\._|_Queued\b)/i.test((entry.result || '').trim());
+  const hasResult = !!(entry.result && entry.result.trim() && entry.status !== 'running' && entry.status !== 'queued');
+  const hasRunningProgress = !!(entry.result && entry.result.trim() && !_runningPlaceholder && (entry.status === 'running' || entry.status === 'queued'));
   // "Open in chat" only makes sense for runs whose result is a real assistant
   // message (Prompt / Research tasks). Action/event runs are just log lines
   // (e.g. "No recent emails", "Tidied N memories") — for those, replace the
@@ -2913,18 +2544,11 @@ function _renderActivityEntry(entry) {
     const isQueued = entry.status === 'queued';
     // Initial elapsed for the first paint; the 1s interval below keeps it live.
     const startMs = entry.ts ? new Date(entry.ts).getTime() : Date.now();
-    const stale = !isQueued && Date.now() - startMs > 30 * 60 * 1000;
+    const stale = !isQueued && (Date.now() - startMs) > 30 * 60 * 1000;
     const label = isQueued ? 'Queued' : stale ? 'Still running' : 'Running';
-    const elapsedInit = isQueued
-      ? ''
-      : `<span class="task-log-running-elapsed" data-since="${startMs}">${_fmtElapsed(Date.now() - startMs)}</span>`;
-    const forceBtn =
-      isQueued && entry.taskId
-        ? `<button class="task-log-force-run" type="button" title="Start now in parallel, bypassing the queue"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg><span>Start now</span></button>`
-        : '';
-    const stopBtn = entry.taskId
-      ? `<button class="task-log-stop" type="button" title="Stop this task"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>`
-      : '';
+    const elapsedInit = isQueued ? '' : `<span class="task-log-running-elapsed" data-since="${startMs}">${_fmtElapsed(Date.now() - startMs)}</span>`;
+    const forceBtn = isQueued && entry.taskId ? `<button class="task-log-force-run" type="button" title="Start now in parallel, bypassing the queue"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg><span>Start now</span></button>` : '';
+    const stopBtn = entry.taskId ? `<button class="task-log-stop" type="button" title="Stop this task"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>` : '';
     rightHtml = `<span class="task-log-running-inline"><span class="task-log-running-label">${label}</span>${elapsedInit}<span data-spin-here="1"></span>${forceBtn}${stopBtn}</span>`;
   } else {
     rightHtml = `<span class="task-log-time" title="${_escHtml(tsAbs)}">${_escHtml(tsLabel)}</span>`;
@@ -2936,7 +2560,7 @@ function _renderActivityEntry(entry) {
   if (_isSkipped) {
     const reason = (entry.result || '').trim();
     return `
-      <div class="task-log-row is-skipped" data-kind="${_escHtml(entry.kind)}" data-entry-idx="${entryIdx}" style="${styleVars}">
+      <div class="task-log-row is-skipped${rowStatusClass}" data-kind="${_escHtml(entry.kind)}" data-entry-idx="${entryIdx}" style="${styleVars}">
         <div class="task-log-row-head">
           ${statusDot}
           <span class="task-log-task-icon">${_taskIcon({ action: entry.action, task_type: entry.kind })}</span>
@@ -2949,7 +2573,7 @@ function _renderActivityEntry(entry) {
     `;
   }
   return `
-    <div class="task-log-row${long ? ' is-long' : ''}${_isRunning ? ' is-running' : ''}" data-kind="${_escHtml(entry.kind)}" data-entry-idx="${entryIdx}" style="${styleVars}">
+    <div class="task-log-row${rowStatusClass}${long ? ' is-long' : ''}${_isRunning ? ' is-running' : ''}" data-kind="${_escHtml(entry.kind)}" data-entry-idx="${entryIdx}" style="${styleVars}">
       <div class="task-log-row-head">
         ${statusDot}
         <span class="task-log-task-icon">${_taskIcon({ action: entry.action, task_type: entry.kind })}</span>
@@ -2958,7 +2582,7 @@ function _renderActivityEntry(entry) {
         <span style="flex:1"></span>
         ${rightHtml}
       </div>
-      ${_isRunning && !hasRunningProgress ? '' : `<div class="task-log-row-body">${resultHtml}</div>`}
+      ${(_isRunning && !hasRunningProgress) ? '' : `<div class="task-log-row-body">${resultHtml}</div>`}
       ${promptHtml}
       <div class="task-log-row-actions">
         ${long ? '<button class="task-log-row-toggle" type="button">Show more</button>' : '<span></span>'}
@@ -2970,11 +2594,8 @@ function _renderActivityEntry(entry) {
 
 function _escHtml(s) {
   return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // ---- Main view ----
@@ -2988,10 +2609,7 @@ const _taskSelected = new Set();
 
 async function _aiDraftTask(inputEl, btnEl) {
   const desc = (inputEl.value || '').trim();
-  if (!desc) {
-    inputEl.focus();
-    return;
-  }
+  if (!desc) { inputEl.focus(); return; }
   const origHtml = btnEl.innerHTML;
   btnEl.disabled = true;
   btnEl.classList.add('spinning');
@@ -3005,8 +2623,7 @@ async function _aiDraftTask(inputEl, btnEl) {
   _sp.start();
   try {
     const res = await fetch(`${API_BASE}/api/tasks/parse`, {
-      method: 'POST',
-      credentials: 'same-origin',
+      method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ description: desc }),
     });
@@ -3020,9 +2637,7 @@ async function _aiDraftTask(inputEl, btnEl) {
     // picker). The AI returns LOCAL time, so convert local→UTC here for the
     // round-trip to land on the intended local time.
     if (draft.scheduled_time) {
-      try {
-        draft.scheduled_time = _localTimeToUtc(draft.scheduled_time);
-      } catch (_) {}
+      try { draft.scheduled_time = _localTimeToUtc(draft.scheduled_time); } catch (_) {}
     }
     // Pass the draft as a synthetic "existing" (no id) → form pre-fills every
     // field but still creates via POST on save.
@@ -3030,9 +2645,7 @@ async function _aiDraftTask(inputEl, btnEl) {
   } catch (e) {
     if (uiModule) uiModule.showError('AI draft failed: ' + (e.message || e));
   } finally {
-    try {
-      _sp.stop();
-    } catch (_) {}
+    try { _sp.stop(); } catch (_) {}
     btnEl.classList.remove('spinning');
     btnEl.disabled = false;
     btnEl.innerHTML = origHtml;
@@ -3075,40 +2688,20 @@ function _renderMainView() {
   `;
 
   const searchEl = document.getElementById('tasks-search');
-  if (searchEl)
-    searchEl.addEventListener('input', () => {
-      _taskSearch = searchEl.value;
-      _renderList();
-    });
+  if (searchEl) searchEl.addEventListener('input', () => { _taskSearch = searchEl.value; _renderList(); });
 
   const sortEl = document.getElementById('tasks-sort');
-  if (sortEl) {
-    sortEl.value = _taskSort;
-    sortEl.addEventListener('change', () => {
-      _taskSort = sortEl.value;
-      _renderList();
-    });
-  }
+  if (sortEl) { sortEl.value = _taskSort; sortEl.addEventListener('change', () => { _taskSort = sortEl.value; _renderList(); }); }
 
   const selectBtn = document.getElementById('tasks-select-btn');
   if (selectBtn) {
     selectBtn.classList.toggle('active', _taskSelectMode);
-    selectBtn.addEventListener('click', () =>
-      _taskSelectMode ? _taskExitSelect() : _taskEnterSelect(),
-    );
+    selectBtn.addEventListener('click', () => _taskSelectMode ? _taskExitSelect() : _taskEnterSelect());
   }
-  document
-    .getElementById('tasks-pause-all-btn')
-    ?.addEventListener('click', () => _doToggleAll());
-  document
-    .getElementById('tasks-select-all')
-    ?.addEventListener('change', _taskToggleSelectAll);
-  document
-    .getElementById('tasks-bulk-cancel')
-    ?.addEventListener('click', _taskExitSelect);
-  document
-    .getElementById('tasks-bulk-delete')
-    ?.addEventListener('click', _taskBulkDelete);
+  document.getElementById('tasks-pause-all-btn')?.addEventListener('click', () => _doToggleAll());
+  document.getElementById('tasks-select-all')?.addEventListener('change', _taskToggleSelectAll);
+  document.getElementById('tasks-bulk-cancel')?.addEventListener('click', _taskExitSelect);
+  document.getElementById('tasks-bulk-delete')?.addEventListener('click', _taskBulkDelete);
 
   _renderList();
   _syncPauseAllButton();
@@ -3124,17 +2717,14 @@ function _renderMainView() {
 // ---- Modal ----
 
 export function openTasks(focusId, opts) {
+  startNotificationPolling();
   const o = opts || {};
-  const openActivityForFailure =
-    _taskFailurePending && !focusId && o.filter === undefined;
+  const openActivityForFailure = _taskFailurePending && !focusId && o.filter === undefined;
   _setTaskFailurePending(false);
   if (_open) {
     // Already open — just focus the requested task / apply filter.
     if (openActivityForFailure) _switchTab('activity');
-    if (o.filter !== undefined) {
-      _taskFilter = o.filter;
-      _renderList();
-    }
+    if (o.filter !== undefined) { _taskFilter = o.filter; _renderList(); }
     if (focusId) _focusTask(focusId);
     return;
   }
@@ -3178,7 +2768,7 @@ export function openTasks(focusId, opts) {
   document.body.appendChild(modal);
 
   // Tab routing
-  modal.querySelectorAll('.tasks-tab').forEach((btn) => {
+  modal.querySelectorAll('.tasks-tab').forEach(btn => {
     btn.addEventListener('click', () => _switchTab(btn.dataset.tab));
   });
 
@@ -3188,16 +2778,8 @@ export function openTasks(focusId, opts) {
     if (!el) return;
     const now = new Date();
     const day = now.toLocaleDateString([], { weekday: 'long' });
-    const date = now.toLocaleDateString([], {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-    const local = now.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
+    const date = now.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    const local = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     el.textContent = `${day}, ${date} · ${local}`;
   }
   _tickClock();
@@ -3232,9 +2814,7 @@ export function openTasks(focusId, opts) {
       // picked), step back to the preset picker instead of closing the modal.
       // Detect by: Add tab active + the form's name input is mounted.
       const _modal = document.getElementById('tasks-modal');
-      const _addActive = _modal?.querySelector(
-        '.tasks-tab.active[data-tab="new"]',
-      );
+      const _addActive = _modal?.querySelector('.tasks-tab.active[data-tab="new"]');
       const _formMounted = _modal?.querySelector('#task-form-name');
       if (_addActive && _formMounted) {
         _showPresetPicker();
@@ -3273,9 +2853,7 @@ function _focusTask(taskId) {
   // task IDs are UUIDs so the unescaped selector is safe in practice; if that
   // changes, swap to `[data-id="${CSS.escape(taskId)}"]`.
   setTimeout(() => {
-    const card = document.querySelector(
-      `.task-card[data-id="${taskId}"], [data-id="${taskId}"]`,
-    );
+    const card = document.querySelector(`.task-card[data-id="${taskId}"], [data-id="${taskId}"]`);
     if (!card) return;
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     card.classList.add('task-card-flash');
@@ -3292,12 +2870,8 @@ export function closeTasks() {
     const content = modal.querySelector('.modal-content');
     if (content) {
       content.classList.add('modal-closing');
-      content.addEventListener('animationend', () => modal.remove(), {
-        once: true,
-      });
-      setTimeout(() => {
-        if (modal.parentElement) modal.remove();
-      }, 250);
+      content.addEventListener('animationend', () => modal.remove(), { once: true });
+      setTimeout(() => { if (modal.parentElement) modal.remove(); }, 250);
     } else {
       modal.remove();
     }
@@ -3318,9 +2892,7 @@ export function closeTasks() {
   }
 }
 
-export function isTasksOpen() {
-  return _open;
-}
+export function isTasksOpen() { return _open; }
 
 // ---- Task run notifications polling ----
 
@@ -3328,9 +2900,7 @@ let _notifInterval = null;
 
 async function _pollTaskNotifications() {
   try {
-    const res = await fetch(`${API_BASE}/api/tasks/notifications`, {
-      credentials: 'same-origin',
-    });
+    const res = await fetch(`${API_BASE}/api/tasks/notifications`, { credentials: 'same-origin' });
     if (!res.ok) return;
     const data = await res.json();
     const notes = data.notifications || [];
@@ -3343,22 +2913,12 @@ async function _pollTaskNotifications() {
         const title = n.task_name || 'Task';
         let fired = false;
         try {
-          if (
-            typeof Notification !== 'undefined' &&
-            Notification.permission === 'granted'
-          ) {
-            new Notification(title, {
-              body: n.body,
-              tag: 'task-' + (n.task_id || title),
-              icon: '/static/favicon.ico',
-            });
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification(title, { body: n.body, tag: 'task-' + (n.task_id || title), icon: '/static/favicon.ico' });
             fired = true;
           }
         } catch (_) {}
-        if (!fired && uiModule)
-          uiModule.showToast(title + ': ' + n.body.slice(0, 140), {
-            duration: 7000,
-          });
+        if (!fired && uiModule) uiModule.showToast(title + ': ' + n.body.slice(0, 140), { duration: 7000 });
         continue;
       }
       const msg = `Task ${ok ? 'finished' : 'failed'}: ${n.task_name}`;
@@ -3367,10 +2927,7 @@ async function _pollTaskNotifications() {
       else {
         _setTaskFailurePending(true);
         uiModule.showError(msg);
-        if (
-          _open &&
-          document.querySelector('.tasks-tab.active[data-tab="activity"]')
-        ) {
+        if (_open && document.querySelector('.tasks-tab.active[data-tab="activity"]')) {
           _renderActivityView();
         }
       }
@@ -3392,11 +2949,5 @@ function stopNotificationPolling() {
   }
 }
 
-const tasksModule = {
-  openTasks,
-  closeTasks,
-  isTasksOpen,
-  startNotificationPolling,
-  stopNotificationPolling,
-};
+const tasksModule = { openTasks, closeTasks, isTasksOpen, startNotificationPolling, stopNotificationPolling };
 export default tasksModule;

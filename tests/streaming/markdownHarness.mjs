@@ -6,7 +6,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const REPO = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+);
 
 export async function loadMarkdown() {
   globalThis.window = { location: { origin: 'http://localhost' }, katex: null };
@@ -17,35 +21,75 @@ export async function loadMarkdown() {
       if (tag !== 'template') throw new Error(`unsupported element: ${tag}`);
       return {
         _html: '',
-        content: { querySelectorAll() { return []; } },
-        set innerHTML(v) { this._html = v; },
-        get innerHTML() { return this._html; },
+        content: {
+          querySelectorAll() {
+            return [];
+          },
+        },
+        set innerHTML(v) {
+          this._html = v;
+        },
+        get innerHTML() {
+          return this._html;
+        },
       };
     },
   };
-  globalThis.MutationObserver = class { observe() {} };
+  globalThis.MutationObserver = class {
+    observe() {}
+  };
 
-  let src = fs.readFileSync(path.join(REPO, 'static/js/markdown.js'), 'utf8');
-  src = src.replace(/import uiModule from ['"]\.\/ui\.js['"];/, '');
-  src = src.replace(
-    /import \{ splitTableRow \} from ['"]\.\/markdown\/tableRow\.js['"];/,
-    () => `function splitTableRow(row){return (row||'').replace(/^\\s*\\|/,'').replace(/\\|\\s*$/,'').split('|').map((c)=>c.trim());}`,
+  let src = fs.readFileSync(
+    path.join(REPO, 'web/lib/legacy/markdown.js'),
+    'utf8',
   );
-  const emoji = fs
-    .readFileSync(path.join(REPO, 'static/js/emojiShortcodes.js'), 'utf8')
+
+  // Remove ui.js import entirely
+  src = src.replace(
+    /import\s+[^;]*['"]\.\/ui\.js['"]\s*;/g,
+    ''
+  );
+
+  // Inline splitTableRow instead of importing tableRow.js
+  src = src.replace(
+    /import\s+[^;]*tableRow\.js['"]\s*;/g,
+    `function splitTableRow(row) {
+      return (row || '').replace(/^\\s*\\|/, '').replace(/\\|\\s*$/, '')
+        .split('|').map(c => c.trim());
+    }`
+  );
+
+  // Load emojiShortcodes.js and convert it to inline code
+  const emoji = fs.readFileSync(path.join(REPO, 'web/lib/legacy/emojiShortcodes.js'), 'utf8')
     .replace(/^export default .*$/m, '')
     .replace(/export const /g, 'const ')
     .replace(/export function /g, 'function ');
+
+  // Inline ANY import referencing emojiShortcodes.js (do this BEFORE stripping $lib)
   src = src.replace(
-    /import \{ replaceEmojiShortcodes, hasEmojiShortcode \} from ['"]\.\/emojiShortcodes\.js['"];/,
+    /import\s+[^;]*emojiShortcodes\.js['"]\s*;/g,
     () => emoji,
   );
+
+  // NOW strip ALL SvelteKit alias imports ($lib/...)
+  src = src.replace(
+    /import\s+[^;]*['"]\$lib\/[^'"]+['"]\s*;/g,
+    ''
+  );
+
   src = src.replace(
     /var escapeHtml = uiModule\.esc;/,
     () =>
-      `var escapeHtml = (v) => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');`,
+    `var escapeHtml = (value) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');`
   );
-  const url = 'data:text/javascript;base64,' + Buffer.from(src).toString('base64');
+
+  const url =
+    'data:text/javascript;base64,' + Buffer.from(src).toString('base64');
   return import(url);
 }
 
