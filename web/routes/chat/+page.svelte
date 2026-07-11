@@ -3,6 +3,7 @@ import { onMount } from 'svelte';
 import { afterNavigate } from '$app/navigation';
 import { syncGroupIndicator } from '$lib/chat/group';
 import { handleSubmit } from '$lib/chat/helpers';
+import QueuedMessageItem from '$lib/components/chat/QueuedMessageItem.svelte';
 import ScrollChatBottom from '$lib/components/chat/ScrollChatBottom.svelte';
 import { deEmojify } from '$lib/emoji';
 import chatModule from '$lib/legacy/chat';
@@ -11,6 +12,124 @@ import groupModule from '$lib/legacy/group';
 import sessionModule from '$lib/legacy/sessions';
 import uiModule from '$lib/legacy/ui';
 import { updatePlusDot } from '$lib/overflow';
+
+let messageQueue: Array<{ id: string; prompt: string; files: any[] }> = [];
+
+function generateId() {
+  return Math.random().toString(36).substring(2, 9);
+}
+
+function onQueueSendNow(id: string) {
+  const idx = messageQueue.findIndex((m) => m.id === id);
+  if (idx === -1) return;
+  const msg = messageQueue[idx];
+  messageQueue.splice(idx, 1);
+  messageQueue = messageQueue;
+
+  const ta = document.getElementById('message') as HTMLTextAreaElement;
+  if (ta) {
+    ta.value = msg.prompt;
+    if (msg.files && msg.files.length > 0 && fileHandlerModule) {
+      fileHandlerModule.clearPending();
+      fileHandlerModule.addFiles(msg.files);
+      fileHandlerModule.renderAttachStrip();
+    }
+    if (chatModule && chatModule.handleChatSubmit) {
+      chatModule.handleChatSubmit(new Event('submit'));
+    }
+  }
+}
+
+function onQueueEdit(id: string) {
+  const idx = messageQueue.findIndex((m) => m.id === id);
+  if (idx === -1) return;
+  const msg = messageQueue[idx];
+  messageQueue.splice(idx, 1);
+  messageQueue = messageQueue;
+
+  const ta = document.getElementById('message') as HTMLTextAreaElement;
+  if (ta) {
+    ta.value = msg.prompt;
+    if (msg.files && msg.files.length > 0 && fileHandlerModule) {
+      fileHandlerModule.clearPending();
+      fileHandlerModule.addFiles(msg.files);
+      fileHandlerModule.renderAttachStrip();
+    }
+    ta.focus();
+  }
+}
+
+function onQueueDelete(id: string) {
+  messageQueue = messageQueue.filter((m) => m.id !== id);
+}
+
+function handleChatSubmitWithQueue(e: Event) {
+  e.preventDefault();
+
+  const sid = sessionModule ? sessionModule.getCurrentSessionId() : null;
+  const isStreaming =
+    chatModule && chatModule.hasActiveStream
+      ? chatModule.hasActiveStream(sid)
+      : false;
+  if (isStreaming) {
+    console.log('made it');
+    const ta = document.getElementById('message') as HTMLTextAreaElement;
+    const prompt = ta ? ta.value.trim() : '';
+    if (
+      !prompt &&
+      (!fileHandlerModule || fileHandlerModule.getPendingCount() === 0)
+    ) {
+      console.log('failed');
+      return;
+    }
+    console.log('attempting');
+    const files =
+      fileHandlerModule && typeof fileHandlerModule.getPendingRaw === 'function'
+        ? [...fileHandlerModule.getPendingRaw()]
+        : [];
+
+    messageQueue = [
+      ...messageQueue,
+      {
+        id: generateId(),
+        prompt,
+        files,
+      },
+    ];
+
+    if (ta) ta.value = '';
+    if (fileHandlerModule) {
+      fileHandlerModule.clearPending();
+    }
+    checkQueueDrain();
+  } else {
+    console.log('fallback');
+    handleSubmit(e);
+  }
+}
+
+let drainInterval: any;
+function checkQueueDrain() {
+  if (drainInterval) return;
+  drainInterval = setInterval(() => {
+    const sid = sessionModule ? sessionModule.getCurrentSessionId() : null;
+    const isStreaming =
+      chatModule && chatModule.hasActiveStream
+        ? chatModule.hasActiveStream(sid)
+        : false;
+
+    if (!isStreaming) {
+      clearInterval(drainInterval);
+      drainInterval = null;
+
+      if (messageQueue.length > 0) {
+        const next = messageQueue[0];
+        onQueueSendNow(next.id);
+        setTimeout(checkQueueDrain, 1000);
+      }
+    }
+  }, 500);
+}
 
 const _DEOJ_SKIP = '.sources-section, .thinking-toggle, .memory-used-pill';
 
@@ -270,7 +389,7 @@ onMount(() => {
   });
   // Modify form submit to handle special modes
   const chatForm = document.getElementById('chat-form');
-  chatForm.onsubmit = handleSubmit;
+  chatForm.onsubmit = handleChatSubmitWithQueue;
 });
 </script>
 
@@ -354,6 +473,20 @@ onMount(() => {
    <input type="file" id="file-input" class="hidden" multiple />
    <!-- Unified chat input bar -->
    <div class="chat-input-bar">
+      {#if messageQueue.length > 0}
+         <div class="message-queue-panel" style="max-height: 25vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; margin: 0 8px 8px 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            {#each messageQueue as queuedMessage (queuedMessage.id)}
+               <QueuedMessageItem
+                  id={queuedMessage.id}
+                  content={queuedMessage.prompt}
+                  files={queuedMessage.files}
+                  onSendNow={onQueueSendNow}
+                  onEdit={onQueueEdit}
+                  onDelete={onQueueDelete}
+               />
+            {/each}
+         </div>
+      {/if}
       <div class="chat-input-top">
          <div id="message-ghost" class="ghost-text-overlay" aria-hidden="true"></div>
          <textarea id="message" placeholder="Message Odysseus..." required autocomplete="off" aria-label="Message input" rows="1" autofocus></textarea>

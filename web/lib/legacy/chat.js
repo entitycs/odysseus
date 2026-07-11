@@ -390,6 +390,7 @@ const API_KEY_RE =
  * Handle chat form submission
  */
 export async function handleChatSubmit(e) {
+  // return;
   e.preventDefault();
   // Cancel research clarification timeout if active
   if (window._researchTimeoutTimer) {

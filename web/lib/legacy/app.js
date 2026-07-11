@@ -65,7 +65,7 @@ export function init() {
   // synchronously; later reads should call _refreshDefaultChat() first.
   _refreshDefaultChat();
 
-  if (!_initialized){
+  if (!_initialized) {
     _origFetch = window.fetch;
     window.fetch = async function (...args) {
       const res = await _origFetch.apply(this, args);
@@ -76,7 +76,6 @@ export function init() {
     };
     _initialized = true;
   }
-
 }
 
 function _isMobileChatInput() {
@@ -4762,7 +4761,7 @@ export function startOdysseusApp() {
     return originalSubmit.call(chatModule, e);
   }
 
-  chatForm.onsubmit = handleSubmit;
+  // chatForm.onsubmit = handleSubmit;
 
   // ── Dual-purpose send/mic button ──
   const sendBtn = document.querySelector('.send-btn');
@@ -4941,65 +4940,59 @@ export function startOdysseusApp() {
   }
 
   if (sendBtn) {
-    sendBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-
-      // If recording, stop recording
-      if (
-        sendBtn.dataset.mode === 'recording' ||
-        voiceRecorderModule.getIsRecording()
-      ) {
-        voiceRecorderModule.stopRecording();
-        return;
-      }
-
-      const hasText = messageInput && messageInput.value.trim().length > 0;
-      const hasFiles = _hasAttachments();
-
-      if (sendBtn.dataset.mode === 'streaming') {
-        if (hasText) window.__odysseusQueueStreamingSubmit = Date.now();
-        handleSubmit(e);
-        return;
-      }
-
-      // New chat mode — empty input, no attachments, no STT
-      if (!hasText && !hasFiles && sendBtn.dataset.mode === 'newchat') {
-        if (sessionModule) {
-          const sessions = sessionModule.getSessions();
-          const currentId = sessionModule.getCurrentSessionId();
-          const current = sessions.find((s) => s.id === currentId);
-          if (current && current.endpoint_url && current.model) {
-            sessionModule.createDirectChat(
-              current.endpoint_url,
-              current.model,
-              current.endpoint_id,
-            );
-          } else {
-            // Fallback to rail button
-            const railNew = el('rail-new-session');
-            if (railNew) railNew.click();
-          }
-        }
-        return;
-      }
-
-      // If input is empty and STT is enabled, start recording
-      if (!hasText && !hasFiles && _isSttEnabled()) {
-        sendBtn.innerHTML = _stopIcon;
-        sendBtn.title = 'Stop recording';
-        sendBtn.dataset.mode = 'recording';
-        sendBtn.classList.add('recording');
-        voiceRecorderModule.startRecording(
-          (audioFile) => fileHandlerModule.addFiles([audioFile]),
-          uiModule.showToast,
-          uiModule.showError,
-        );
-        return;
-      }
-
-      // Otherwise, send message
-      handleSubmit(e);
-    });
+    // sendBtn.addEventListener('click', (e) => {
+    //   e.preventDefault();
+    //   // If recording, stop recording
+    //   if (
+    //     sendBtn.dataset.mode === 'recording' ||
+    //     voiceRecorderModule.getIsRecording()
+    //   ) {
+    //     voiceRecorderModule.stopRecording();
+    //     return;
+    //   }
+    //   const hasText = messageInput && messageInput.value.trim().length > 0;
+    //   const hasFiles = _hasAttachments();
+    //   if (sendBtn.dataset.mode === 'streaming') {
+    //     if (hasText) window.__odysseusQueueStreamingSubmit = Date.now();
+    //     handleSubmit(e);
+    //     return;
+    //   }
+    //   // New chat mode — empty input, no attachments, no STT
+    //   if (!hasText && !hasFiles && sendBtn.dataset.mode === 'newchat') {
+    //     if (sessionModule) {
+    //       const sessions = sessionModule.getSessions();
+    //       const currentId = sessionModule.getCurrentSessionId();
+    //       const current = sessions.find((s) => s.id === currentId);
+    //       if (current && current.endpoint_url && current.model) {
+    //         sessionModule.createDirectChat(
+    //           current.endpoint_url,
+    //           current.model,
+    //           current.endpoint_id,
+    //         );
+    //       } else {
+    //         // Fallback to rail button
+    //         const railNew = el('rail-new-session');
+    //         if (railNew) railNew.click();
+    //       }
+    //     }
+    //     return;
+    //   }
+    //   // If input is empty and STT is enabled, start recording
+    //   if (!hasText && !hasFiles && _isSttEnabled()) {
+    //     sendBtn.innerHTML = _stopIcon;
+    //     sendBtn.title = 'Stop recording';
+    //     sendBtn.dataset.mode = 'recording';
+    //     sendBtn.classList.add('recording');
+    //     voiceRecorderModule.startRecording(
+    //       (audioFile) => fileHandlerModule.addFiles([audioFile]),
+    //       uiModule.showToast,
+    //       uiModule.showError,
+    //     );
+    //     return;
+    //   }
+    //   // Otherwise, send message
+    //   handleSubmit(e);
+    // });
   }
 
   // Enter to send (shift+enter for newline), or new chat when empty
@@ -5500,4 +5493,3 @@ export function startOdysseusApp() {
     });
   }
 }
-
