@@ -263,6 +263,7 @@ if AUTH_ENABLED:
         "/api/auth/status",
         "/api/auth/features",
         "/api/auth/settings",
+        "/api/auth/policy",
         "/api/auth/integrations/presets",
         "/api/health",
         "/api/version",
@@ -462,6 +463,18 @@ if AUTH_ENABLED:
             if not auth_manager.validate_token(token):
                 if path.startswith("/api/"):
                     return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+                STATIC_PREFIXES = (
+                    "/web-build/",
+                    "/_app/",
+                    "/assets/",
+                    "/static/",
+                    "/favicon.ico",
+                    "/manifest.json",
+                    "/service-worker.js",
+                )
+                # Allow static assets through without auth checks
+                if any(path.startswith(prefix) for prefix in STATIC_PREFIXES):
+                    return await call_next(request)
                 return RedirectResponse(url="/login", status_code=302)
 
             # Attach current username to request state for downstream routes
@@ -880,20 +893,20 @@ app.include_router(setup_companion_routes())
 async def serve_index(request: Request):
     logger.info("GET / hit — starting route resolution")
 
-    is_sveltekit_route = True #not request.url.path.startswith('/login')
+    is_sveltekit_route = True
     logger.info(f"is_sveltekit_route = {is_sveltekit_route}")
 
     if is_sveltekit_route:
-        sveltekit_path = os.path.join(SVELTEKIT_BUILD_DIR, "index.html")
+        sveltekit_path = os.path.join(SVELTEKIT_BUILD_DIR, "200.html")
         logger.info(f"Checking SvelteKit path: {sveltekit_path}")
 
         if os.path.exists(sveltekit_path):
-            logger.info("Serving SvelteKit index.html")
+            logger.info("Serving SvelteKit 200.html")
             return serve_html_with_nonce(request, sveltekit_path)
         else:
-            logger.warning("SvelteKit index.html NOT found")
+            logger.warning("SvelteKit 200.html NOT found")
 
-    static_path = abs_join(BASE_DIR, "static/index.html")
+    static_path = abs_join(BASE_DIR, "static/index_old.html")
     logger.info(f"Checking static fallback path: {static_path}")
 
     if os.path.exists(static_path):
@@ -958,7 +971,7 @@ async def serve_backgrounds(request: Request):
 async def serve_login(request: Request):
     if not AUTH_ENABLED:
         return RedirectResponse(url="/", status_code=302)
-    return serve_index(request) #serve_html_with_nonce(request, abs_join(BASE_DIR, "static/login.html"))
+    return await serve_index(request) #serve_html_with_nonce(request, abs_join(BASE_DIR, "static/login.html"))
 
 @app.get("/api/version")
 async def get_version():

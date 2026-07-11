@@ -4,11 +4,108 @@
  * Markdown rendering and content processing utilities
  */
 
-import uiModule from './ui.js';
-import { splitTableRow } from './markdown/tableRow.js';
-import { replaceEmojiShortcodes, hasEmojiShortcode } from './emojiShortcodes.js';
+import uiModule from '$lib/legacy/ui.js';
+import { splitTableRow } from '$lib/legacy/markdown/tableRow.js';
+import { replaceEmojiShortcodes, hasEmojiShortcode } from '$lib/legacy/emojiShortcodes.js';
 
 var escapeHtml = uiModule.esc;
+
+export function init(){
+  window.odysseusInitMermaid = initMermaid;
+  initMermaid();
+
+    // Delegated click handler for thinking toggle (CSP-safe, no inline onclick)
+  document.addEventListener('click', function(e) {
+    const header = e.target.closest('.thinking-header[data-thinking-id]');
+    if (!header) return;
+    const id = header.dataset.thinkingId;
+    const content = document.getElementById(id);
+    const toggle = document.getElementById(id + '-toggle');
+    if (!content || !toggle) return;
+
+    const willExpand = !content.classList.contains('expanded');
+    _setThinkingExpanded(content, toggle, header, willExpand);
+
+    // Persist by content hash so the choice survives a refresh.
+    const hash = _hashThinkingContent(content);
+    if (!hash) return;
+    const set = _loadExpandedSet();
+    if (willExpand) set.add(hash);
+    else set.delete(hash);
+    _saveExpandedSet(set);
+  });
+
+  // Watch the chat history; whenever a thinking section appears, expand it if
+  // its hash matches one the user previously expanded.
+  if (window._thinkingWatcherWired) return;
+  window._thinkingWatcherWired = true;
+  const _apply = (root) => {
+    if (!root || !root.querySelectorAll) return;
+    const sections = root.matches?.('.thinking-section')
+      ? [root]
+      : [...root.querySelectorAll('.thinking-section')];
+    if (!sections.length) return;
+    const set = _loadExpandedSet();
+    if (!set.size) return;
+    for (const sec of sections) {
+      const content = sec.querySelector('.thinking-content');
+      if (!content) continue;
+      if (content.classList.contains('expanded')) continue;
+      const hash = _hashThinkingContent(content);
+      if (!hash || !set.has(hash)) continue;
+      const header = sec.querySelector('.thinking-header[data-thinking-id]');
+      const id = header?.dataset.thinkingId;
+      const toggle = id ? document.getElementById(id + '-toggle') : null;
+      _setThinkingExpanded(content, toggle, header, true);
+    }
+  };
+  const start1 = () => {
+    const root = document.body;
+    if (!root) return;
+    _apply(root);
+    new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType === 1) _apply(node);
+        }
+      }
+    }).observe(root, { childList: true, subtree: true });
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start1, { once: true });
+  } else {
+    start1();
+  }
+
+  if (window._modelEndpointLinkWatcherWired) return;
+  window._modelEndpointLinkWatcherWired = true;
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest?.('.model-endpoint-add-btn');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _registerEndpointFromButton(btn);
+  });
+
+  const start = () => {
+    const root = document.body;
+    if (!root) return;
+    _appendEndpointAddButtons(root);
+    new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType === 1) _appendEndpointAddButtons(node);
+        }
+      }
+    }).observe(root, { childList: true, subtree: true });
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+}
 
 function safeLinkUrl(rawUrl) {
   const url = String(rawUrl || '').trim();
@@ -855,11 +952,74 @@ export default markdownModule;
 // Mermaid is loaded async so it cannot delay the app shell.
 function initMermaid() {
   if (!window.mermaid || window.__odysseusMermaidReady) return;
-  window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+
+  window.mermaid.initialize({
+    startOnLoad: false,
+    theme: "base",
+    themeCSS: `
+      svg {
+        background: var(--bg) ;
+        color: var(--fg) ;
+        stroke: var(--red) ;
+      }
+
+      /* Slightly lighter shade for polygons */
+      .node polygon {
+        fill: color-mix(in srgb, var(--bg) 85%, var(--bg)) ;
+        stroke: var(--fg) ;
+      }
+
+      /* Slightly darker shade for rects */
+      .node rect, g rect {
+        fill: color-mix(in srgb, var(--red) 70%, white) ;
+        stroke: var(--fg) ;
+      }
+
+      /* Background fill for inner g path */
+      .node g path {
+        fill: var(--bg) ;
+      }
+
+      .main rect {
+        fill: var(--bg) ;
+      }
+
+      /* Text inside node */
+      .node * span, g text, .titleText {
+        color: var(--fg) ;
+        fill: var(--fg) ;
+      }
+
+      /* Label span inside the g immediately after rect */
+      .node rect + g span {
+        color: var(--panel) ;
+      }
+
+      * text, .label {
+        fill: var(--fg) ;
+      }
+
+      .label-container {
+        fill: var(--bg) ;
+      }
+
+      .edgePaths,
+      .flowchart-link,
+      g path, .relation {
+        stroke: var(--red) ;
+        color: var(--red) ;
+      }
+
+      .edge, .transition {
+        stroke: var(--fg) ;
+      }
+    `,
+    securityLevel: 'loose'
+  });
+
   window.__odysseusMermaidReady = true;
 }
-window.odysseusInitMermaid = initMermaid;
-initMermaid();
+
 
 // Persist which thinking sections were expanded across page refreshes.
 // IDs are render-generated (Date.now-based) so we key by a stable hash of
@@ -899,71 +1059,6 @@ function _setThinkingExpanded(content, toggle, header, expanded) {
     label_el.textContent = expanded ? `Hide ${label}` : `View ${label}`;
   }
 }
-
-// Delegated click handler for thinking toggle (CSP-safe, no inline onclick)
-document.addEventListener('click', function(e) {
-  const header = e.target.closest('.thinking-header[data-thinking-id]');
-  if (!header) return;
-  const id = header.dataset.thinkingId;
-  const content = document.getElementById(id);
-  const toggle = document.getElementById(id + '-toggle');
-  if (!content || !toggle) return;
-
-  const willExpand = !content.classList.contains('expanded');
-  _setThinkingExpanded(content, toggle, header, willExpand);
-
-  // Persist by content hash so the choice survives a refresh.
-  const hash = _hashThinkingContent(content);
-  if (!hash) return;
-  const set = _loadExpandedSet();
-  if (willExpand) set.add(hash);
-  else set.delete(hash);
-  _saveExpandedSet(set);
-});
-
-// Watch the chat history; whenever a thinking section appears, expand it if
-// its hash matches one the user previously expanded.
-(function _watchThinking() {
-  if (window._thinkingWatcherWired) return;
-  window._thinkingWatcherWired = true;
-  const _apply = (root) => {
-    if (!root || !root.querySelectorAll) return;
-    const sections = root.matches?.('.thinking-section')
-      ? [root]
-      : [...root.querySelectorAll('.thinking-section')];
-    if (!sections.length) return;
-    const set = _loadExpandedSet();
-    if (!set.size) return;
-    for (const sec of sections) {
-      const content = sec.querySelector('.thinking-content');
-      if (!content) continue;
-      if (content.classList.contains('expanded')) continue;
-      const hash = _hashThinkingContent(content);
-      if (!hash || !set.has(hash)) continue;
-      const header = sec.querySelector('.thinking-header[data-thinking-id]');
-      const id = header?.dataset.thinkingId;
-      const toggle = id ? document.getElementById(id + '-toggle') : null;
-      _setThinkingExpanded(content, toggle, header, true);
-    }
-  };
-  const start = () => {
-    const root = document.body;
-    if (!root) return;
-    _apply(root);
-    new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node.nodeType === 1) _apply(node);
-        }
-      }
-    }).observe(root, { childList: true, subtree: true });
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start, { once: true });
-  } else {
-    start();
-  }
-})();
 
 function _endpointNameFromUrl(url) {
   try {
@@ -1051,34 +1146,3 @@ async function _registerEndpointFromButton(btn) {
     uiModule.showError?.(`Add endpoint failed: ${err.message || err}`);
   }
 }
-
-(function _watchModelEndpointLinks() {
-  if (window._modelEndpointLinkWatcherWired) return;
-  window._modelEndpointLinkWatcherWired = true;
-
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest?.('.model-endpoint-add-btn');
-    if (!btn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    _registerEndpointFromButton(btn);
-  });
-
-  const start = () => {
-    const root = document.body;
-    if (!root) return;
-    _appendEndpointAddButtons(root);
-    new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node.nodeType === 1) _appendEndpointAddButtons(node);
-        }
-      }
-    }).observe(root, { childList: true, subtree: true });
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start, { once: true });
-  } else {
-    start();
-  }
-})();

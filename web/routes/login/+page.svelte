@@ -449,7 +449,7 @@ onMount(async () => {
 
   <form id="authForm" autocomplete="on">
     <label for="username">Username</label>
-    <div class="pw-wrapper">
+    <div class="pw-wrapper card">
       <input id="username" name="username" type="text" required autofocus autocomplete="username">
       <label class="remember-toggle" id="rememberToggle" title="Remember me">
         <input type="checkbox" class="remember-check" id="remember" checked aria-label="Remember me">

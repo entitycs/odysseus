@@ -1,16 +1,16 @@
 // compare/panes.js — pane lifecycle, actions, layout
-import state from './state.js';
-import { _persistSelections } from './models.js';
-import { buildVoteBar } from './vote.js';
+import state from '$lib/legacy/compare/state.js';
+import { _persistSelections } from '$lib/legacy/compare/models.js';
+import { buildVoteBar } from '$lib/legacy/compare/vote.js';
 import {
   ICON_REROLL, ICON_COPY, ICON_EXPAND, ICON_COLLAPSE, ICON_CLOSE,
   ICON_PLAY, ICON_CODE, SEND_SVG,
-} from './icons.js';
-import { _clearProbeWaves } from './probe.js';
-import Storage from '../storage.js';
-import uiModule from '../ui.js';
-import spinnerModule from '../spinner.js';
-import { bindMenuDismiss } from '../escMenuStack.js';
+} from '$lib/legacy/compare/icons.js';
+import { _clearProbeWaves } from '$lib/legacy/compare/probe.js';
+import Storage from '$lib/legacy/storage.js';
+import uiModule from '$lib/legacy/ui.js';
+import spinnerModule from '$lib/legacy/spinner.js';
+import { bindMenuDismiss } from '$lib/legacy/escMenuStack.js';
 
 var escapeHtml = uiModule.esc;
 

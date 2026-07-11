@@ -1,11 +1,11 @@
 // compare/vote.js — voting, revealing, confetti
-import Storage from '../storage.js';
-import state from './state.js';
-import { _modelDisplayNames } from './models.js';
-import { getModelCost } from '../model/pricing.js';
-import uiModule from '../ui.js';
-import { VOTES_STORAGE_KEY, VOTES_MAX } from './icons.js';
-import { showScoreboard } from './scoreboard.js';
+import Storage from '$lib/legacy/storage.js';
+import state from '$lib/legacy/compare/state.js';
+import { _modelDisplayNames } from '$lib/legacy/compare/models.js';
+import { getModelCost } from '$lib/legacy/model/pricing.js';
+import uiModule from '$lib/legacy/ui.js';
+import { VOTES_STORAGE_KEY, VOTES_MAX } from '$lib/legacy/compare/icons.js';
+import { showScoreboard } from '$lib/legacy/compare/scoreboard.js';
 
 var escapeHtml = uiModule.esc;
 

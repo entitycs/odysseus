@@ -11,11 +11,6 @@ import uiModule from '$lib/legacy/ui.js';
 import { ordinalSuffix } from '$lib/legacy/util/ordinal.js';
 import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
 
-export function init() {
-  API_BASE = window.location.origin;
-
-  window.tasksModule = tasksModule;
-}
 let API_BASE = '';
 let _open = false;
 let _tasksCascadeNext = false;   // play the domino-in entrance on the next render
@@ -29,6 +24,12 @@ let _taskCompletionPending = false;
 let _taskBulkDeleting = false;
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+export function init() {
+  API_BASE = window.location.origin;
+
+  window.tasksModule = tasksModule;
+}
 
 function _setTaskFailurePending(active) {
   _taskFailurePending = !!active;
@@ -3189,3 +3190,4 @@ function stopNotificationPolling() {
 
 const tasksModule = { openTasks, closeTasks, isTasksOpen, startNotificationPolling, stopNotificationPolling };
 export default tasksModule;
+

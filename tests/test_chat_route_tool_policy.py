@@ -338,13 +338,13 @@ def test_frontend_always_sends_explicit_allow_bash():
 
 
 def test_frontend_sends_explicit_allow_web_search_false_in_agent_mode():
-    source = _CHAT_JS.read_text(encoding="utf-8")
+    source = Path("web/lib/legacy/chat.js").read_text(encoding="utf-8")
 
     pattern = re.compile(
-        r"if\s*\(\s*(el|document.getElementById)\s*\(['\"]\s*web-toggle\s*['\"]\s*\)\s*.\s*"
-        r"checked\s*\)[^\}]*fd.append\s*\(['\"]\s*allow_web_search\s*['\"]\s*,\s*['\"]\s*"
-        r"true\s*['\"].*\}\s*else (if)?\s*[^\}]*\s*['\"]\s*allow_web_search\s*['\"]\s*,\s*"
-        r"['\"]false['\"]",
+        r"if\s*\(\s*isAgentMode\s*\)\s*\{"
+        r".*?fd\.append\s*\(\s*['\"]allow_web_search['\"]\s*,\s*"
+        r"el\(['\"]web-toggle['\"]\)\.checked\s*\?\s*['\"]true['\"]\s*:\s*['\"]false['\"]"
+        r"\s*\)",
         re.DOTALL,
     )
 

@@ -1,12 +1,12 @@
 // compare/stream.js — SSE streaming to panes
-import markdownModule from '../markdown.js';
-import { getImageCost, getModelCost } from '../model/pricing.js';
-import presetsModule from '../presets.js';
-import spinnerModule from '../spinner.js';
-import uiModule from '../ui.js';
-import { safeDisplayImageSrc } from '../util/safeString.js';
-import state from './state.js';
-import { addFinishBadge } from './vote.js';
+import markdownModule from '$lib/legacy/markdown.js';
+import { getImageCost, getModelCost } from '$lib/legacy/model/pricing.js';
+import presetsModule from '$lib/legacy/presets.js';
+import spinnerModule from '$lib/legacy/spinner.js';
+import uiModule from '$lib/legacy/ui.js';
+import { safeDisplayImageSrc } from '$lib/legacy/util/safeString.js';
+import state from '$lib/legacy/compare/state.js';
+import { addFinishBadge } from '$lib/legacy/compare/vote.js';
 
 var escapeHtml = uiModule.esc;
 

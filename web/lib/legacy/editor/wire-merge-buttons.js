@@ -19,7 +19,7 @@
  *   uiModule:         object,
  * }} deps
  */
-import { state } from './state.js';
+import { state } from '$lib/legacy/editor/state.js';
 
 function _renderSource(layer, renderLayer) {
   if (!layer) return null;
