@@ -47,11 +47,11 @@ const CHECK_ICON =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
 export function init() {
-
-  window.toggleSources = function(id) {
+  window.toggleSources = function (id) {
     // Debounce to prevent double-fire from both inline onclick and delegation
     var now = Date.now();
-    if (window._lastSourcesToggle && now - window._lastSourcesToggle < 100) return;
+    if (window._lastSourcesToggle && now - window._lastSourcesToggle < 100)
+      return;
     window._lastSourcesToggle = now;
 
     var content = document.getElementById(id);
@@ -64,31 +64,28 @@ export function init() {
   };
 
   // Event delegation for sources toggle (capture phase, handles SVG targets)
-  document.addEventListener('click', function(e) {
-    // Walk up from target manually to handle SVG elements that may not support closest()
-    var el = e.target;
-    while (el && el !== document) {
-      if (el.classList && el.classList.contains('sources-header') && el.dataset && el.dataset.sourcesId) {
-        e.stopPropagation();
-        window.toggleSources(el.dataset.sourcesId);
-        return;
+  document.addEventListener(
+    'click',
+    function (e) {
+      // Walk up from target manually to handle SVG elements that may not support closest()
+      var el = e.target;
+      while (el && el !== document) {
+        if (
+          el.classList &&
+          el.classList.contains('sources-header') &&
+          el.dataset &&
+          el.dataset.sourcesId
+        ) {
+          e.stopPropagation();
+          window.toggleSources(el.dataset.sourcesId);
+          return;
+        }
+        el = el.parentElement || el.parentNode;
       }
-      el = el.parentElement || el.parentNode;
-    }
-  }, true);
+    },
+    true,
+  );
 
-  function resolveDocumentPlaceholderLinks(text, metadata) {
-    if (!text || !metadata || !Array.isArray(metadata.tool_events)) return text;
-    const docEvents = metadata.tool_events.filter(ev => ev && ev.doc_id);
-    if (!docEvents.length) return text;
-    return String(text).replace(/#document-(\d+)\b/g, (match, num) => {
-      const idx = Number(num) - 1;
-      const ev = Number.isInteger(idx) && idx >= 0 ? docEvents[idx] : null;
-      return ev && ev.doc_id ? `#document-${ev.doc_id}` : match;
-    });
-  }
-    
-  
   // Jump-to-entity anchors — the agent emits links like
   //   [New Chat](#session-89effa28)
   //   [Notes](#document-abc123)
@@ -97,100 +94,164 @@ export function init() {
   // instead of default in-page anchor jumps. Each prefix routes to the
   // matching module via a dynamic import (avoids circular deps —
   // sessions.js itself imports chatRenderer.js).
-  document.addEventListener('click', function(e) {
-    // Walk past Text nodes — clicking link text yields a Text node target
-    // whose .closest is undefined, so preventDefault never fires and the
-    // browser performs a default hash-navigation that resets the session.
-    let _t = e.target;
-    while (_t && _t.nodeType === Node.TEXT_NODE) _t = _t.parentElement;
-    const a = _t && _t.closest && _t.closest('a[href]');
-    if (!a) return;
-    const rawHref = a.getAttribute('href') || '';
-    let href = rawHref;
-    try {
-      const parsed = new URL(rawHref, window.location.origin);
-      if (parsed.origin === window.location.origin && parsed.pathname === window.location.pathname) {
-        href = parsed.hash || rawHref;
-      }
-    } catch (_) {}
-    if (!href.startsWith('#')) return;
-    let m = href.match(/^#(session|document|note|image|email|event|task|skill|research)-(.+)$/);
-    if (!m) {
-      const noteOpen = href.match(/^#open=notes&note=([^&]+)/);
-      if (noteOpen) m = ['note', 'note', decodeURIComponent(noteOpen[1])];
-    }
-    if (!m) {
-      const bareSession = href.match(/^#([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
-      if (bareSession) m = ['session', 'session', bareSession[1]];
-    }
-    if (!m) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const [, kind, id] = m;
-    if (kind === 'session') {
+  document.addEventListener(
+    'click',
+    function (e) {
+      // Walk past Text nodes — clicking link text yields a Text node target
+      // whose .closest is undefined, so preventDefault never fires and the
+      // browser performs a default hash-navigation that resets the session.
+      let _t = e.target;
+      while (_t && _t.nodeType === Node.TEXT_NODE) _t = _t.parentElement;
+      const a = _t && _t.closest && _t.closest('a[href]');
+      if (!a) return;
+      const rawHref = a.getAttribute('href') || '';
+      let href = rawHref;
       try {
-        a.classList.add('is-loading');
-        a.setAttribute('aria-busy', 'true');
-      } catch {}
-      import('./sessions.js').then(mod => {
-        const fn = mod.selectSession || (mod.default && mod.default.selectSession);
-        if (fn) return fn(id, { showLoading: true, immediateLoading: true });
-      }).finally(() => {
+        const parsed = new URL(rawHref, window.location.origin);
+        if (
+          parsed.origin === window.location.origin &&
+          parsed.pathname === window.location.pathname
+        ) {
+          href = parsed.hash || rawHref;
+        }
+      } catch (_) {}
+      if (!href.startsWith('#')) return;
+      let m = href.match(
+        /^#(session|document|note|image|email|event|task|skill|research)-(.+)$/,
+      );
+      if (!m) {
+        const noteOpen = href.match(/^#open=notes&note=([^&]+)/);
+        if (noteOpen) m = ['note', 'note', decodeURIComponent(noteOpen[1])];
+      }
+      if (!m) {
+        const bareSession = href.match(
+          /^#([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+        );
+        if (bareSession) m = ['session', 'session', bareSession[1]];
+      }
+      if (!m) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const [, kind, id] = m;
+      if (kind === 'session') {
         try {
-          a.classList.remove('is-loading');
-          a.removeAttribute('aria-busy');
+          a.classList.add('is-loading');
+          a.setAttribute('aria-busy', 'true');
         } catch {}
-      });
-    } else if (kind === 'document') {
-      import('./document.js').then(mod => {
-        const open = mod.loadDocument
-          || mod.openDocument
-          || (mod.default && (mod.default.loadDocument || mod.default.openDocument));
-        if (open) open(id);
-      }).catch(() => {});
-    } else if (kind === 'note') {
-      import('./notes.js').then(mod => {
-        const open = mod.openNote || (mod.default && mod.default.openNote);
-        if (open) open(id);
-        try {
-          if (/^#(?:note-|open=notes&note=)/.test(window.location.hash || '')) {
-            history.replaceState(null, '', window.location.pathname + window.location.search);
-          }
-        } catch (_) {}
-      }).catch(() => {});
-    } else if (kind === 'image') {
-      import('./gallery.js').then(mod => {
-        const open = mod.openGalleryImage || (mod.default && mod.default.openGalleryImage);
-        if (open) open(id);
-      }).catch(() => {});
-    } else if (kind === 'email') {
-      import('./emailLibrary.js').then(mod => {
-        const open = mod.openEmailLibrary || (mod.default && mod.default.openEmailLibrary);
-        if (open) open({ uid: id });
-      }).catch(() => {});
-    } else if (kind === 'event') {
-      import('./calendar.js').then(mod => {
-        const open = mod.openCalendarTo || (mod.default && mod.default.openCalendarTo);
-        if (open) open(id);
-      }).catch(() => {});
-    } else if (kind === 'task') {
-      import('./tasks.js').then(mod => {
-        const open = mod.openTasks || (mod.default && mod.default.openTasks);
-        if (open) open(id);
-        else { const b = document.getElementById('tasks-btn'); if (b) b.click(); }
-      }).catch(() => { const b = document.getElementById('tasks-btn'); if (b) b.click(); });
-    } else if (kind === 'skill') {
-      import('./skills.js').then(mod => {
-        const open = mod.openSkill || (mod.default && mod.default.openSkill);
-        if (open) open(id);
-      }).catch(() => {});
-    } else if (kind === 'research') {
-      import('./research/panel.js').then(mod => {
-        const open = mod.openPanel || (mod.default && mod.default.openPanel);
-        if (open) open(id);
-      }).catch(() => {});
-    }
-  }, true);
+        import('./sessions.js')
+          .then((mod) => {
+            const fn =
+              mod.selectSession || (mod.default && mod.default.selectSession);
+            if (fn)
+              return fn(id, { showLoading: true, immediateLoading: true });
+          })
+          .finally(() => {
+            try {
+              a.classList.remove('is-loading');
+              a.removeAttribute('aria-busy');
+            } catch {}
+          });
+      } else if (kind === 'document') {
+        import('./document.js')
+          .then((mod) => {
+            const open =
+              mod.loadDocument ||
+              mod.openDocument ||
+              (mod.default &&
+                (mod.default.loadDocument || mod.default.openDocument));
+            if (open) open(id);
+          })
+          .catch(() => {});
+      } else if (kind === 'note') {
+        import('./notes.js')
+          .then((mod) => {
+            const open = mod.openNote || (mod.default && mod.default.openNote);
+            if (open) open(id);
+            try {
+              if (
+                /^#(?:note-|open=notes&note=)/.test(window.location.hash || '')
+              ) {
+                history.replaceState(
+                  null,
+                  '',
+                  window.location.pathname + window.location.search,
+                );
+              }
+            } catch (_) {}
+          })
+          .catch(() => {});
+      } else if (kind === 'image') {
+        import('./gallery.js')
+          .then((mod) => {
+            const open =
+              mod.openGalleryImage ||
+              (mod.default && mod.default.openGalleryImage);
+            if (open) open(id);
+          })
+          .catch(() => {});
+      } else if (kind === 'email') {
+        import('./emailLibrary.js')
+          .then((mod) => {
+            const open =
+              mod.openEmailLibrary ||
+              (mod.default && mod.default.openEmailLibrary);
+            if (open) open({ uid: id });
+          })
+          .catch(() => {});
+      } else if (kind === 'event') {
+        import('./calendar.js')
+          .then((mod) => {
+            const open =
+              mod.openCalendarTo || (mod.default && mod.default.openCalendarTo);
+            if (open) open(id);
+          })
+          .catch(() => {});
+      } else if (kind === 'task') {
+        import('./tasks.js')
+          .then((mod) => {
+            const open =
+              mod.openTasks || (mod.default && mod.default.openTasks);
+            if (open) open(id);
+            else {
+              const b = document.getElementById('tasks-btn');
+              if (b) b.click();
+            }
+          })
+          .catch(() => {
+            const b = document.getElementById('tasks-btn');
+            if (b) b.click();
+          });
+      } else if (kind === 'skill') {
+        import('./skills.js')
+          .then((mod) => {
+            const open =
+              mod.openSkill || (mod.default && mod.default.openSkill);
+            if (open) open(id);
+          })
+          .catch(() => {});
+      } else if (kind === 'research') {
+        import('./research/panel.js')
+          .then((mod) => {
+            const open =
+              mod.openPanel || (mod.default && mod.default.openPanel);
+            if (open) open(id);
+          })
+          .catch(() => {});
+      }
+    },
+    true,
+  );
+}
+
+function resolveDocumentPlaceholderLinks(text, metadata) {
+  if (!text || !metadata || !Array.isArray(metadata.tool_events)) return text;
+  const docEvents = metadata.tool_events.filter((ev) => ev && ev.doc_id);
+  if (!docEvents.length) return text;
+  return String(text).replace(/#document-(\d+)\b/g, (match, num) => {
+    const idx = Number(num) - 1;
+    const ev = Number.isInteger(idx) && idx >= 0 ? docEvents[idx] : null;
+    return ev && ev.doc_id ? `#document-${ev.doc_id}` : match;
+  });
 }
 
 function _makeActionBtn(className, title, text, handler) {
@@ -638,10 +699,12 @@ async function loadExecFenceRegex() {
       .filter((id) => id && !EXEC_FENCE_NON_TOOL.has(id));
     if (tags.length) {
       EXEC_FENCE_RE = new RegExp(
-        '```(' + tags.map(escapeRegex).join('|') + ')(?![\\w-])' +
-        '[ \\t]*([\\[{][^\\n]*?)?[ \\t]*(?=\\r?\\n|```)' +
-        '\\r?\\n?([\\s\\S]*?)```',
-        'gi'
+        '```(' +
+          tags.map(escapeRegex).join('|') +
+          ')(?![\\w-])' +
+          '[ \\t]*([\\[{][^\\n]*?)?[ \\t]*(?=\\r?\\n|```)' +
+          '\\r?\\n?([\\s\\S]*?)```',
+        'gi',
       );
     }
   } catch (err) {
@@ -937,7 +1000,8 @@ export function roleTimestamp(when) {
  */
 export function stripToolBlocks(text) {
   let cleaned = text.replace(TOOL_CALL_RE, '');
-  if (EXEC_FENCE_RE) cleaned = cleaned.replace(EXEC_FENCE_RE, stripExecutedFence);
+  if (EXEC_FENCE_RE)
+    cleaned = cleaned.replace(EXEC_FENCE_RE, stripExecutedFence);
   cleaned = cleaned.replace(DSML_TOOL_RE, '');
   cleaned = cleaned.replace(DSML_INVOKE_RE, '');
   cleaned = cleaned.replace(DSML_STRAY_RE, '');
@@ -1965,7 +2029,9 @@ export function createUserMsgFooter(msgElement) {
  */
 export function displayMetrics(messageElement, metrics) {
   messageElement
-    .querySelectorAll('.response-metrics, .metrics-divider, .ctx-divider, .ctx-ring')
+    .querySelectorAll(
+      '.response-metrics, .metrics-divider, .ctx-divider, .ctx-ring',
+    )
     .forEach((el) => el.remove());
 
   const metricsContainer = document.createElement('span');
@@ -3122,4 +3188,3 @@ const chatRenderer = {
 };
 
 export default chatRenderer;
-
