@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "build:widgets": "vite build -c vite.widgets.config.ts",
     "watch:widgets": "vite build -c vite.widgets.config.ts --watch",
-    "build:app": "vite build && node scripts/sveltekit-nonce.js",
+    "build:app": "vite build --debug && node scripts/sveltekit-nonce.js",
     "build": "pnpm build:widgets && pnpm build:app",
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",

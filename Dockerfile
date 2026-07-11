@@ -79,6 +79,11 @@ COPY requirements.txt requirements-optional.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
 
+# python-magic powers content-based MIME sniffing in src/upload_handler.py.
+# Image-only (not in requirements.txt) because it needs the libmagic1 system
+# lib installed above; see the apt note near the top of this stage.
+RUN pip install --no-cache-dir python-magic==0.4.27
+
 # Pre-install the patched basicsr/gfpgan/facexlib wheels built in the
 # realesrgan-wheels stage (--no-deps keeps the image lean — torch & friends are
 # pulled only when realesrgan is actually installed). With these dists already
@@ -95,6 +100,12 @@ COPY . .
 # Create data directory (mount a volume here for persistence)
 RUN mkdir -p data logs services/cache/search
 
+# Build SvelteKit (Track B)
+RUN corepack enable
+RUN pnpm install --frozen-lockfile
+# RUN pnpm build:widgets
+RUN pnpm build:app
+
 # Entrypoint that drops to PUID/PGID (default 1000:1000) and repairs
 # ownership on the bind-mounted /app/data and /app/logs. Without this,
 # the container runs as root and writes root-owned files into host
@@ -103,16 +114,8 @@ RUN mkdir -p data logs services/cache/search
 # prefs persistence, mail attachments, etc.
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
-# Build SvelteKit (Track B)
-RUN corepack enable
-RUN pnpm install --frozen-lockfile
-# RUN pnpm build:widgets
-RUN pnpm build:app
 
 EXPOSE 7000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]
-
-
-

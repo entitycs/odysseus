@@ -60,7 +60,7 @@
         <!-- End of SvelteKit injection point (Body)-->
 
 		<!-- From index.html-->
-		<script type="module" src="/static/js/a11y.js"></script>
+		<script nonce="{{CSP_NONCE}}" type="module" src="/static/lib/a11y.js"></script>
 
 		<script  nonce="{{CSP_NONCE}}">if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>
 	</body>

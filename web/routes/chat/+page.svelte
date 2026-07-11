@@ -3,14 +3,151 @@ import { onMount } from 'svelte';
 import { afterNavigate } from '$app/navigation';
 import { syncGroupIndicator } from '$lib/chat/group';
 import { handleSubmit } from '$lib/chat/helpers';
-import ScrollChatBottom from '$lib/components/ScrollChatBottom.svelte';
+import QueuedMessageItem from '$lib/components/chat/QueuedMessageItem.svelte';
+import ScrollChatBottom from '$lib/components/chat/ScrollChatBottom.svelte';
 import { deEmojify } from '$lib/emoji';
-import chatModule from '$lib/legacy/chat';
+import chatModule from '$lib/legacy/chat.js';
 import fileHandlerModule from '$lib/legacy/fileHandler';
 import groupModule from '$lib/legacy/group';
 import sessionModule from '$lib/legacy/sessions';
 import uiModule from '$lib/legacy/ui';
 import { updatePlusDot } from '$lib/overflow';
+
+let messageQueue: Array<{ id: string; prompt: string; files: any[] }> = $state(
+  [],
+);
+let editingMessageId: string | null = null;
+
+function generateId() {
+  return Math.random().toString(36).substring(2, 9);
+}
+
+function onQueueSendNow(id: string) {
+  const idx = messageQueue.findIndex((m) => m.id === id);
+  if (idx === -1) return;
+  const msg = messageQueue[idx];
+  messageQueue.splice(idx, 1);
+  messageQueue = messageQueue;
+
+  const ta = document.getElementById('message') as HTMLTextAreaElement;
+  if (ta) {
+    ta.value = msg.prompt;
+    if (msg.files && msg.files.length > 0 && fileHandlerModule) {
+      fileHandlerModule.clearPending();
+      fileHandlerModule.addFiles(msg.files);
+      fileHandlerModule.renderAttachStrip();
+    }
+    if (chatModule && chatModule.handleChatSubmit) {
+      chatModule.handleChatSubmit(new Event('submit'));
+    }
+  }
+}
+
+function onQueueEdit(id: string) {
+  const idx = messageQueue.findIndex((m) => m.id === id);
+  if (idx === -1) return;
+  const msg = messageQueue[idx];
+  // messageQueue.splice(idx, 1);
+  // messageQueue = messageQueue;
+
+  const ta = document.getElementById('message') as HTMLTextAreaElement;
+  if (ta) {
+    ta.value = msg.prompt;
+    if (msg.files && msg.files.length > 0 && fileHandlerModule) {
+      fileHandlerModule.clearPending();
+      fileHandlerModule.addFiles(msg.files);
+      fileHandlerModule.renderAttachStrip();
+    }
+    ta.focus();
+    // Mark this message as being edited
+    editingMessageId = id;
+  }
+}
+
+function onQueueDelete(id: string) {
+  messageQueue = messageQueue.filter((m) => m.id !== id);
+}
+
+function handleChatSubmitWithQueue(e: Event) {
+  e.preventDefault();
+
+  const sid = sessionModule ? sessionModule.getCurrentSessionId() : null;
+  const isStreaming =
+    chatModule && chatModule.hasActiveStream
+      ? chatModule.hasActiveStream(sid)
+      : false;
+
+  if (isStreaming) {
+    const ta = document.getElementById('message') as HTMLTextAreaElement;
+    const prompt = ta ? ta.value.trim() : '';
+
+    if (
+      !prompt &&
+      (!fileHandlerModule || fileHandlerModule.getPendingCount() === 0)
+    ) {
+      console.log('empty message');
+      return;
+    }
+
+    const files =
+      fileHandlerModule && typeof fileHandlerModule.getPendingRaw === 'function'
+        ? [...fileHandlerModule.getPendingRaw()]
+        : [];
+
+    console.log('adding message to queue');
+
+    if (editingMessageId) {
+      // Update existing queued message
+      const idx = messageQueue.findIndex((m) => m.id === editingMessageId);
+      if (idx !== -1) {
+        messageQueue[idx].prompt = prompt;
+        messageQueue[idx].files = files;
+      }
+      editingMessageId = null; // clear edit mode
+    } else {
+      // Normal behavior: push new message
+      messageQueue.push({
+        id: generateId(),
+        prompt,
+        files,
+      });
+    }
+
+    if (ta) ta.value = '';
+    if (fileHandlerModule) {
+      fileHandlerModule.clearPending();
+    }
+
+    console.log('checking streaming status for dequeuing');
+    checkQueueDrain();
+  } else {
+    console.log('not streaming');
+    handleSubmit(e);
+  }
+}
+
+let drainInterval: any;
+function checkQueueDrain() {
+  if (drainInterval) return;
+  drainInterval = setInterval(() => {
+    const sid = sessionModule ? sessionModule.getCurrentSessionId() : null;
+    const isStreaming =
+      chatModule && chatModule.hasActiveStream
+        ? chatModule.hasActiveStream(sid)
+        : false;
+
+    if (!isStreaming) {
+      clearInterval(drainInterval);
+      drainInterval = null;
+
+      if (messageQueue.length > 0) {
+        const next = messageQueue[0];
+        onQueueSendNow(next.id);
+        setTimeout(checkQueueDrain, 1000);
+      }
+    }
+  }, 500);
+}
 
 const _DEOJ_SKIP = '.sources-section, .thinking-toggle, .memory-used-pill';
 
@@ -270,7 +407,7 @@ onMount(() => {
   });
   // Modify form submit to handle special modes
   const chatForm = document.getElementById('chat-form');
-  chatForm.onsubmit = handleSubmit;
+  chatForm.onsubmit = handleChatSubmitWithQueue;
 });
 </script>
 
@@ -354,9 +491,23 @@ onMount(() => {
    <input type="file" id="file-input" class="hidden" multiple />
    <!-- Unified chat input bar -->
    <div class="chat-input-bar">
+      {#if messageQueue.length > 0}
+         <div class="message-queue-panel" style="max-height: 25vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; margin: 0 8px 8px 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            {#each messageQueue as queuedMessage (queuedMessage.id)}
+               <QueuedMessageItem
+                  id={queuedMessage.id}
+                  content={queuedMessage.prompt}
+                  files={queuedMessage.files}
+                  onSendNow={onQueueSendNow}
+                  onEdit={onQueueEdit}
+                  onDelete={onQueueDelete}
+               />
+            {/each}
+         </div>
+      {/if}
       <div class="chat-input-top">
          <div id="message-ghost" class="ghost-text-overlay" aria-hidden="true"></div>
-         <textarea id="message" placeholder="Message Odysseus..." required autocomplete="off" aria-label="Message input" rows="1" autofocus></textarea>
+         <textarea id="message" placeholder="Message Odysseus..." required autocomplete="off" aria-label="Message input" rows="1"></textarea>
          <!-- Model picker (inside chatbox, top-right) -->
          <div class="model-picker-wrap" id="model-picker-wrap">
             <button type="button" class="model-picker-btn" id="model-picker-btn" title="Switch model">
@@ -620,7 +771,7 @@ onMount(() => {
                   <label for="inject-suffix">Suffix</label>
                   <textarea id="inject-suffix" rows="2" placeholder="Added after your message" style="margin-bottom:12px"></textarea>
                   <div class="preset-slider-row">
-                     <label>Temperature <span class="preset-hint-icon" title="Controls randomness. Lower values give focused, deterministic answers (good for code). Higher values give more creative, varied responses.">?</span></label>
+                     <label for="temp-value">Temperature <span class="preset-hint-icon" title="Controls randomness. Lower values give focused, deterministic answers (good for code). Higher values give more creative, varied responses.">?</span></label>
                      <span class="preset-slider-value" id="temp-value">1.0</span>
                   </div>
                   <input type="range" class="preset-range" id="custom-temperature" min="0" max="2" step="0.1" value="1.0">
@@ -630,14 +781,14 @@ onMount(() => {
                      <span>Creative</span>
                   </div>
                   <div class="preset-slider-row">
-                     <label>Max Tokens <span class="preset-hint-icon" title="Maximum length of the AI response. 'No limit' lets the model decide when to stop.">?</span></label>
+                     <label for="tokens-value">Max Tokens <span class="preset-hint-icon" title="Maximum length of the AI response. 'No limit' lets the model decide when to stop.">?</span></label>
                      <span class="preset-slider-value" id="tokens-value">No limit</span>
                   </div>
                   <input type="range" class="preset-range" id="custom-max-tokens" min="256" max="8448" step="256" value="8448">
                </div>
                <!-- Prompt (character/persona) tab -->
                <div class="preset-chartab" data-chartab-panel="character" style="display:none">
-                  <label>Persona</label>
+                  <label for="char-template-select">Persona</label>
                   <div class="char-name-combo">
                      <select id="char-template-select" class="char-template-select">
                         <option value="">Select persona...</option>

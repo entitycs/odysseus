@@ -1,5 +1,5 @@
 from pathlib import Path
-
+import re
 
 APP_JS = Path("web/lib/legacy/app.js")
 
@@ -43,7 +43,11 @@ def test_desktop_new_chat_actions_use_shared_preference_helper():
         "const sidebarNewChatBtn = el('sidebar-new-chat-btn');",
     )
 
-    assert "if (preferModel && await _createDirectChatFromPreferredModel()) return;" in shared_handler
+    pattern = re.compile(
+        r"if\s*\(preferModel\s*&&\s*[(]?await\s*_createDirectChatFromPreferredModel\(\)\)[)]?\s*return;",
+        re.MULTILINE
+    )
+    assert pattern.search(shared_handler), "preferModel awaits createDirectChatFromPreferredModel"
     assert "await _handleNewChatAction();" in rail_handler
     assert "await _handleNewChatAction();" in brand_handler
     assert "const dc = await _refreshDefaultChat();" not in rail_handler
