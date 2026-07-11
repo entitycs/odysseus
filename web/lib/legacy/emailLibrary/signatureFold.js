@@ -13,7 +13,7 @@
 import {
   _TALON_WROTE, _TALON_FROM, _TALON_SENT, _TALON_ORIG_RE,
   _SIG_BLOAT_MIN_CHARS,
-} from './utils.js';
+} from '$lib/legacy/emailLibrary/utils.js';
 
 // No leading icon on the signature fold — the user explicitly does not
 // want a star/emoji-style glyph in this header.

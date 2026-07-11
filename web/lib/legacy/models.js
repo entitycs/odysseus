@@ -23,10 +23,12 @@ const COLLAPSE_KEY = 'odysseus-models-collapsed';
 const FAVORITES_KEY = 'odysseus-model-favorites';
 const USAGE_KEY = 'odysseus-model-usage';
 const SORT_KEY = 'odysseus-model-sort';
-
+let _initialized = false;
 export function init() {
+  if (_initialized) return;
   window.modelsModule = modelsModule;
   API_BASE = window.location.origin;
+  _initialized = true;
 }
 
 export function initLegacy(apiBase) {
@@ -222,7 +224,9 @@ export async function refreshModels(force = false) {
         // ages out. (Bug repro: serve a model, picker is empty for ~30s
         // even though the endpoint is in the DB and online.)
         const _seq = ++_fetchSeq;
-        const _url = `${API_BASE}/api/models` + (force ? '?refresh=true' : '?background=false');
+        const _url =
+          `${API_BASE}/api/models` +
+          (force ? '?refresh=true' : '?background=false');
         _fetchInflight = fetch(_url, { credentials: 'same-origin' })
           .then(async (res) => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -242,7 +246,9 @@ export async function refreshModels(force = false) {
       if (box) box.textContent = '(scan failed)';
       return;
     } finally {
-      try { _loadingSpinner && _loadingSpinner.stop && _loadingSpinner.stop(); } catch (_) {}
+      try {
+        _loadingSpinner && _loadingSpinner.stop && _loadingSpinner.stop();
+      } catch (_) {}
       if (box) box.innerHTML = '';
     }
   }

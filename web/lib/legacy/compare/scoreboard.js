@@ -1,9 +1,9 @@
 // compare/scoreboard.js — vote history display
-import Storage from '../storage.js';
-import state from './state.js';
-import { VOTES_STORAGE_KEY } from './icons.js';
-import themeModule from '../theme.js';
-import uiModule from '../ui.js';
+import Storage from '$lib/legacy/storage.js';
+import state from '$lib/legacy/compare/state.js';
+import { VOTES_STORAGE_KEY } from '$lib/legacy/compare/icons.js';
+import themeModule from '$lib/legacy/theme.js';
+import uiModule from '$lib/legacy/ui.js';
 
 const escapeHtml = uiModule.esc;
 

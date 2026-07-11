@@ -9,15 +9,15 @@
  * compare button, mode toggle, etc. are preserved.
  */
 
-import { bindMenuDismiss } from '../escMenuStack.js';
-import markdownModule from '../markdown.js';
-import presetsModule from '../presets.js';
-import sessionModule from '../sessions.js';
-import spinnerModule from '../spinner.js';
+import { bindMenuDismiss } from '$lib/legacy/escMenuStack.js';
+import markdownModule from '$lib/legacy/markdown.js';
+import presetsModule from '$lib/legacy/presets.js';
+import sessionModule from '$lib/legacy/sessions.js';
+import spinnerModule from '$lib/legacy/spinner.js';
 // ── External dependency imports ──
-import Storage from '../storage.js';
-import themeModule from '../theme.js';
-import uiModule from '../ui.js';
+import Storage from '$lib/legacy/storage.js';
+import themeModule from '$lib/legacy/theme.js';
+import uiModule from '$lib/legacy/ui.js';
 import {
   CHAT_ICON,
   EVAL_PROMPTS,
@@ -37,14 +37,14 @@ import {
   SEND_SVG,
   VOTES_STORAGE_KEY,
   WAVE_FRAMES,
-} from './icons.js';
+} from '$lib/legacy/compare/icons.js';
 import {
   _modelDisplayNames,
   _persistSelections,
   fetchModels,
   getExcludedModels,
   setExcludedModels,
-} from './models.js';
+} from '$lib/legacy/compare/models.js';
 import {
   _addPane,
   _autoPreviewHtml,
@@ -60,24 +60,24 @@ import {
   stopPane,
   toggleExpandPane,
   togglePanePreview,
-} from './panes.js';
-import { _checkUnprobed, _clearProbeWaves } from './probe.js';
-import { showScoreboard } from './scoreboard.js';
+} from '$lib/legacy/compare/panes.js';
+import { _checkUnprobed, _clearProbeWaves } from '$lib/legacy/compare/probe.js';
+import { showScoreboard } from '$lib/legacy/compare/scoreboard.js';
 import {
   _syncToolbarIndicator,
   disableToolToggles,
   restoreToolToggles,
   showModelSelector,
-} from './selector.js';
+} from '$lib/legacy/compare/selector.js';
 // ── Submodule imports ──
-import state from './state.js';
+import state from '$lib/legacy/compare/state.js';
 import {
   _formatMs,
   _renderSearchResults,
   _runSynthForPane,
   registerStreamActions,
   streamToPane,
-} from './stream.js';
+} from '$lib/legacy/compare/stream.js';
 import {
   _saveVote,
   addFinishBadge,
@@ -85,7 +85,7 @@ import {
   handleVote,
   registerCompareActions,
   spawnConfetti,
-} from './vote.js';
+} from '$lib/legacy/compare/vote.js';
 
 var escapeHtml = uiModule.esc;
 

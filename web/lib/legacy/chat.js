@@ -5,33 +5,36 @@
  */
 // ES6 module — IIFE removed
 
-import Storage from './storage.js';
-import uiModule from './ui.js';
-import sessionModule from './sessions.js';
-import chatRenderer from './chatRenderer.js';
-import chatStream from './chatStream.js';
-import { addAITTSButton } from './tts-ai.js';
-import markdownModule from './markdown.js';
-import { svgifyEmoji } from './markdown.js';
-import spinnerModule from './spinner.js';
-import presetsModule from './presets.js';
-import fileHandlerModule from './fileHandler.js';
-import { modelRouteLabel, sameModelName, shortModel } from './model/models.js';
-import { getImageCost, getModelCost } from './model/pricing.js';
-import searchModule from './search.js';
-import documentModule from './document.js';
-import * as emailInbox from './emailInbox.js';
-import codeRunnerModule from './codeRunner.js';
-import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handleSetupInput, handleSetupWizard, typewriterInto } from './slashCommands.js';
-import createResearchSynapse from './researchSynapse.js';
-import { createStreamRenderer } from './streamingRenderer.js';
-import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composerArrowUpRecall.js';
+import Storage from '$lib/legacy/storage.js';
+import uiModule from '$lib/legacy/ui.js';
+import sessionModule from '$lib/legacy/sessions.js';
+import chatRenderer from '$lib/legacy/chatRenderer.js';
+import chatStream from '$lib/legacy/chatStream.js';
+import { addAITTSButton } from '$lib/legacy/tts-ai.js';
+import markdownModule from '$lib/legacy/markdown.js';
+import { svgifyEmoji } from '$lib/legacy/markdown.js';
+import spinnerModule from '$lib/legacy/spinner.js';
+import presetsModule from '$lib/legacy/presets.js';
+import fileHandlerModule from '$lib/legacy/fileHandler.js';
+import { modelRouteLabel, sameModelName, shortModel } from '$lib/legacy/model/models.js';
+import { getImageCost, getModelCost } from '$lib/legacy/model/pricing.js';
+import searchModule from '$lib/legacy/search.js';
+import documentModule from '$lib/legacy/document.js';
+import * as emailInbox from '$lib/legacy/emailInbox.js';
+import codeRunnerModule from '$lib/legacy/codeRunner.js';
+import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handleSetupInput, handleSetupWizard, typewriterInto } from '$lib/legacy/slashCommands.js';
+import createResearchSynapse from '$lib/legacy/researchSynapse.js';
+import { createStreamRenderer } from '$lib/legacy/streamingRenderer.js';
+import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from '$lib/legacy/composerArrowUpRecall.js';
 
   const RESEARCH_TIMEOUT_MS = 360000;
   const DEFAULT_TIMEOUT_MS = 120000;
   const RESEARCH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
 
   let API_BASE = '';
+  /**
+ * @type {AbortController | null}
+ */
   let currentAbort = null;
   let isStreaming = false;
   // Continuous stall watchdog: while streaming, if the SSE stream produces
@@ -46,6 +49,53 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
   let _sendInFlight = false;   // covers the window from click → streaming start
   let _displayOverride = null; // Override visible user bubble text (hides injected prompts)
   let _hideUserBubble = false; // Skip user bubble entirely (e.g. continue after stop)
+
+  export function init(){
+    window.chatModule = chatModule;
+    // Global observer so any <pre> added anywhere in the app (chat stream,
+    // chat re-renders, document library chat previews, slash commands,
+    // research previews, etc.) gets tagged without each call site needing
+    // to remember.
+     if (window._cmpPreObserverWired) return;
+    window._cmpPreObserverWired = true;
+    _scanCompactPres(document.body);
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.tagName === 'PRE') _markCompactPre(n);
+          if (n.querySelectorAll) _scanCompactPres(n);
+        }
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    // Single delegated handler for tool-call fold/expand. One listener on
+    // document.body covers every .agent-thread-node — running, completed,
+    // streaming, history-rendered, compare-mode, all of them. Re-attaching
+    // per-node listeners on every innerHTML rewrite was the source of the
+    // "needs many clicks" bug.
+    if (!window.__odysseus_thread_click_bound) {
+      document.body.addEventListener('click', (e) => {
+        const header = e.target.closest('.agent-thread-header');
+        if (!header) return;
+        const node = header.closest('.agent-thread-node');
+        if (!node) return;
+        const opened = node.classList.toggle('open');
+        if (opened) {
+          // Expanding the final tool trace can push a pending ask_user card below
+          // the viewport.  Keep that immediately-adjacent prompt visible.
+          const thread = node.closest('.agent-thread');
+          const pendingCard = thread?.nextElementSibling;
+          if (pendingCard?.classList.contains('ask-user-card')) {
+            requestAnimationFrame(() => pendingCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+          }
+        }
+      });
+      window.__odysseus_thread_click_bound = true;
+    }
+
+  }
 
   function _setForegroundChatBusy(active) {
     try {
@@ -335,7 +385,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
   /**
    * Initialize with dependencies
    */
-  export function init(apiBase) {
+  export function initLegacy(apiBase) {
     API_BASE = apiBase;
     initSlashCommands({ apiBase, isStreaming: () => isStreaming });
     // Initialize email inbox
@@ -343,7 +393,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     // Wire the slash-command autocomplete popup on the chat composer. The
     // dispatcher already handles the typed command — this just surfaces the
     // registry as a discoverable menu when the user starts a message with /.
-    import('./slashAutocomplete.js').then(mod => {
+    import('$lib/legacy/slashAutocomplete.js').then(mod => {
       const ta = document.getElementById('message');
       if (ta && mod.initSlashAutocomplete) mod.initSlashAutocomplete(ta);
     }).catch(() => {});
@@ -585,9 +635,9 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     // Get current session
     const sessionId = sessionModule.getCurrentSessionId();
     const session = sessionModule.getSessions().find(s => s.id === sessionId);
-    
+
     const submitBtn = document.querySelector('.send-btn');
-    
+
     // If compare is active, stop all compare streams
     if (window.compareModule && window.compareModule.isActive()) {
       window.compareModule.handleCompareSubmit();
@@ -660,21 +710,21 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       if (currentHolder && currentAccumulated) {
         // Store accumulated in a closure variable before it gets cleared
         const stoppedContent = currentAccumulated;
-        
+
         // Store raw content in dataset for consistency with other messages
         currentHolder.dataset.raw = stoppedContent;
-        
+
         currentHolder.querySelector('.body').innerHTML = markdownModule.processWithThinking(
           markdownModule.squashOutsideCode(stoppedContent)
         );
-        
+
         // Highlight code blocks
         if (window.hljs) {
           currentHolder.querySelectorAll('pre code').forEach((block) => {
             window.hljs.highlightElement(block);
           });
         }
-        
+
         // Add the stopped indicator with continue button
         const stoppedIndicator = document.createElement('div');
         stoppedIndicator.className = 'stopped-indicator';
@@ -713,14 +763,14 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
 
         uiModule.scrollHistory();
       }
-      
+
       // Reset button state
       updateSubmitButton('idle', submitBtn);
-      
+
       // Re-enable message input
       const messageInput = uiModule.el('message');
       if (messageInput) messageInput.disabled = false;
-      
+
       // Clear tracking variables
       currentAccumulated = '';
       currentHolder = null;
@@ -938,7 +988,9 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     // Reset tracking variables at start
     currentAccumulated = '';
     currentHolder = null;
-    
+
+    let streamingTTS = null;
+
     try {
       // Re-enable auto-scroll when user sends a message
       uiModule.setAutoScroll(true);
@@ -1182,7 +1234,10 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       try {
         const getEmailCtx = window.__odysseusGetActiveEmailContext;
         const emCtx = typeof getEmailCtx === 'function' ? getEmailCtx() : null;
-        if (emCtx && emCtx.uid) {
+        if (activeEmailComposerCtx && activeEmailComposerCtx.sourceUid) {
+          fd.append('active_email_uid', String(activeEmailComposerCtx.sourceUid));
+          fd.append('active_email_folder', String(activeEmailComposerCtx.sourceFolder || 'INBOX'));
+        } else if (emCtx && emCtx.uid) {
           fd.append('active_email_uid', String(emCtx.uid));
           fd.append('active_email_folder', String(emCtx.folder || 'INBOX'));
           if (emCtx.account) fd.append('active_email_account', String(emCtx.account));
@@ -1194,9 +1249,11 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       // intent gate.
       const toggleState = Storage.loadToggleState();
       let isAgentMode = (toggleState.mode || 'chat') === 'agent';
+      const incognitoChk = el('incognito-toggle');
+      const isIncognito = !!(incognitoChk && incognitoChk.checked);
       // Auto-escalate to agent mode when a document is open — the user expects
       // the AI to see the document and have tools to edit it
-      if (!isAgentMode && documentModule && documentModule.isPanelOpen() && documentModule.getCurrentDocId()) {
+      if (!isIncognito && !isAgentMode && documentModule && activeDocIdForSend) {
         isAgentMode = true;
       }
       fd.append('mode', isAgentMode ? 'agent' : 'chat');
@@ -1218,8 +1275,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       if (ragChk && !ragChk.checked) {
         fd.append('use_rag', 'false');
       }
-      const incognitoChk = el('incognito-toggle');
-      if (incognitoChk && incognitoChk.checked) {
+      if (isIncognito) {
         fd.append('incognito', 'true');
       }
       const _ws = (Storage.KEYS && Storage.get(Storage.KEYS.WORKSPACE, '')) || '';
@@ -1260,7 +1316,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         responseTimeoutCleared = true;
         clearTimeout(timeoutId);
       };
-      
+
       const box = el('chat-history');
       holder = document.createElement('div');
       holder.className = 'msg msg-ai streaming';
@@ -1268,7 +1324,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       // Track holder globally so stop button can access it
       currentHolder = holder;
       holder._researchQuery = msg; // Store query for notification text
-      
+
       const modelName = sessionModule.getCurrentModel() || null;
 
       let loadingText = 'Initializing...';
@@ -1294,14 +1350,14 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       holder._actualModel = modelName;
       _applyModelColor(holder.querySelector('.role'), modelName);
       holder.style.position = 'relative';
-      
+
       // Create spinner
       spinner = spinnerModule.create('Initializing', 'right', 'wave');
       currentSpinner = spinner;
       const bodyDiv = holder.querySelector('.body');
       bodyDiv.appendChild(spinner.createElement());
       spinner.start();
-      
+
       // Update spinner message based on mode
       if (el('web-toggle').checked && !_isAgent) {
         spinner.updateMessage('Searching web with ' + (searchModule ? searchModule.getProviderLabel() : 'SearXNG'));
@@ -1313,7 +1369,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         spinner.updateMessage('Processing request');
         scheduleFirstTokenWaitMessages();
       }
-      
+
       const researchBtn = el('research-toggle-btn');
       if (el('research-toggle').checked && researchBtn) {
         researchBtn.disabled = true;
@@ -1351,7 +1407,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       });
       _sendPerf.mark('chat_stream_headers');
       _sendPerf.report('headers_received');
-      
+
       if (!res.ok) {
         clearResponseTimeout();
         if (res.status === 404) {
@@ -1404,7 +1460,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       let isThinking = false;
       let thinkingStartTime = null;
       // Streaming TTS: synthesize sentence-by-sentence during streaming
-      const streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available);
+      streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available);
       if (streamingTTS) window.aiTTSManager.streamingStart();
       // Multi-bubble agent tracking
       let roundHolder = holder;       // Current AI text bubble (changes per round)
@@ -1483,12 +1539,14 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         'web_search': 'Searching',
         'bash': 'Running',
         'python': 'Running',
-        'create_document': 'Writing',
-        'update_document': 'Writing',
         'read_document': 'Reading',
         'edit_file': 'Editing',
         'read_file': 'Reading',
         'write_file': 'Writing',
+        'create_document': 'Writing',
+        'edit_document': 'Editing',
+        'update_document': 'Rewriting',
+        'suggest_document': 'Reviewing',
         'list_files': 'Browsing',
         'image_gen': 'Generating',
         'generate_image': 'Generating',
@@ -1666,6 +1724,11 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         // what keeps code-block hover buttons from flickering and avoids the O(N^2)
         // re-parse/re-highlight of the whole message on every token.
         // See streamingRenderer.js / streamingSegmenter.js.
+        if (_docFenceOpened && !dt.trim()) {
+          _showDocumentWritingStatus(contentEl);
+          uiModule.scrollHistory();
+          return;
+        }
         const renderer = contentEl._streamRenderer ||
           (contentEl._streamRenderer = createStreamRenderer(contentEl, {
             render: (t) => markdownModule.processWithThinking(markdownModule.squashOutsideCode(t)),
@@ -1729,7 +1792,9 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
               _streamSawDone = true;
               // Always update background map if entry exists (even if user switched back)
               var bgDone = _backgroundStreams.get(streamSessionId);
-              if (bgDone) {
+              if (bgDone && !_isBg) {
+                _backgroundStreams.delete(streamSessionId);
+              } else if (bgDone) {
                 bgDone.status = 'completed';
                 bgDone.accumulated = accumulated;
                 if (_isBg) {
@@ -1953,9 +2018,9 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                         <div class="thinking-header-left"><span class="live-think-header-text">Thinking\u2026</span></div>
                         <span class="live-think-spinner-slot" style="flex-shrink:0;margin-left:auto;"></span>
                         <span class="live-think-timer" style="font-size:11px;opacity:0.4;font-variant-numeric:tabular-nums;margin-left:6px;margin-right:5px;"></span>
-                        <span class="thinking-toggle live-think-toggle" id="${_liveThinkDomId}-toggle"></span>
+                        <span class="thinking-toggle live-think-toggle expanded" id="${_liveThinkDomId}-toggle"></span>
                       </div>
-                      <div class="thinking-content" id="${_liveThinkDomId}">
+                      <div class="thinking-content expanded" id="${_liveThinkDomId}">
                         <div class="thinking-content-inner live-think-inner"></div>
                       </div>
                     </div>`;
@@ -2001,13 +2066,15 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                       _liveThinkTimerEl.textContent = _formatThinkStats(_elapsedLive, _liveThinkTokenCount);
                     }
                     // Keep thinking box scrolled to bottom, but let user scroll up
+                    var _followThinking = true;
                     var thinkBox = _liveThinkInner.closest('.thinking-content');
                     if (thinkBox) {
                       var nearBottom = thinkBox.scrollHeight - thinkBox.clientHeight - thinkBox.scrollTop < 80;
                       if (nearBottom) thinkBox.scrollTop = thinkBox.scrollHeight;
+                      _followThinking = nearBottom;
                     }
                   }
-                  uiModule.scrollHistory();
+                  if (_followThinking) uiModule.scrollHistory();
                   continue;
                 } else if (!hasUnclosedThink && isThinking) {
                   isThinking = false;
@@ -2231,7 +2298,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                 // value so the pill stops claiming a confinement that is not in
                 // effect, and tell the user.
                 const _wsPath = (json.data && json.data.path) || '';
-                import('./workspace.js').then((m) => {
+                import('$lib/legacy/workspace.js').then((m) => {
                   const ws = m.default || m;
                   if (ws && ws.setWorkspace) ws.setWorkspace('');
                 });
@@ -2438,6 +2505,10 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                   if (bgM) bgM.metrics = json.data;
                   continue;
                 }
+                if (metrics) {
+                  const metricsTarget = _metricsTargetForTurn();
+                  if (metricsTarget) displayMetrics(metricsTarget, metrics);
+                }
 
               } else if (json.type === 'message_saved') {
                 // Wire the persisted DB id onto the just-streamed bubble so it
@@ -2518,6 +2589,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                   chatBox.appendChild(threadWrap);
                 }
                 threadWrap.classList.add('streaming');
+                lastToolThread = threadWrap;
                 const toolLabel = _toolLabels[json.tool.toLowerCase()] || json.tool;
                 const toolIcon = _toolIcons[json.tool.toLowerCase()] || '\u25B6';
                 const node = document.createElement('div')
@@ -2911,6 +2983,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       }
 
       _renderStream();
+      if (spinner && spinner.element) { try { spinner.destroy(); } catch (_) {} spinner = null; }
       _cancelThinkingTimer();
       _removeThinkingSpinner();
       // Stop any thread pulse animations
@@ -2972,6 +3045,10 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
         // Clear streaming minHeight lock
         const _streamContent = roundHolder.querySelector('.stream-content');
         if (_streamContent) _streamContent.style.minHeight = '';
+        if (_docFenceOpened) {
+          _finishDocumentWritingStatus(roundHolder, true);
+          roundHolder.style.display = '';
+        }
 
         // Finalize the last round's bubble — flatten stream-content wrapper for clean DOM
         const finalDisplay = _streamDisplayText(roundText, { final: _docFenceOpened });
@@ -3091,7 +3168,9 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
 
         // Attach footer to the last visible bubble (roundHolder for multi-round agent, holder for single)
         const footerTarget = (roundHolder && roundHolder !== holder && roundHolder.style.display !== 'none') ? roundHolder : holder;
-        footerTarget.appendChild(createMsgFooter(footerTarget));
+        if (!footerTarget.querySelector('.msg-footer')) {
+          footerTarget.appendChild(createMsgFooter(footerTarget));
+        }
         // Add "View Report" link for completed research
         if (_researchingStreamIds.has(streamSessionId)) {
           _appendViewReportLink(footerTarget, streamSessionId);
@@ -3131,7 +3210,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
           }
         }
         if (metrics) {
-          displayMetrics(footerTarget, metrics);
+          displayMetrics(_metricsTargetForTurn() || footerTarget, metrics);
         }
         // Attach variant navigation if this was a regeneration
         _attachVariantNav(footerTarget);
@@ -3706,6 +3785,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     // Clear local state WITHOUT aborting the fetch
     currentAbort = null;
     isStreaming = false;
+    _setForegroundChatBusy(false);
     currentHolder = null;
     currentAccumulated = '';
     // Reset submit button so the new chat is ready to send
@@ -3768,6 +3848,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     const decoder = new TextDecoder();
     let buffer = '';
     let roundText = '';
+    let docFenceOpened = false;
     let gotDelta = false;
     let leftSession = false;
     let metricsData = null;
@@ -3818,6 +3899,10 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
           try { json = JSON.parse(payload); } catch (_) { continue; }
           if (json.delta) {
             roundText += json.delta;
+            if (!docFenceOpened && (roundText.includes('```create_document\n') || roundText.includes('```document\n') || roundText.includes('```documen\n'))) {
+              docFenceOpened = true;
+              rich = true;
+            }
             if (!gotDelta) { gotDelta = true; try { spinner.destroy(); } catch (_) {} }
             renderDelta();
           } else if (json.type === 'doc_stream_open') {
@@ -3825,7 +3910,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
             if (documentModule) documentModule.streamDocOpen(json.title || '', json.lang || '');
           } else if (json.type === 'doc_stream_delta') {
             rich = true;
-            if (documentModule && json.delta) documentModule.streamDocDelta(json.delta);
+            if (documentModule) documentModule.streamDocDelta(json.content || json.delta || '');
           } else if (json.type === 'metrics') {
             metricsData = json.data || metricsData;
           } else if (json.type === 'tool_start' || json.type === 'tool_output' ||
@@ -3842,6 +3927,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     }
 
     cleanup();
+    if (docFenceOpened) _finishDocumentWritingStatus(holder, true);
     if (leftSession) { if (holder.parentNode) holder.remove(); return true; }
 
     const onThisSession = sessionModule.getCurrentSessionId &&
@@ -3861,6 +3947,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
 
     // Rich response (tools, sources, docs, multi-round) or user moved on:
     // reload from the DB for the full canonical render.
+    if (holder._docWritingThread && holder._docWritingThread.parentNode) holder._docWritingThread.remove();
     if (holder.parentNode) holder.remove();
     if (onThisSession) sessionModule.selectSession(sessionId);
     else sessionModule.loadSessions();
@@ -3970,25 +4057,6 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     if (!root || !root.querySelectorAll) return;
     root.querySelectorAll('pre').forEach(_markCompactPre);
   }
-  // Global observer so any <pre> added anywhere in the app (chat stream,
-  // chat re-renders, document library chat previews, slash commands,
-  // research previews, etc.) gets tagged without each call site needing
-  // to remember.
-  (function _initCompactPreObserver() {
-    if (window._cmpPreObserverWired) return;
-    window._cmpPreObserverWired = true;
-    _scanCompactPres(document.body);
-    const obs = new MutationObserver((muts) => {
-      for (const m of muts) {
-        for (const n of m.addedNodes) {
-          if (n.nodeType !== 1) continue;
-          if (n.tagName === 'PRE') _markCompactPre(n);
-          if (n.querySelectorAll) _scanCompactPres(n);
-        }
-      }
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-  })();
 
   /**
    * Initialize event listeners
@@ -5288,7 +5356,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     // Images → Gallery editor.
     if (isImage) {
       try {
-        const gx = await import('./galleryEditor.js');
+        const gx = await import('$lib/legacy/galleryEditor.js');
         if (gx.openEditor) { gx.openEditor(url, id, null, name); return; }
       } catch (e) { console.warn('gallery open failed', e); }
       window.open(url, '_blank');
@@ -5351,7 +5419,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
       }
     } catch (e) {
       console.error('open attachment as document failed', e);
-      import('./ui.js').then(m => m.showError && m.showError('Could not open attachment')).catch(() => {});
+      import('$lib/legacy/ui.js').then(m => m.showError && m.showError('Could not open attachment')).catch(() => {});
       window.open(url, '_blank');  // fallback so the file is still reachable
     }
   }
@@ -5359,6 +5427,7 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
   // Public API
   const chatModule = {
     init,
+    initLegacy,
     initListeners,
     openAttachment,
     addMessage: chatRenderer.addMessage,
@@ -5387,31 +5456,5 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     hasActiveStream,
   };
 
-  // Single delegated handler for tool-call fold/expand. One listener on
-  // document.body covers every .agent-thread-node — running, completed,
-  // streaming, history-rendered, compare-mode, all of them. Re-attaching
-  // per-node listeners on every innerHTML rewrite was the source of the
-  // "needs many clicks" bug.
-  if (!window.__odysseus_thread_click_bound) {
-    document.body.addEventListener('click', (e) => {
-      const header = e.target.closest('.agent-thread-header');
-      if (!header) return;
-      const node = header.closest('.agent-thread-node');
-      if (!node) return;
-      const opened = node.classList.toggle('open');
-      if (opened) {
-        // Expanding the final tool trace can push a pending ask_user card below
-        // the viewport.  Keep that immediately-adjacent prompt visible.
-        const thread = node.closest('.agent-thread');
-        const pendingCard = thread?.nextElementSibling;
-        if (pendingCard?.classList.contains('ask-user-card')) {
-          requestAnimationFrame(() => pendingCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
-        }
-      }
-    });
-    window.__odysseus_thread_click_bound = true;
-  }
-
 export default chatModule;
-window.chatModule = chatModule;
 

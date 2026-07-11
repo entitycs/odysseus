@@ -5,7 +5,7 @@
 # docker/build-realesrgan-wheels.sh for the full rationale.
 FROM python:3.14-slim AS realesrgan-wheels
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+&& rm -rf /var/lib/apt/lists/*
 COPY docker/build-realesrgan-wheels.sh /usr/local/bin/build-realesrgan-wheels.sh
 RUN bash /usr/local/bin/build-realesrgan-wheels.sh /wheels
 
@@ -67,10 +67,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #     && rm -rf /tmp/docker /tmp/docker.tgz
 
 # Install Node 22
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+# hadolint ignore=SC3040,DL4006
+RUN set -o pipefail && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs
 
+    # Speed up pnpm by configuring cache + store
+RUN corepack enable
+ENV PNPM_HOME="/usr/local/share/pnpm"
+ENV PNPM_CACHE_DIR="/pnpm-store"
+ENV PNPM_SKIP_METADATA_CHECKS="1"
+
+RUN mkdir -p /pnpm-store
+
 WORKDIR /app
+
+# ---- Cache-friendly dependency layer ----
+COPY package.json pnpm-lock.yaml ./
+
+# Fetch dependencies into the store (super fast)
+RUN pnpm fetch
 
 # Install Python deps first (layer cache). Optional extras (PyMuPDF AGPL, etc.)
 # are opt-in so the default image stays MIT-core; see requirements-optional.txt.
@@ -78,6 +93,11 @@ ARG INSTALL_OPTIONAL=false
 COPY requirements.txt requirements-optional.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
+
+# python-magic powers content-based MIME sniffing in src/upload_handler.py.
+# Image-only (not in requirements.txt) because it needs the libmagic1 system
+# lib installed above; see the apt note near the top of this stage.
+RUN pip install --no-cache-dir python-magic==0.4.27
 
 # Pre-install the patched basicsr/gfpgan/facexlib wheels built in the
 # realesrgan-wheels stage (--no-deps keeps the image lean — torch & friends are
@@ -91,9 +111,11 @@ RUN pip install --no-cache-dir --no-deps /tmp/odysseus-wheels/*.whl \
 # Copy app code
 COPY . .
 
-
 # Create data directory (mount a volume here for persistence)
 RUN mkdir -p data logs services/cache/search
+
+# Build SvelteKit (Track B)
+RUN pnpm install --frozen-lockfile && rm -rf web-build && pnpm build:app
 
 # Entrypoint that drops to PUID/PGID (default 1000:1000) and repairs
 # ownership on the bind-mounted /app/data and /app/logs. Without this,
@@ -103,16 +125,8 @@ RUN mkdir -p data logs services/cache/search
 # prefs persistence, mail attachments, etc.
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
-# Build SvelteKit (Track B)
-RUN corepack enable
-RUN pnpm install --frozen-lockfile
-# RUN pnpm build:widgets
-RUN pnpm build:app
 
 EXPOSE 7000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]
-
-
-

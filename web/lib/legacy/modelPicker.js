@@ -984,16 +984,20 @@ export function updateModelPicker() {
   ) {
     _ensureDefaultPendingChat();
   }
+  // Svelte - moved to ModelPicker.svelte
+  // this had to be removed because it broke the instant reactivity and forced
+  // the app/page/component/element to wait ~5 seconds for various setTimeout
+  // routines to finish (routines not related to user auth)
 
-  const displayName = modelId ? modelId.split('/').pop() : 'Select model';
-  // The header indicator clips long names with ellipsis; show the full model
-  // identifier on hover (#1982). No tooltip on the "Select model" placeholder.
-  label.title = modelId || '';
-  const logo = modelId ? providerLogo(modelId) : null;
-  if (logo) {
-    label.innerHTML =
-      '<span class="model-picker-logo">' + logo + '</span> ' + displayName;
-  } else {
-    label.textContent = displayName;
-  }
+  // const displayName = modelId ? modelId.split('/').pop() : 'Select model';
+  // // The header indicator clips long names with ellipsis; show the full model
+  // // identifier on hover (#1982). No tooltip on the "Select model" placeholder.
+  // label.title = modelId || '';
+  // const logo = modelId ? providerLogo(modelId) : null;
+  // if (logo) {
+  //   label.innerHTML =
+  //     '<span class="model-picker-logo">' + logo + '</span> ' + displayName;
+  // } else {
+  //   label.textContent = displayName;
+  // }
 }

@@ -1,8 +1,8 @@
 // compare/probe.js — model probe/check system
-import state from './state.js';
-import { WAVE_FRAMES } from './icons.js';
-import uiModule from '../ui.js';
-import spinnerModule from '../spinner.js';
+import state from '$lib/legacy/compare/state.js';
+import { WAVE_FRAMES } from '$lib/legacy/compare/icons.js';
+import uiModule from '$lib/legacy/ui.js';
+import spinnerModule from '$lib/legacy/spinner.js';
 
 function _clearProbeWaves() {
   const rows = document.querySelectorAll('.compare-probe-row');

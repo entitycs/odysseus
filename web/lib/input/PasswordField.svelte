@@ -46,14 +46,14 @@ const _placeholder = $derived(
 );
 
 $effect(() => {
-  inp?.focus();
-  fetch('/api/auth/policy', { credentials: 'same-origin' })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((data) => {
-      if (!data) return;
-      policy.password_min_length = data.password_min_length;
-    })
-    .catch(() => {});
+  // inp?.focus();
+  // fetch('/api/auth/policy', { credentials: 'same-origin' })
+  //   .then((r) => (r.ok ? r.json() : null))
+  //   .then((data) => {
+  //     if (!data) return;
+  //     policy.password_min_length = data.password_min_length;
+  //   })
+  //   .catch(() => {});
 });
 </script>
 

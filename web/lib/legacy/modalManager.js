@@ -9,7 +9,7 @@
  *
  * Usage from a tool module:
  *
- *   import * as Modals from './modalManager.js';
+ *   import * as Modals from '$lib/legacy/modalManager.js';
  *
  *   // After building the modal element and adding it to the body:
  *   Modals.register('gallery-modal', {
