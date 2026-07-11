@@ -3,7 +3,7 @@ import { onMount } from 'svelte';
 import { afterNavigate } from '$app/navigation';
 import { syncGroupIndicator } from '$lib/chat/group';
 import { handleSubmit } from '$lib/chat/helpers';
-import ScrollChatBottom from '$lib/components/ScrollChatBottom.svelte';
+import ScrollChatBottom from '$lib/components/chat/ScrollChatBottom.svelte';
 import { deEmojify } from '$lib/emoji';
 import chatModule from '$lib/legacy/chat';
 import fileHandlerModule from '$lib/legacy/fileHandler';
