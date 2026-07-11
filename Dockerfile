@@ -79,6 +79,12 @@ COPY . .
 # Create data directory (mount a volume here for persistence)
 RUN mkdir -p data logs services/cache/search
 
+# Build SvelteKit (Track B)
+RUN corepack enable
+RUN pnpm install --frozen-lockfile
+# RUN pnpm build:widgets
+RUN pnpm build:app
+
 # Entrypoint that drops to PUID/PGID (default 1000:1000) and repairs
 # ownership on the bind-mounted /app/data and /app/logs. Without this,
 # the container runs as root and writes root-owned files into host
@@ -87,11 +93,6 @@ RUN mkdir -p data logs services/cache/search
 # prefs persistence, mail attachments, etc.
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
-# Build SvelteKit (Track B)
-RUN corepack enable
-RUN pnpm install --frozen-lockfile
-# RUN pnpm build:widgets
-RUN pnpm build:app
 
 EXPOSE 7000
 

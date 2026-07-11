@@ -879,16 +879,16 @@ async def serve_index(request: Request):
     logger.info(f"is_sveltekit_route = {is_sveltekit_route}")
 
     if is_sveltekit_route:
-        sveltekit_path = os.path.join(SVELTEKIT_BUILD_DIR, "index.html")
+        sveltekit_path = os.path.join(SVELTEKIT_BUILD_DIR, "200.html")
         logger.info(f"Checking SvelteKit path: {sveltekit_path}")
 
         if os.path.exists(sveltekit_path):
-            logger.info("Serving SvelteKit index.html")
+            logger.info("Serving SvelteKit 200.html")
             return serve_html_with_nonce(request, sveltekit_path)
         else:
             logger.warning("SvelteKit index.html NOT found")
 
-    static_path = abs_join(BASE_DIR, "static/index.html")
+    static_path = abs_join(BASE_DIR, "static/index_old.html")
     logger.info(f"Checking static fallback path: {static_path}")
 
     if os.path.exists(static_path):

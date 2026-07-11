@@ -16,7 +16,7 @@ const config = {
     adapter: adapter({
       pages: 'web-build',
       assets: 'web-build',
-      fallback: 'index.html', // 'hacky' SPA
+      fallback: '200.html', // 'hacky' SPA
       strict: true,
     }),
   },
