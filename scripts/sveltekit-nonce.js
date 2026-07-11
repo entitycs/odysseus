@@ -9,7 +9,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const path = 'web-build/index.html';
+const path = 'web-build/200.html';
 const html = readFileSync(path, 'utf8');
 
 // SvelteKit emits exactly one bare <script> block containing __sveltekit_

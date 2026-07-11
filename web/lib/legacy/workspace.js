@@ -5,9 +5,9 @@
 // chat request sends `workspace` so the agent's file/shell tools are confined
 // to that folder (see routes/chat_routes.py + src/tool_execution.py).
 
-import Storage, { KEYS } from './storage.js';
-import uiModule from './ui.js';
-import { makeWindowDraggable } from './windowDrag.js';
+import Storage, { KEYS } from '$lib/legacy/storage.js';
+import uiModule from '$lib/legacy/ui.js';
+import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
 
 let API_BASE = '';
 // Same folder glyph as the overflow menu item + pill (not an emoji).

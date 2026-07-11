@@ -8,7 +8,7 @@
 import { bindMenuDismiss, dismissOrRemove } from '$lib/legacy/escMenuStack.js';
 import * as spinnerModule from '$lib/legacy/spinner.js';
 import uiModule from '$lib/legacy/ui.js';
-import { topPortalZ } from './toolWindowZOrder.js';
+import { topPortalZ } from '$lib/legacy/toolWindowZOrder.js';
 
 let API;
 // Collapsed skills sections ("user" / "builtin"), persisted so the

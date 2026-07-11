@@ -20,6 +20,8 @@ import * as cookbookRunning from '$lib/legacy/cookbookRunning';
 import * as cookbookSchedule from '$lib/legacy/cookbookSchedule.js';
 import * as documentModule from '$lib/legacy/document.js';
 import * as dragSort from '$lib/legacy/dragSort.js';
+import * as emailInbox from '$lib/legacy/emailInbox';
+import * as emailLibrary from '$lib/legacy/emailLibrary';
 import * as fileHandler from '$lib/legacy/fileHandler.js';
 import * as gallery from '$lib/legacy/gallery.js';
 import * as initModule from '$lib/legacy/init.js';
@@ -57,7 +59,7 @@ onMount(async () => {
   tourAutoPlay.init?.();
   tourHints.init?.();
   fileHandler.init?.();
-  voiceRecorder.initLegacy?.();
+  voiceRecorder.init?.();
   models.init?.();
   rag.init?.();
   presets.init?.();
@@ -81,6 +83,8 @@ onMount(async () => {
   settings.init?.();
   admin.init?.();
   assistant.init?.();
+  emailLibrary.init?.();
+  emailInbox.init?.();
   app.init?.();
   await initModule.init?.();
   app.startOdysseusApp();
@@ -88,8 +92,6 @@ onMount(async () => {
 </script>
 {@render children()}
 <div>
-   <div id="scroll-marker" data-svelte="scroll-marker" hidden>
-   </div>
    <UserMsgScrollMarker />
    <!-- <script type="module" src="/static/svelte/scroll-marker.js"></script> -->
 </div>

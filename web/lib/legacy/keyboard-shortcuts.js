@@ -2,7 +2,7 @@
 // Keyboard Shortcuts — dynamic keybinds
 // ============================================
 
-import { IS_MAC, isAltGrEvent } from './platform.js';
+import { IS_MAC, isAltGrEvent } from '$lib/legacy/platform.js';
 
 const _defaultKeybinds = {
   search: 'ctrl+k', toggle_sidebar: 'ctrl+alt+b', new_session: 'ctrl+alt+n',

@@ -12,7 +12,7 @@ import { snapModalToZone } from '$lib/legacy/tileManager.js';
 import { topPortalZ, topToolWindowZ } from '$lib/legacy/toolWindowZOrder.js';
 import uiModule from '$lib/legacy/ui.js';
 import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
-import { safeDisplayImageSrc } from './util/safeString';
+import { safeDisplayImageSrc } from '$lib/legacy/util/safeString';
 
 let API_BASE = '';
 let _open = false;

@@ -5,9 +5,6 @@
  */
 // ES6 module — IIFE removed
 
-import Storage from '$lib/legacy/storage.js';
-import uiModule from '$lib/legacy/ui.js';
-import sessionModule from '$lib/legacy/sessions.js';
 import chatRenderer from '$lib/legacy/chatRenderer.js?v=20260722emailfastindex1';
 import { modelRouteLabel, replyModelPair, sameModelName, shortModel } from '$lib/legacy/model/models.js';
 import { getImageCost, getModelCost } from '$lib/legacy/model/pricing.js';
@@ -70,6 +67,9 @@ export function init() {
   const RESEARCH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
 
   let API_BASE = '';
+  /**
+ * @type {AbortController | null}
+ */
   let currentAbort = null;
   let isStreaming = false;
   // Continuous stall watchdog: while streaming, if the SSE stream produces
@@ -324,6 +324,53 @@ export function init() {
     }
   }
   try { window.refreshChatContextHeader = refreshChatContextHeader; } catch (_) {}
+
+  export function init(){
+    window.chatModule = chatModule;
+    // Global observer so any <pre> added anywhere in the app (chat stream,
+    // chat re-renders, document library chat previews, slash commands,
+    // research previews, etc.) gets tagged without each call site needing
+    // to remember.
+     if (window._cmpPreObserverWired) return;
+    window._cmpPreObserverWired = true;
+    _scanCompactPres(document.body);
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.tagName === 'PRE') _markCompactPre(n);
+          if (n.querySelectorAll) _scanCompactPres(n);
+        }
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    // Single delegated handler for tool-call fold/expand. One listener on
+    // document.body covers every .agent-thread-node — running, completed,
+    // streaming, history-rendered, compare-mode, all of them. Re-attaching
+    // per-node listeners on every innerHTML rewrite was the source of the
+    // "needs many clicks" bug.
+    if (!window.__odysseus_thread_click_bound) {
+      document.body.addEventListener('click', (e) => {
+        const header = e.target.closest('.agent-thread-header');
+        if (!header) return;
+        const node = header.closest('.agent-thread-node');
+        if (!node) return;
+        const opened = node.classList.toggle('open');
+        if (opened) {
+          // Expanding the final tool trace can push a pending ask_user card below
+          // the viewport.  Keep that immediately-adjacent prompt visible.
+          const thread = node.closest('.agent-thread');
+          const pendingCard = thread?.nextElementSibling;
+          if (pendingCard?.classList.contains('ask-user-card')) {
+            requestAnimationFrame(() => pendingCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+          }
+        }
+      });
+      window.__odysseus_thread_click_bound = true;
+    }
+
+  }
 
   function _setForegroundChatBusy(active) {
     try {
@@ -1439,6 +1486,8 @@ export function init() {
     currentAccumulated = '';
     currentHolder = null;
 
+    let streamingTTS = null;
+
     try {
       // Re-enable auto-scroll when user sends a message
       uiModule.setAutoScroll(true);
@@ -1685,7 +1734,10 @@ export function init() {
       try {
         const getEmailCtx = window.__odysseusGetActiveEmailContext;
         const emCtx = typeof getEmailCtx === 'function' ? getEmailCtx() : null;
-        if (emCtx && emCtx.uid) {
+        if (activeEmailComposerCtx && activeEmailComposerCtx.sourceUid) {
+          fd.append('active_email_uid', String(activeEmailComposerCtx.sourceUid));
+          fd.append('active_email_folder', String(activeEmailComposerCtx.sourceFolder || 'INBOX'));
+        } else if (emCtx && emCtx.uid) {
           fd.append('active_email_uid', String(emCtx.uid));
           fd.append('active_email_folder', String(emCtx.folder || 'INBOX'));
           if (emCtx.account) fd.append('active_email_account', String(emCtx.account));
@@ -1737,8 +1789,7 @@ export function init() {
       if (ragChk && !ragChk.checked) {
         fd.append('use_rag', 'false');
       }
-      const incognitoChk = el('incognito-toggle');
-      if (incognitoChk && incognitoChk.checked) {
+      if (isIncognito) {
         fd.append('incognito', 'true');
       }
       const _ws = (Storage.KEYS && Storage.get(Storage.KEYS.WORKSPACE, '')) || '';
@@ -1923,7 +1974,7 @@ export function init() {
       let isThinking = false;
       let thinkingStartTime = null;
       // Streaming TTS: synthesize sentence-by-sentence during streaming
-      const streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available);
+      streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available);
       if (streamingTTS) window.aiTTSManager.streamingStart();
       // Multi-bubble agent tracking
       let roundHolder = holder;       // Current AI text bubble (changes per round)
@@ -2010,12 +2061,14 @@ export function init() {
         'web_search': 'Searching',
         'bash': 'Running',
         'python': 'Running',
-        'create_document': 'Writing',
-        'update_document': 'Writing',
         'read_document': 'Reading',
         'edit_file': 'Editing',
         'read_file': 'Reading',
         'write_file': 'Writing',
+        'create_document': 'Writing',
+        'edit_document': 'Editing',
+        'update_document': 'Rewriting',
+        'suggest_document': 'Reviewing',
         'list_files': 'Browsing',
         'image_gen': 'Generating',
         'generate_image': 'Generating',
@@ -2193,6 +2246,11 @@ export function init() {
         // what keeps code-block hover buttons from flickering and avoids the O(N^2)
         // re-parse/re-highlight of the whole message on every token.
         // See streamingRenderer.js / streamingSegmenter.js.
+        if (_docFenceOpened && !dt.trim()) {
+          _showDocumentWritingStatus(contentEl);
+          uiModule.scrollHistory();
+          return;
+        }
         const renderer = contentEl._streamRenderer ||
           (contentEl._streamRenderer = createStreamRenderer(contentEl, {
             render: (t) => markdownModule.processWithThinking(markdownModule.squashOutsideCode(t)),
@@ -2256,7 +2314,9 @@ export function init() {
               _streamSawDone = true;
               // Always update background map if entry exists (even if user switched back)
               var bgDone = _backgroundStreams.get(streamSessionId);
-              if (bgDone) {
+              if (bgDone && !_isBg) {
+                _backgroundStreams.delete(streamSessionId);
+              } else if (bgDone) {
                 bgDone.status = 'completed';
                 bgDone.accumulated = accumulated;
                 if (_isBg) {
@@ -2485,9 +2545,9 @@ export function init() {
                         <div class="thinking-header-left"><span class="live-think-header-text">Thinking\u2026</span></div>
                         <span class="live-think-spinner-slot" style="flex-shrink:0;margin-left:auto;"></span>
                         <span class="live-think-timer" style="font-size:11px;opacity:0.4;font-variant-numeric:tabular-nums;margin-left:6px;margin-right:5px;"></span>
-                        <span class="thinking-toggle live-think-toggle" id="${_liveThinkDomId}-toggle"></span>
+                        <span class="thinking-toggle live-think-toggle expanded" id="${_liveThinkDomId}-toggle"></span>
                       </div>
-                      <div class="thinking-content" id="${_liveThinkDomId}">
+                      <div class="thinking-content expanded" id="${_liveThinkDomId}">
                         <div class="thinking-content-inner live-think-inner"></div>
                       </div>
                     </div>`;
@@ -2533,13 +2593,15 @@ export function init() {
                       _liveThinkTimerEl.textContent = _formatThinkStats(_elapsedLive, _liveThinkTokenCount);
                     }
                     // Keep thinking box scrolled to bottom, but let user scroll up
+                    var _followThinking = true;
                     var thinkBox = _liveThinkInner.closest('.thinking-content');
                     if (thinkBox) {
                       var nearBottom = thinkBox.scrollHeight - thinkBox.clientHeight - thinkBox.scrollTop < 80;
                       if (nearBottom) thinkBox.scrollTop = thinkBox.scrollHeight;
+                      _followThinking = nearBottom;
                     }
                   }
-                  uiModule.scrollHistory();
+                  if (_followThinking) uiModule.scrollHistory();
                   continue;
                 } else if (!hasUnclosedThink && isThinking) {
                   isThinking = false;
@@ -3469,6 +3531,7 @@ export function init() {
       }
 
       _renderStream();
+      if (spinner && spinner.element) { try { spinner.destroy(); } catch (_) {} spinner = null; }
       _cancelThinkingTimer();
       _removeThinkingSpinner();
       // Stop any thread pulse animations
@@ -3530,6 +3593,10 @@ export function init() {
         // Clear streaming minHeight lock
         const _streamContent = roundHolder.querySelector('.stream-content');
         if (_streamContent) _streamContent.style.minHeight = '';
+        if (_docFenceOpened) {
+          _finishDocumentWritingStatus(roundHolder, true);
+          roundHolder.style.display = '';
+        }
 
         // Finalize the last round's bubble — flatten stream-content wrapper for clean DOM
         const finalDisplay = _streamDisplayText(roundText, { final: _docFenceOpened });
@@ -4347,6 +4414,7 @@ export function init() {
     const decoder = new TextDecoder();
     let buffer = '';
     let roundText = '';
+    let docFenceOpened = false;
     let gotDelta = false;
     let leftSession = false;
     let metricsData = null;
@@ -4397,6 +4465,10 @@ export function init() {
           try { json = JSON.parse(payload); } catch (_) { continue; }
           if (json.delta) {
             roundText += json.delta;
+            if (!docFenceOpened && (roundText.includes('```create_document\n') || roundText.includes('```document\n') || roundText.includes('```documen\n'))) {
+              docFenceOpened = true;
+              rich = true;
+            }
             if (!gotDelta) { gotDelta = true; try { spinner.destroy(); } catch (_) {} }
             renderDelta();
           } else if (json.type === 'doc_stream_open') {
@@ -4404,7 +4476,7 @@ export function init() {
             if (documentModule) documentModule.streamDocOpen(json.title || '', json.lang || '');
           } else if (json.type === 'doc_stream_delta') {
             rich = true;
-            if (documentModule && json.delta) documentModule.streamDocDelta(json.delta);
+            if (documentModule) documentModule.streamDocDelta(json.content || json.delta || '');
           } else if (json.type === 'metrics') {
             metricsData = json.data || metricsData;
           } else if (json.type === 'tool_start' || json.type === 'tool_output' ||
@@ -4421,6 +4493,7 @@ export function init() {
     }
 
     cleanup();
+    if (docFenceOpened) _finishDocumentWritingStatus(holder, true);
     if (leftSession) { if (holder.parentNode) holder.remove(); return true; }
 
     const onThisSession = sessionModule.getCurrentSessionId &&
@@ -4440,6 +4513,7 @@ export function init() {
 
     // Rich response (tools, sources, docs, multi-round) or user moved on:
     // reload from the DB for the full canonical render.
+    if (holder._docWritingThread && holder._docWritingThread.parentNode) holder._docWritingThread.remove();
     if (holder.parentNode) holder.remove();
     if (onThisSession) sessionModule.selectSession(sessionId);
     else sessionModule.loadSessions();
@@ -5925,6 +5999,7 @@ export function init() {
   // Public API
   const chatModule = {
     init,
+    initLegacy,
     initListeners,
     openAttachment,
     addMessage: chatRenderer.addMessage,
@@ -5953,31 +6028,5 @@ export function init() {
     hasActiveStream,
   };
 
-  // Single delegated handler for tool-call fold/expand. One listener on
-  // document.body covers every .agent-thread-node — running, completed,
-  // streaming, history-rendered, compare-mode, all of them. Re-attaching
-  // per-node listeners on every innerHTML rewrite was the source of the
-  // "needs many clicks" bug.
-  if (!window.__odysseus_thread_click_bound) {
-    document.body.addEventListener('click', (e) => {
-      const header = e.target.closest('.agent-thread-header');
-      if (!header) return;
-      const node = header.closest('.agent-thread-node');
-      if (!node) return;
-      const opened = node.classList.toggle('open');
-      if (opened) {
-        // Expanding the final tool trace can push a pending ask_user card below
-        // the viewport.  Keep that immediately-adjacent prompt visible.
-        const thread = node.closest('.agent-thread');
-        const pendingCard = thread?.nextElementSibling;
-        if (pendingCard?.classList.contains('ask-user-card')) {
-          requestAnimationFrame(() => pendingCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
-        }
-      }
-    });
-    window.__odysseus_thread_click_bound = true;
-  }
-
 export default chatModule;
-
 

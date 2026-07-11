@@ -2,36 +2,37 @@
 // Odysseus UI — Main Application Orchestrator
 // ES6 module — entry point, no exports (wires all modules together)
 // ============================================
-import Storage from '$lib/legacy/storage.js';
-import uiModule from '$lib/legacy/ui.js';
-import workspaceModule from '$lib/legacy/workspace.js';
-import fileHandlerModule from '$lib/legacy/fileHandler.js';
-import modelsModule from '$lib/legacy/models.js';
-import ragModule from '$lib/legacy/rag.js';
-import presetsModule from '$lib/legacy/presets.js';
-import searchModule from '$lib/legacy/search.js';
-import chatModule from '$lib/legacy/chat.js';
+
+import adminModule from '$lib/legacy/admin.js';
+import calendarModule from '$lib/legacy/calendar.js';
+import censorModule from '$lib/legacy/censor.js';
+import * as chatModule from '$lib/legacy/chat.js';
+import chatRenderer from '$lib/legacy/chatRenderer.js';
 import compareModule from '$lib/legacy/compare/index.js';
 import documentModule from '$lib/legacy/document.js';
-import searchChatModule from '$lib/legacy/search-chat.js';
-import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
-import markdownModule from '$lib/legacy/markdown.js';
-import chatRenderer from '$lib/legacy/chatRenderer.js';
-import sessionModule from '$lib/legacy/sessions.js';
-import memoryModule from '$lib/legacy/memory.js';
-import voiceRecorderModule from '$lib/legacy/voiceRecorder.js';
-import censorModule from '$lib/legacy/censor.js';
+import * as emailInboxModule from '$lib/legacy/emailInbox';
+import fileHandlerModule from '$lib/legacy/fileHandler.js';
 import galleryModule from '$lib/legacy/gallery.js';
-import tasksModule from '$lib/legacy/tasks.js';
-import calendarModule from '$lib/legacy/calendar.js';
+import markdownModule from '$lib/legacy/markdown.js';
+import memoryModule from '$lib/legacy/memory.js';
+import modelsModule from '$lib/legacy/models.js';
 import notesModule from '$lib/legacy/notes.js';
-import adminModule from '$lib/legacy/admin.js';
+import presetsModule from '$lib/legacy/presets.js';
+import ragModule from '$lib/legacy/rag.js';
+import searchModule from '$lib/legacy/search.js';
+import searchChatModule from '$lib/legacy/search-chat.js';
+import sessionModule from '$lib/legacy/sessions.js';
 import settingsModule from '$lib/legacy/settings.js';
+import Storage from '$lib/legacy/storage.js';
+import tasksModule from '$lib/legacy/tasks.js';
+import uiModule from '$lib/legacy/ui.js';
+import voiceRecorderModule from '$lib/legacy/voiceRecorder.js';
+import { makeWindowDraggable } from '$lib/legacy/windowDrag.js';
+import workspaceModule from '$lib/legacy/workspace.js';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
 import '$lib/legacy/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import '$lib/legacy/tileManager.js';
-import themeModule from '$lib/legacy/theme.js';
 // IMPORTANT: import cookbook.js with NO ?v= query — the same plain specifier
 // every other importer (cookbook-hwfit.js / cookbook-diagnosis.js) uses. A query
 // mismatch makes the browser load cookbook.js twice as separate modules (two
@@ -39,15 +40,19 @@ import themeModule from '$lib/legacy/theme.js';
 // unversioned so this can't recur.
 import cookbookModule from '$lib/legacy/cookbook.js';
 import groupModule from '$lib/legacy/group.js';
-import * as researchPanelModule from '$lib/legacy/research/panel.js';
-import ttsModule from '$lib/legacy/tts-ai.js';
-import spinnerModule from '$lib/legacy/spinner.js';
 import { initKeyboardShortcuts } from '$lib/legacy/keyboard-shortcuts.js';
+import * as researchPanelModule from '$lib/legacy/research/panel.js';
+import {
+  initSectionCollapse,
+  initSectionDrag,
+} from '$lib/legacy/section-management.js';
 import { initSidebarLayout, syncRailSide } from '$lib/legacy/sidebar-layout.js';
-import { initSectionCollapse, initSectionDrag } from '$lib/legacy/section-management.js';
+import spinnerModule from '$lib/legacy/spinner.js';
+import themeModule from '$lib/legacy/theme.js';
+import ttsModule from '$lib/legacy/tts-ai.js';
 
-const API_BASE = window.location.origin;
-
+let API_BASE = '';
+let _initialized = false;
 export function init() {
   API_BASE = window.location.origin;
   window.themeModule = themeModule;
@@ -62,26 +67,27 @@ export function init() {
   _refreshDefaultChat();
 
   // Redirect to login on 401 from any fetch
-  const _origFetch = window.fetch;
-  window.fetch = async function(...args) {
-    const res = await _origFetch.apply(this, args);
-    if (res.status === 401 && !String(args[0]).includes('/api/auth/')) {
-      window.location.href = '/login';
-    }
-    return res;
-  };
+  // handle w/ backend + sveltekit
+  // const _origFetch = window.fetch;
+  // window.fetch = async function(...args) {
+  //   const res = await _origFetch.apply(this, args);
+  //   if (res.status === 401 && !String(args[0]).includes('/api/auth/')) {
+  //     window.location.href = '/login';
+  //   }
+  //   return res;
+  // };
 
-  // Prime the cache once at load for initial paint paths that read _defaultChat
-  // synchronously; later reads should call _refreshDefaultChat() first.
-  _refreshDefaultChat();
+  // // Prime the cache once at load for initial paint paths that read _defaultChat
+  // // synchronously; later reads should call _refreshDefaultChat() first.
+  // _refreshDefaultChat();
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startOdysseusApp, {
-      once: true,
-    });
-  } else {
-    startOdysseusApp();
-  }
+  // if (document.readyState === 'loading') {
+  //   document.addEventListener('DOMContentLoaded', startOdysseusApp, {
+  //     once: true,
+  //   });
+  // } else {
+  //   startOdysseusApp();
+  // }
 }
 
 function _isMobileChatInput() {
@@ -91,40 +97,53 @@ function _isMobileChatInput() {
 function _submitChatFormDirect(form) {
   if (!form) return;
   if (form.requestSubmit) form.requestSubmit();
-  else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  else
+    form.dispatchEvent(
+      new Event('submit', { bubbles: true, cancelable: true }),
+    );
 }
 
 function _isForegroundChatBusy() {
   const sendBtn = document.querySelector('.send-btn');
-  return !!window.__odysseusChatBusy
-    || Date.now() < (window.__odysseusChatBusyUntil || 0)
-    || !!document.querySelector('.send-btn[data-mode="streaming"], .send-btn.send-pending')
-    || (sendBtn && (sendBtn.title || '').toLowerCase().includes('stop'));
+  return (
+    !!window.__odysseusChatBusy ||
+    Date.now() < (window.__odysseusChatBusyUntil || 0) ||
+    !!document.querySelector(
+      '.send-btn[data-mode="streaming"], .send-btn.send-pending',
+    ) ||
+    (sendBtn && (sendBtn.title || '').toLowerCase().includes('stop'))
+  );
 }
 
 function _shouldQueueFromMobileEnter(e, input) {
-  return e.key === 'Enter'
-    && !e.shiftKey
-    && !e.ctrlKey
-    && !e.metaKey
-    && !e.altKey
-    && !e.isComposing
-    && _isMobileChatInput()
-    && _isForegroundChatBusy()
-    && !!(input && input.value && input.value.trim());
+  return (
+    e.key === 'Enter' &&
+    !e.shiftKey &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey &&
+    !e.isComposing &&
+    _isMobileChatInput() &&
+    _isForegroundChatBusy() &&
+    !!(input && input.value && input.value.trim())
+  );
 }
 
 function _shouldQueueFromMobileLineBreak(input) {
-  return _isMobileChatInput()
-    && _isForegroundChatBusy()
-    && !!(input && input.value && input.value.trim());
+  return (
+    _isMobileChatInput() &&
+    _isForegroundChatBusy() &&
+    !!(input && input.value && input.value.trim())
+  );
 }
 
 function _isLineBreakInputEvent(e) {
-  return e
-    && (e.inputType === 'insertLineBreak'
-      || e.inputType === 'insertParagraph'
-      || e.data === '\n');
+  return (
+    e &&
+    (e.inputType === 'insertLineBreak' ||
+      e.inputType === 'insertParagraph' ||
+      e.data === '\n')
+  );
 }
 
 function _submitMobileQueuedInput(input) {
@@ -133,7 +152,11 @@ function _submitMobileQueuedInput(input) {
   const last = Number(input.dataset.mobileQueueSubmitAt || 0);
   if (now - last < 300) return true;
   input.dataset.mobileQueueSubmitAt = String(now);
-  if (chatModule && chatModule.queueStreamingComposerRequest && chatModule.queueStreamingComposerRequest()) {
+  if (
+    chatModule &&
+    chatModule.queueStreamingComposerRequest &&
+    chatModule.queueStreamingComposerRequest()
+  ) {
     return true;
   }
   window.__odysseusQueueStreamingSubmit = now;
@@ -144,7 +167,10 @@ function _submitMobileQueuedInput(input) {
 
 function _syncMobileEnterKeyHint(input) {
   if (!input) return;
-  input.setAttribute('enterkeyhint', (_isMobileChatInput() && _isForegroundChatBusy()) ? 'send' : 'enter');
+  input.setAttribute(
+    'enterkeyhint',
+    _isMobileChatInput() && _isForegroundChatBusy() ? 'send' : 'enter',
+  );
 }
 
 function _countLineBreaks(s) {
@@ -178,8 +204,11 @@ function initForegroundActivityHeartbeat() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'hidden') send(true);
   });
-  ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(type => {
-    window.addEventListener(type, () => send(false), { passive: true, capture: true });
+  ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach((type) => {
+    window.addEventListener(type, () => send(false), {
+      passive: true,
+      capture: true,
+    });
   });
   setInterval(() => send(false), 15000);
 }
@@ -205,13 +234,19 @@ function initRailHoverLabels() {
     'rail-theme': 'Theme',
     'rail-settings': 'Settings',
   };
-  document.querySelectorAll('#icon-rail .icon-rail-btn').forEach(btn => {
+  document.querySelectorAll('#icon-rail .icon-rail-btn').forEach((btn) => {
     if (btn.querySelector('.rail-hover-label')) return;
-    const label = labels[btn.id] || btn.getAttribute('aria-label') || btn.getAttribute('title') || '';
+    const label =
+      labels[btn.id] ||
+      btn.getAttribute('aria-label') ||
+      btn.getAttribute('title') ||
+      '';
     if (!label) return;
     const span = document.createElement('span');
     span.className = 'rail-hover-label';
-    span.textContent = String(label).replace(/\s*\([^)]*\)\s*/g, '').trim();
+    span.textContent = String(label)
+      .replace(/\s*\([^)]*\)\s*/g, '')
+      .trim();
     btn.appendChild(span);
   });
 }
@@ -245,14 +280,12 @@ async function _refreshDefaultChat() {
   } catch (_) {}
   return null;
 }
-// Prime the cache once at load for initial paint paths that read _defaultChat
-// synchronously; later reads should call _refreshDefaultChat() first.
-_refreshDefaultChat();
 
 async function _createDirectChatFromPreferredModel() {
   if (!sessionModule) return false;
 
-  const pending = sessionModule.getPendingChat && sessionModule.getPendingChat();
+  const pending =
+    sessionModule.getPendingChat && sessionModule.getPendingChat();
   if (pending && pending.url && pending.modelId && pending.endpointId) {
     sessionModule.createDirectChat(pending.url, pending.modelId, pending.endpointId, { source: pending.source || 'manual' });
     return true;
@@ -260,9 +293,13 @@ async function _createDirectChatFromPreferredModel() {
 
   const sessions = sessionModule.getSessions();
   const currentId = sessionModule.getCurrentSessionId();
-  const current = sessions.find(s => s.id === currentId);
+  const current = sessions.find((s) => s.id === currentId);
   if (current && current.endpoint_url && current.model && current.endpoint_id) {
-    sessionModule.createDirectChat(current.endpoint_url, current.model, current.endpoint_id);
+    sessionModule.createDirectChat(
+      current.endpoint_url,
+      current.model,
+      current.endpoint_id,
+    );
     return true;
   }
 
@@ -272,10 +309,14 @@ async function _createDirectChatFromPreferredModel() {
     return true;
   }
 
-  const withModel = sessions.filter(s => s.endpoint_url && s.model);
+  const withModel = sessions.filter((s) => s.endpoint_url && s.model);
   if (withModel.length > 0) {
     const last = withModel[0]; // sessions are sorted by recent
-    sessionModule.createDirectChat(last.endpoint_url, last.model, last.endpoint_id);
+    sessionModule.createDirectChat(
+      last.endpoint_url,
+      last.model,
+      last.endpoint_id,
+    );
     return true;
   }
 
@@ -287,12 +328,13 @@ async function _createDirectChatFromPreferredModel() {
 // ============================================
 function initializeEventListeners() {
   // Chat form submission
-//  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
+  //  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
 
   // File attachments (inside overflow menu)
   const _overflowAttach = el('overflow-attach-btn');
-  if (_overflowAttach) _overflowAttach.addEventListener('click', fileHandlerModule.openPicker);
-  el('file-input').addEventListener('change', async (e)=>{
+  if (_overflowAttach)
+    _overflowAttach.addEventListener('click', fileHandlerModule.openPicker);
+  el('file-input').addEventListener('change', async (e) => {
     await fileHandlerModule.addFiles(Array.from(e.target.files || []));
     e.target.value = '';
     // Refocus textarea after file picker closes (mobile keyboard)
@@ -301,11 +343,11 @@ function initializeEventListeners() {
   });
 
   // Paste handler
-  window.addEventListener('paste', async (e)=>{
+  window.addEventListener('paste', async (e) => {
     if (!e.clipboardData) return;
     let changed = false;
-    for (const item of e.clipboardData.items){
-      if (item.kind === 'file'){
+    for (const item of e.clipboardData.items) {
+      if (item.kind === 'file') {
         const f = item.getAsFile();
         if (f) {
           await fileHandlerModule.addFiles([f]);
@@ -334,33 +376,52 @@ function initializeEventListeners() {
       _countScheduled = true;
       requestAnimationFrame(_updateMsgCount);
     };
-    new MutationObserver(_scheduleCount).observe(_chatHistEl, { childList: true });
+    new MutationObserver(_scheduleCount).observe(_chatHistEl, {
+      childList: true,
+    });
     _updateMsgCount();
   }
 
   // Scrolling
-  el('chat-history').addEventListener('scroll', uiModule.debounce(() => {
-    const box = el('chat-history');
-    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-    uiModule.setAutoScroll(atBottom);
-  }, 100));
+  el('chat-history').addEventListener(
+    'scroll',
+    uiModule.debounce(() => {
+      const box = el('chat-history');
+      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      uiModule.setAutoScroll(atBottom);
+    }, 100),
+  );
   // Close all footer popups immediately on any scroll
-  el('chat-history').addEventListener('scroll', () => {
-    document.querySelectorAll('.ctx-popup, .memory-used-detail, .msg-overflow-menu').forEach(p => p.remove());
-    document.querySelectorAll('.memory-used-pill').forEach(p => { p._openDetail = null; });
-  }, { passive: true });
+  el('chat-history').addEventListener(
+    'scroll',
+    () => {
+      document
+        .querySelectorAll('.ctx-popup, .memory-used-detail, .msg-overflow-menu')
+        .forEach((p) => p.remove());
+      document.querySelectorAll('.memory-used-pill').forEach((p) => {
+        p._openDetail = null;
+      });
+    },
+    { passive: true },
+  );
 
   el('chat-history').addEventListener('wheel', (e) => {
     // Only disable auto-scroll when user scrolls UP (deltaY < 0)
     if (e.deltaY < 0) uiModule.setAutoScroll(false);
   });
   let _touchThrottled = false;
-  el('chat-history').addEventListener('touchmove', () => {
-    if (_touchThrottled) return;
-    _touchThrottled = true;
-    uiModule.setAutoScroll(false);
-    requestAnimationFrame(() => { _touchThrottled = false; });
-  }, { passive: true });
+  el('chat-history').addEventListener(
+    'touchmove',
+    () => {
+      if (_touchThrottled) return;
+      _touchThrottled = true;
+      uiModule.setAutoScroll(false);
+      requestAnimationFrame(() => {
+        _touchThrottled = false;
+      });
+    },
+    { passive: true },
+  );
 
   // Internal #session-id links from AI search results
   el('chat-history').addEventListener('click', (e) => {
@@ -384,12 +445,20 @@ function initializeEventListeners() {
   // windows are deliberately NOT touched here — those close via their own
   // controls.
   window.closeAllPopups = function closeAllPopups(except) {
-    document.querySelectorAll(
-      '.export-dropdown-menu.open, .overflow-menu.open, .model-picker-menu.open, .doc-overflow-menu.open'
-    ).forEach(m => { if (m !== except) m.classList.remove('open'); });
-    document.querySelectorAll(
-      '.skill-kebab-menu, .note-reminder-menu, .task-dropdown, .doclib-card-dropdown, .email-card-dropdown, .msg-overflow-menu'
-    ).forEach(m => { if (m !== except) m.remove(); });
+    document
+      .querySelectorAll(
+        '.export-dropdown-menu.open, .overflow-menu.open, .model-picker-menu.open, .doc-overflow-menu.open',
+      )
+      .forEach((m) => {
+        if (m !== except) m.classList.remove('open');
+      });
+    document
+      .querySelectorAll(
+        '.skill-kebab-menu, .note-reminder-menu, .task-dropdown, .doclib-card-dropdown, .email-card-dropdown, .msg-overflow-menu',
+      )
+      .forEach((m) => {
+        if (m !== except) m.remove();
+      });
   };
   // Window-opening / nav controls (rail buttons, sidebar tool rows + session
   // rows, section headers) count as "other actions" — dismiss popups when one
@@ -397,7 +466,11 @@ function initializeEventListeners() {
   // window is already opening; we just clear stray popups). Popup triggers
   // themselves aren't these selectors, so toggles aren't broken.
   document.addEventListener('click', (e) => {
-    if (e.target.closest('.icon-rail-btn, #sidebar .list-item, .section-header-flex')) {
+    if (
+      e.target.closest(
+        '.icon-rail-btn, #sidebar .list-item, .section-header-flex',
+      )
+    ) {
       window.closeAllPopups();
     }
   });
@@ -410,15 +483,18 @@ function initializeEventListeners() {
         exportMenu.classList.remove('open');
       } else {
         // Move menu to body so it's not affected by ancestor transforms
-        if (exportMenu.parentElement !== document.body) document.body.appendChild(exportMenu);
+        if (exportMenu.parentElement !== document.body)
+          document.body.appendChild(exportMenu);
         const rect = exportDlBtn.getBoundingClientRect();
-        exportMenu.style.top = (rect.bottom + 4) + 'px';
+        exportMenu.style.top = rect.bottom + 4 + 'px';
         exportMenu.style.left = 'auto';
-        exportMenu.style.right = (window.innerWidth - rect.right) + 'px';
+        exportMenu.style.right = window.innerWidth - rect.right + 'px';
         exportMenu.classList.add('open');
       }
     });
-    document.addEventListener('click', () => exportMenu.classList.remove('open'));
+    document.addEventListener('click', () =>
+      exportMenu.classList.remove('open'),
+    );
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && exportMenu.classList.contains('open')) {
         exportMenu.classList.remove('open');
@@ -471,19 +547,31 @@ function initializeEventListeners() {
         // to avoid extra newlines and formatting artifacts. Raw text lives on
         // the outer .msg in the main renderer; keep body.dataset.raw as a legacy
         // fallback for older/reused render paths.
-        const text = (child.dataset?.raw || body?.dataset?.raw || body?.innerText || body?.textContent || '').trim();
+        const text = (
+          child.dataset?.raw ||
+          body?.dataset?.raw ||
+          body?.innerText ||
+          body?.textContent ||
+          ''
+        ).trim();
         if (text) parts.push(`${label}: ${text}`);
       } else if (child.classList?.contains('agent-thread')) {
         const lines = ['[Tool calls]'];
         for (const n of child.querySelectorAll('.agent-thread-node')) {
-          const tool = n.querySelector('.agent-thread-tool')?.textContent?.trim() || 'tool';
-          const cmd = n.querySelector('.agent-thread-cmd')?.textContent?.trim() || '';
-          const output = n.querySelector('.agent-tool-output pre')?.textContent?.trim() || '';
+          const tool =
+            n.querySelector('.agent-thread-tool')?.textContent?.trim() ||
+            'tool';
+          const cmd =
+            n.querySelector('.agent-thread-cmd')?.textContent?.trim() || '';
+          const output =
+            n.querySelector('.agent-tool-output pre')?.textContent?.trim() ||
+            '';
           const status = n.classList.contains('error') ? 'failed' : 'done';
           let line = `- ${tool} [${status}]`;
           if (cmd) line += `\n  cmd: ${cmd}`;
           if (output) {
-            const truncated = output.length > 2000 ? output.slice(0, 2000) + '…' : output;
+            const truncated =
+              output.length > 2000 ? output.slice(0, 2000) + '…' : output;
             line += `\n  out: ${truncated}`;
           }
           lines.push(line);
@@ -503,7 +591,10 @@ function initializeEventListeners() {
       const transcript = _serializeChatTranscript();
       // A new/empty chat has nothing to copy — don't write an empty string and
       // falsely report "Copied".
-      if (!transcript.trim()) { uiModule.showToast('Nothing to copy yet'); return; }
+      if (!transcript.trim()) {
+        uiModule.showToast('Nothing to copy yet');
+        return;
+      }
       await uiModule.copyToClipboard(transcript);
     });
   }
@@ -528,22 +619,28 @@ function initializeEventListeners() {
     exportPdfBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       exportMenu.classList.remove('open');
-      const meta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
+      const meta = sessionModule
+        .getSessions()
+        .find((s) => s.id === sessionModule.getCurrentSessionId());
       const sessionName = meta ? meta.name : 'Odysseus Chat';
       const originalTitle = document.title;
       document.title = sessionName;
       const chatHistory = document.getElementById('chat-history');
       if (chatHistory) chatHistory.dataset.printTitle = sessionName;
-      document.querySelectorAll('#chat-history details:not([open])').forEach(d => {
-        d.setAttribute('open', '');
-        d.dataset.printOpened = '1';
-      });
+      document
+        .querySelectorAll('#chat-history details:not([open])')
+        .forEach((d) => {
+          d.setAttribute('open', '');
+          d.dataset.printOpened = '1';
+        });
       window.print();
       document.title = originalTitle;
-      document.querySelectorAll('#chat-history details[data-print-opened]').forEach(d => {
-        d.removeAttribute('open');
-        d.removeAttribute('data-print-opened');
-      });
+      document
+        .querySelectorAll('#chat-history details[data-print-opened]')
+        .forEach((d) => {
+          d.removeAttribute('open');
+          d.removeAttribute('data-print-opened');
+        });
     });
   }
 
@@ -556,12 +653,18 @@ function initializeEventListeners() {
       try {
         const sessionId = sessionModule.getCurrentSessionId();
         const texts = _serializeChatTranscript();
-        const meta = sessionModule.getSessions().find(s => s.id === sessionId);
+        const meta = sessionModule
+          .getSessions()
+          .find((s) => s.id === sessionId);
         const title = meta?.name || 'Untitled';
         const res = await fetch(`${API_BASE}/api/document`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, title, content: texts }),
+          body: JSON.stringify({
+            session_id: sessionId,
+            title,
+            content: texts,
+          }),
         });
         if (!res.ok) throw new Error('Failed');
         const doc = await res.json();
@@ -595,9 +698,12 @@ function initializeEventListeners() {
       let sid = sessionModule.getCurrentSessionId();
       // A brand-new chat has no session id yet — still allow renaming if there's
       // a pending chat (we materialize it on commit so the name sticks).
-      const hasPending = sessionModule.hasPendingChat && sessionModule.hasPendingChat();
+      const hasPending =
+        sessionModule.hasPendingChat && sessionModule.hasPendingChat();
       if (!sid && !hasPending) return;
-      const meta = sid ? sessionModule.getSessions().find(s => s.id === sid) : null;
+      const meta = sid
+        ? sessionModule.getSessions().find((s) => s.id === sid)
+        : null;
       const currentName = meta?.name || '';
       const metaEl = el('current-meta');
       if (!metaEl) return;
@@ -607,7 +713,8 @@ function initializeEventListeners() {
       input.type = 'text';
       input.value = currentName;
       input.className = 'session-rename-input';
-      input.style.cssText = 'font-size:inherit;background:transparent;border:none;border-bottom:1px solid var(--accent, var(--red));color:var(--fg);outline:none;width:100%;padding:0;';
+      input.style.cssText =
+        'font-size:inherit;background:transparent;border:none;border-bottom:1px solid var(--accent, var(--red));color:var(--fg);outline:none;width:100%;padding:0;';
       const origText = metaEl.textContent;
       metaEl.textContent = '';
       metaEl.appendChild(input);
@@ -619,13 +726,22 @@ function initializeEventListeners() {
         if (newName && newName !== currentName) {
           // Materialize a pending (new) chat first so it has an id to rename.
           if (!sid && sessionModule.materializePendingSession) {
-            try { await sessionModule.materializePendingSession(); sid = sessionModule.getCurrentSessionId(); } catch (_) {}
+            try {
+              await sessionModule.materializePendingSession();
+              sid = sessionModule.getCurrentSessionId();
+            } catch (_) {}
           }
-          if (!sid) { metaEl.textContent = newName; return; }
+          if (!sid) {
+            metaEl.textContent = newName;
+            return;
+          }
           const fd = new FormData();
           fd.append('name', newName);
-          await fetch(`${API_BASE}/api/session/${sid}`, { method: 'PATCH', body: fd });
-          const _m = sessionModule.getSessions().find(s => s.id === sid);
+          await fetch(`${API_BASE}/api/session/${sid}`, {
+            method: 'PATCH',
+            body: fd,
+          });
+          const _m = sessionModule.getSessions().find((s) => s.id === sid);
           if (_m) _m.name = newName;
           metaEl.textContent = newName;
           uiModule.showToast('Renamed');
@@ -636,8 +752,14 @@ function initializeEventListeners() {
       };
       input.addEventListener('blur', commit);
       input.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
-        if (ev.key === 'Escape') { input.removeEventListener('blur', commit); metaEl.textContent = origText; }
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          input.blur();
+        }
+        if (ev.key === 'Escape') {
+          input.removeEventListener('blur', commit);
+          metaEl.textContent = origText;
+        }
       });
     });
   }
@@ -664,21 +786,22 @@ function initializeEventListeners() {
       // Skip character save when Group tab is active — group.js handles it
       const activeTab = document.querySelector('.preset-tab.active');
       if (activeTab && activeTab.dataset.chartab === 'group') return;
-      await presetsModule.saveCustomPreset(uiModule.showToast, uiModule.showError);
+      await presetsModule.saveCustomPreset(
+        uiModule.showToast,
+        uiModule.showError,
+      );
     });
   }
 
   // Settings dropdown removed — items are now inline in sidebar section
-
-
-
 
   // Close popups one by one with Escape key (topmost first)
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       // If a confirm dialog is open, let it handle the Escape
       const confirmOverlay = document.getElementById('styled-confirm-overlay');
-      if (confirmOverlay && !confirmOverlay.classList.contains('hidden')) return;
+      if (confirmOverlay && !confirmOverlay.classList.contains('hidden'))
+        return;
 
       // If editing a memory inline, cancel the edit instead of closing the modal
       const editingMemory = document.querySelector('.memory-item-editing');
@@ -722,7 +845,11 @@ function initializeEventListeners() {
       // of falling through to unrelated page-level fallbacks like document
       // panel minimize.
       const calendarModal = document.getElementById('calendar-modal');
-      if (calendarModal && !calendarModal.classList.contains('hidden') && getComputedStyle(calendarModal).display !== 'none') {
+      if (
+        calendarModal &&
+        !calendarModal.classList.contains('hidden') &&
+        getComputedStyle(calendarModal).display !== 'none'
+      ) {
         return;
       }
 
@@ -744,23 +871,35 @@ function initializeEventListeners() {
       };
 
       // Dynamic modals (removed from DOM on close)
-      const dynamicModals = ['library-modal', 'archive-modal', 'doclib-modal', 'gallery-modal', 'tasks-modal', 'email-lib-modal'];
+      const dynamicModals = [
+        'library-modal',
+        'archive-modal',
+        'doclib-modal',
+        'gallery-modal',
+        'tasks-modal',
+        'email-lib-modal',
+      ];
       for (const id of dynamicModals) {
         const m = document.getElementById(id);
         if (id === 'gallery-modal') {
           const editor = document.getElementById('gallery-editor-container');
-          const editing = !!window.__galleryEditLive || !!(
-            editor &&
-            getComputedStyle(editor).display !== 'none' &&
-            editor.querySelector('.gallery-editor')
-          );
+          const editing =
+            !!window.__galleryEditLive ||
+            !!(
+              editor &&
+              getComputedStyle(editor).display !== 'none' &&
+              editor.querySelector('.gallery-editor')
+            );
           if (editing) {
             e.preventDefault();
             e.stopImmediatePropagation();
             return;
           }
         }
-        if (m) { dismissModal(m); return; }
+        if (m) {
+          dismissModal(m);
+          return;
+        }
       }
 
       for (const modalId of Object.keys(modalItemMap)) {
@@ -778,7 +917,10 @@ function initializeEventListeners() {
       if (documentModule && documentModule.isPanelOpen()) {
         // If there's a text selection in the document editor, let Escape clear that first
         const docTextarea = document.getElementById('doc-editor-textarea');
-        if (docTextarea && docTextarea.selectionStart !== docTextarea.selectionEnd) {
+        if (
+          docTextarea &&
+          docTextarea.selectionStart !== docTextarea.selectionEnd
+        ) {
           return;
         }
         documentModule.closePanel('down');
@@ -792,37 +934,54 @@ function initializeEventListeners() {
     'memory-modal': null,
     'theme-modal': null,
   };
-  const _dynamicModalIds = ['library-modal', 'archive-modal', 'doclib-modal', 'gallery-modal', 'tasks-modal'];
+  const _dynamicModalIds = [
+    'library-modal',
+    'archive-modal',
+    'doclib-modal',
+    'gallery-modal',
+    'tasks-modal',
+  ];
   function dismissModal(modal) {
     if (!modal || modal.classList.contains('hidden')) return;
     if (modal.id === 'gallery-modal') {
       const editor = document.getElementById('gallery-editor-container');
-      const editing = !!window.__galleryEditLive || !!(
-        editor &&
-        getComputedStyle(editor).display !== 'none' &&
-        editor.querySelector('.gallery-editor')
-      );
+      const editing =
+        !!window.__galleryEditLive ||
+        !!(
+          editor &&
+          getComputedStyle(editor).display !== 'none' &&
+          editor.querySelector('.gallery-editor')
+        );
       if (editing) return;
     }
-    const content = modal.querySelector('.modal-content') || modal.querySelector('#theme-popup');
+    const content =
+      modal.querySelector('.modal-content') ||
+      modal.querySelector('#theme-popup');
     if (content && !content.classList.contains('modal-closing')) {
       content.classList.remove('sheet-ready');
       content.style.transform = '';
       content.style.transition = '';
       content.classList.add('modal-closing');
-      content.addEventListener('animationend', () => {
-        if (_dynamicModalIds.includes(modal.id)) {
-          modal.remove();
-        } else {
-          modal.classList.add('hidden');
-          content.classList.remove('modal-closing');
-        }
-      }, { once: true });
+      content.addEventListener(
+        'animationend',
+        () => {
+          if (_dynamicModalIds.includes(modal.id)) {
+            modal.remove();
+          } else {
+            modal.classList.add('hidden');
+            content.classList.remove('modal-closing');
+          }
+        },
+        { once: true },
+      );
       // Fallback in case animationend doesn't fire
       setTimeout(() => {
         if (modal.parentElement && !modal.classList.contains('hidden')) {
           if (_dynamicModalIds.includes(modal.id)) modal.remove();
-          else { modal.classList.add('hidden'); content.classList.remove('modal-closing'); }
+          else {
+            modal.classList.add('hidden');
+            content.classList.remove('modal-closing');
+          }
         }
       }, 250);
     } else {
@@ -846,9 +1005,14 @@ function initializeEventListeners() {
   // ── Helper: start a fresh chat (deselect current, clear history, show welcome) ──
   function _startFreshChat() {
     try {
-      const prevId = sessionModule && sessionModule.getCurrentSessionId ? sessionModule.getCurrentSessionId() : null;
-      if (chatModule && chatModule.detachCurrentStream) chatModule.detachCurrentStream(prevId);
-      else if (chatModule && chatModule.abortCurrentRequest) chatModule.abortCurrentRequest();
+      const prevId =
+        sessionModule && sessionModule.getCurrentSessionId
+          ? sessionModule.getCurrentSessionId()
+          : null;
+      if (chatModule && chatModule.detachCurrentStream)
+        chatModule.detachCurrentStream(prevId);
+      else if (chatModule && chatModule.abortCurrentRequest)
+        chatModule.abortCurrentRequest();
     } catch (e) {
       console.warn('fresh chat stream detach failed:', e);
     }
@@ -859,17 +1023,23 @@ function initializeEventListeners() {
       chatModule.showWelcomeScreen();
     }
     // Close document panel if open
-    if (documentModule && documentModule.closePanel) documentModule.closePanel();
-    if (researchPanelModule && researchPanelModule.isOpen()) researchPanelModule.closePanel();
+    if (documentModule && documentModule.closePanel)
+      documentModule.closePanel();
+    if (researchPanelModule && researchPanelModule.isOpen())
+      researchPanelModule.closePanel();
     // Reset research overflow dot (but don't touch research state — caller manages that)
     const _overflowRes = el('overflow-research-btn');
     if (_overflowRes) _overflowRes.classList.remove('active');
     if (typeof updatePlusDot === 'function') updatePlusDot();
     // Reset agent mode to Chat
     const modeToggle = el('agent-mode-toggle');
-    if (modeToggle && modeToggle.checked) { modeToggle.checked = false; modeToggle.dispatchEvent(new Event('change')); }
+    if (modeToggle && modeToggle.checked) {
+      modeToggle.checked = false;
+      modeToggle.dispatchEvent(new Event('change'));
+    }
     // Clear character/persona
-    if (presetsModule && presetsModule.deactivateCharacter) presetsModule.deactivateCharacter();
+    if (presetsModule && presetsModule.deactivateCharacter)
+      presetsModule.deactivateCharacter();
   }
 
   /** Sync Research indicator button + overflow + tool sidebar active state. */
@@ -896,10 +1066,12 @@ function initializeEventListeners() {
       if (bashChk && bashChk.checked) {
         bashChk.checked = false;
         if (bashBtn) bashBtn.classList.remove('active');
-        saveToolPref('bash', (loadToggleState().mode || 'chat'), false);
+        saveToolPref('bash', loadToggleState().mode || 'chat', false);
       }
     }
-    const s = loadToggleState(); s.research = active; saveToggleState(s);
+    const s = loadToggleState();
+    s.research = active;
+    saveToggleState(s);
     updatePlusDot();
     document.dispatchEvent(new CustomEvent('overflow-state-change'));
   }
@@ -927,10 +1099,12 @@ function initializeEventListeners() {
       const _webChk = el('web-toggle');
       if (_webChk && _webChk.checked) {
         _webChk.checked = false;
-        saveToolPref('web', (loadToggleState().mode || 'chat'), false);
+        saveToolPref('web', loadToggleState().mode || 'chat', false);
       }
     }
-    const s = loadToggleState(); s.group = active; saveToggleState(s);
+    const s = loadToggleState();
+    s.group = active;
+    saveToggleState(s);
     updatePlusDot();
     document.dispatchEvent(new CustomEvent('overflow-state-change'));
 
@@ -939,24 +1113,32 @@ function initializeEventListeners() {
     const welcomeName = document.querySelector('.welcome-name');
     const welcomeSub = el('welcome-sub');
     const tipEl = el('welcome-tip');
-    const _resIco = '<svg class="welcome-boat" style="position:relative;top:0.5px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
+    const _resIco =
+      '<svg class="welcome-boat" style="position:relative;top:0.5px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
     if (active) {
       if (welcomeName) {
-        if (!welcomeName.dataset.researchOrigHtml) welcomeName.dataset.researchOrigHtml = welcomeName.innerHTML;
+        if (!welcomeName.dataset.researchOrigHtml)
+          welcomeName.dataset.researchOrigHtml = welcomeName.innerHTML;
         welcomeName.innerHTML = _resIco + 'Deep Research';
       }
       if (welcomeSub) {
-        if (!welcomeSub.dataset.researchOrigText) welcomeSub.dataset.researchOrigText = welcomeSub.textContent;
-        welcomeSub.textContent = 'Deep multi-step research with source gathering and synthesis.';
+        if (!welcomeSub.dataset.researchOrigText)
+          welcomeSub.dataset.researchOrigText = welcomeSub.textContent;
+        welcomeSub.textContent =
+          'Deep multi-step research with source gathering and synthesis.';
       }
       if (tipEl) {
-        if (!tipEl.dataset.researchOrigTip) tipEl.dataset.researchOrigTip = tipEl.textContent;
+        if (!tipEl.dataset.researchOrigTip)
+          tipEl.dataset.researchOrigTip = tipEl.textContent;
         tipEl.textContent = '';
         tipEl.style.display = 'none';
       }
       // Hide Nobody toggle during research mode
       const _incBtn = el('incognito-btn');
-      if (_incBtn) { _incBtn.dataset.researchOrigDisplay = _incBtn.style.display; _incBtn.style.display = 'none'; }
+      if (_incBtn) {
+        _incBtn.dataset.researchOrigDisplay = _incBtn.style.display;
+        _incBtn.style.display = 'none';
+      }
       // Close document panel if open
       if (window.documentModule && window.documentModule.isPanelOpen()) {
         window.documentModule.closePanel();
@@ -983,7 +1165,11 @@ function initializeEventListeners() {
         delete _incBtn2.dataset.researchOrigDisplay;
       }
     }
-    if (ws) { ws.style.animation = 'none'; ws.offsetHeight; ws.style.animation = 'welcome-enter 0.3s ease-out both'; }
+    if (ws) {
+      ws.style.animation = 'none';
+      ws.offsetHeight;
+      ws.style.animation = 'welcome-enter 0.3s ease-out both';
+    }
   }
 
   // ── Close compare if active (used by all tool/sidebar activations) ──
@@ -1069,15 +1255,18 @@ function initializeEventListeners() {
   // Tasks tool button
   const toolTasksBtn = el('tool-tasks-btn');
   if (toolTasksBtn) {
-  // Agents buttons (sidebar + rail)
-  const agentsBtns = [el("rail-agents"), el("tool-agents-btn")].filter(Boolean);
-  agentsBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
+    // Agents buttons (sidebar + rail)
+    const agentsBtns = [el('rail-agents'), el('tool-agents-btn')].filter(
+      Boolean,
+    );
+    agentsBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {});
     });
-  });
     toolTasksBtn.addEventListener('click', () => {
       if (tasksModule) {
-        tasksModule.isTasksOpen() ? tasksModule.closeTasks() : tasksModule.openTasks();
+        tasksModule.isTasksOpen()
+          ? tasksModule.closeTasks()
+          : tasksModule.openTasks();
       }
     });
   }
@@ -1144,7 +1333,9 @@ function initializeEventListeners() {
     rail.classList.remove('rail-hidden');
     // syncRailSide() flips iconRail.style.display based on the classes
     // we just set. Exposed by sidebar-layout.js on window.
-    try { window.syncRailSide && window.syncRailSide(); } catch (_) {}
+    try {
+      window.syncRailSide && window.syncRailSide();
+    } catch (_) {}
   };
   // Paired restore: if the route opener collapsed the sidebar, re-expand
   // it when the fullscreen view closes. Only restores if the user didn't
@@ -1156,7 +1347,9 @@ function initializeEventListeners() {
     const sb = document.getElementById('sidebar');
     if (!sb) return;
     sb.classList.remove('hidden');
-    try { window.syncRailSide && window.syncRailSide(); } catch (_) {}
+    try {
+      window.syncRailSide && window.syncRailSide();
+    } catch (_) {}
   };
   // Expose so closeEmailLibrary / notes close can call this without
   // needing to import app.js directly.
@@ -1175,7 +1368,7 @@ function initializeEventListeners() {
     }
   }
   const _routeOpen = {
-    '/notes':    () => {
+    '/notes': () => {
       if (!notesModule) return;
       _collapseSidebarToRail();
       notesModule.openPanel();
@@ -1187,7 +1380,8 @@ function initializeEventListeners() {
         const btn = document.getElementById('notes-fullscreen-toggle');
         const pane = document.querySelector('.notes-pane');
         if (!pane) return false;
-        if (!pane.classList.contains('notes-pane-fullscreen') && btn) btn.click();
+        if (!pane.classList.contains('notes-pane-fullscreen') && btn)
+          btn.click();
         return true;
       };
       if (!_go()) {
@@ -1198,7 +1392,7 @@ function initializeEventListeners() {
     },
     '/calendar': () => calendarModule && calendarModule.openCalendar(),
     '/cookbook': () => document.getElementById('tool-cookbook-btn')?.click(),
-    '/email':    () => {
+    '/email': () => {
       // Collapse the wide sidebar → icon rail (48px) so the user keeps
       // navigation visible alongside the fullscreen email view.
       _collapseSidebarToRail();
@@ -1207,7 +1401,9 @@ function initializeEventListeners() {
       // onto whatever was last open. The rail button has the full
       // default-chat / fallback-model resolution logic baked in, so just
       // delegate to it.
-      try { document.getElementById('rail-new-session')?.click(); } catch (_) {}
+      try {
+        document.getElementById('rail-new-session')?.click();
+      } catch (_) {}
       // The email library is opened by clicking the email section's HEADER
       // row (.section-header-flex), not the title span. Trigger that, then
       // snap the modal to fullscreen on the next frame.
@@ -1231,10 +1427,11 @@ function initializeEventListeners() {
       setTimeout(_goFullscreen, 50);
       setTimeout(_goFullscreen, 200);
     },
-    '/memory':   () => document.getElementById('tool-memory-btn')?.click(),
-    '/gallery':  () => document.getElementById('tool-gallery-btn')?.click(),
-    '/tasks':    () => document.getElementById('tool-tasks-btn')?.click(),
-    '/library':  () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
+    '/memory': () => document.getElementById('tool-memory-btn')?.click(),
+    '/gallery': () => document.getElementById('tool-gallery-btn')?.click(),
+    '/tasks': () => document.getElementById('tool-tasks-btn')?.click(),
+    '/library': () =>
+      sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
   };
   const _opener = _routeOpen[urlPath];
   // Defer the opener — at this point in init, the modules whose handlers
@@ -1261,10 +1458,12 @@ function initializeEventListeners() {
       e.stopPropagation();
       if (libraryNewDocBtn.dataset.docNewWired === '1') return;
       try {
-        if (documentModule && documentModule.newDocument) await documentModule.newDocument();
+        if (documentModule && documentModule.newDocument)
+          await documentModule.newDocument();
       } catch (err) {
         console.error('New document from Library failed:', err);
-        if (uiModule && uiModule.showError) uiModule.showError('Could not create document');
+        if (uiModule && uiModule.showError)
+          uiModule.showError('Could not create document');
       }
     });
   }
@@ -1313,7 +1512,9 @@ function initializeEventListeners() {
   if (userBarProfile) {
     // Clicking the user (avatar + name) jumps straight to the Account tab
     // instead of landing on whatever was last selected.
-    userBarProfile.addEventListener('click', () => settingsModule.open('account'));
+    userBarProfile.addEventListener('click', () =>
+      settingsModule.open('account'),
+    );
   }
   if (userBarAdmin) {
     userBarAdmin.addEventListener('click', () => adminModule.open());
@@ -1321,8 +1522,8 @@ function initializeEventListeners() {
 
   // Fetch auth status — populate user bar and show admin button if admin
   fetch(`${API_BASE}/api/auth/status`, { credentials: 'same-origin' })
-    .then(r => r.json())
-    .then(d => {
+    .then((r) => r.json())
+    .then((d) => {
       window._isAdmin = !!d.is_admin;
       if (d.is_admin && userBarAdmin) userBarAdmin.style.display = '';
       const userBarName = el('user-bar-name');
@@ -1332,11 +1533,14 @@ function initializeEventListeners() {
         // Mask email addresses
         if (displayName.includes('@')) {
           const [local, domain] = displayName.split('@');
-          const ext = domain.includes('.') ? domain.slice(domain.lastIndexOf('.')) : '';
+          const ext = domain.includes('.')
+            ? domain.slice(domain.lastIndexOf('.'))
+            : '';
           displayName = local.charAt(0) + '•••@••••' + ext;
         }
         userBarName.textContent = displayName;
-        if (userBarAvatar) userBarAvatar.textContent = d.username.charAt(0).toUpperCase();
+        if (userBarAvatar)
+          userBarAvatar.textContent = d.username.charAt(0).toUpperCase();
       }
       // Apply per-user privilege restrictions
       if (d.privileges) {
@@ -1345,12 +1549,18 @@ function initializeEventListeners() {
         // Hide agent mode toggle
         if (!p.can_use_agent) {
           const modeToggle = document.getElementById('mode-toggle');
-          if (modeToggle) modeToggle.closest('.chat-input-toggle')?.style.setProperty('display', 'none');
+          if (modeToggle)
+            modeToggle
+              .closest('.chat-input-toggle')
+              ?.style.setProperty('display', 'none');
         }
         // Hide bash toggle
         if (!p.can_use_bash) {
           const bashToggle = document.getElementById('bash-toggle');
-          if (bashToggle) bashToggle.closest('.chat-input-toggle')?.style.setProperty('display', 'none');
+          if (bashToggle)
+            bashToggle
+              .closest('.chat-input-toggle')
+              ?.style.setProperty('display', 'none');
           const bashBtn = document.getElementById('bash-toggle-btn');
           if (bashBtn) bashBtn.style.display = 'none';
         }
@@ -1368,7 +1578,6 @@ function initializeEventListeners() {
           const resOverflow = document.getElementById('overflow-research-btn');
           if (resOverflow) resOverflow.style.display = 'none';
         }
-
       }
     })
     .catch(() => {});
@@ -1379,13 +1588,16 @@ function initializeEventListeners() {
   if (sortBtn && sortDropdown) {
     sortBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      sortDropdown.style.display = sortDropdown.style.display === 'block' ? 'none' : 'block';
+      sortDropdown.style.display =
+        sortDropdown.style.display === 'block' ? 'none' : 'block';
     });
-    document.addEventListener('click', () => { sortDropdown.style.display = 'none'; });
+    document.addEventListener('click', () => {
+      sortDropdown.style.display = 'none';
+    });
     sortDropdown.addEventListener('click', (e) => e.stopPropagation());
 
     // Sort mode options (newest, oldest, last active) — toggleable
-    sortDropdown.querySelectorAll('.sort-option').forEach(opt => {
+    sortDropdown.querySelectorAll('.sort-option').forEach((opt) => {
       opt.addEventListener('click', () => {
         const mode = opt.dataset.sort;
         const current = sessionModule.getSortMode();
@@ -1406,10 +1618,13 @@ function initializeEventListeners() {
     // Sync checkmarks on sort options
     function _syncSortChecks() {
       const current = sessionModule.getSortMode();
-      sortDropdown.querySelectorAll('.sort-option').forEach(o => {
-        const check = o.querySelector('.sort-check') || document.createElement('span');
+      sortDropdown.querySelectorAll('.sort-option').forEach((o) => {
+        const check =
+          o.querySelector('.sort-check') || document.createElement('span');
         check.className = 'sort-check';
-        check.style.cssText = 'float:right;font-size:20px;line-height:1;position:relative;top:1px;color:var(--accent, var(--red));opacity:' + (o.dataset.sort === current ? '1' : '0');
+        check.style.cssText =
+          'float:right;font-size:20px;line-height:1;position:relative;top:1px;color:var(--accent, var(--red));opacity:' +
+          (o.dataset.sort === current ? '1' : '0');
         check.textContent = '\u2022';
         if (!o.querySelector('.sort-check')) o.appendChild(check);
       });
@@ -1428,7 +1643,8 @@ function initializeEventListeners() {
       if (btnIcon) btnIcon.style.display = 'none';
       const wp = spinnerModule.create('', 'clean', 'whirlpool');
       const wpEl = wp.createElement();
-      wpEl.style.cssText = 'width:13px;height:13px;display:inline-block;vertical-align:middle;margin-top:-5px;';
+      wpEl.style.cssText =
+        'width:13px;height:13px;display:inline-block;vertical-align:middle;margin-top:-5px;';
       sortBtn.appendChild(wpEl);
       wp.start();
       sortDropdown.style.display = 'none';
@@ -1443,8 +1659,13 @@ function initializeEventListeners() {
           if (skipLlm) {
             // No-AI path: just report what got cleaned. No "unfiled
             // remaining" prompt because we never tried to file anything.
-            const cleaned = (data.deleted_empty || 0) + (data.deleted_throwaway || 0);
-            uiModule.showToast(cleaned ? `Cleaned ${cleaned} empty/throwaway chat${cleaned === 1 ? '' : 's'}` : 'Already clean');
+            const cleaned =
+              (data.deleted_empty || 0) + (data.deleted_throwaway || 0);
+            uiModule.showToast(
+              cleaned
+                ? `Cleaned ${cleaned} empty/throwaway chat${cleaned === 1 ? '' : 's'}`
+                : 'Already clean',
+            );
           } else {
             // Tidy now works in batches (15 most-recent unfiled per click)
             // so the user gets fast feedback and a manageable LLM call
@@ -1453,7 +1674,8 @@ function initializeEventListeners() {
             let msg;
             if (data.updated > 0) {
               msg = `Sorted ${data.updated} into ${data.folders.length} folder${data.folders.length === 1 ? '' : 's'}`;
-              if (remaining > 0) msg += ` — ${remaining} unfiled left, hit Group again`;
+              if (remaining > 0)
+                msg += ` — ${remaining} unfiled left, hit Group again`;
             } else if (remaining > 0) {
               msg = `${remaining} unfiled chats — hit Group again`;
             } else {
@@ -1475,7 +1697,8 @@ function initializeEventListeners() {
     }
 
     const autoSortBtn = el('auto-sort-sessions-btn');
-    if (autoSortBtn) autoSortBtn.addEventListener('click', () => _runTidy(false));
+    if (autoSortBtn)
+      autoSortBtn.addEventListener('click', () => _runTidy(false));
   }
 
   // Model sort dropdown
@@ -1484,40 +1707,55 @@ function initializeEventListeners() {
   if (modelSortBtn && modelSortDropdown) {
     modelSortBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      modelSortDropdown.style.display = modelSortDropdown.style.display === 'block' ? 'none' : 'block';
+      modelSortDropdown.style.display =
+        modelSortDropdown.style.display === 'block' ? 'none' : 'block';
     });
-    document.addEventListener('click', () => { modelSortDropdown.style.display = 'none'; });
+    document.addEventListener('click', () => {
+      modelSortDropdown.style.display = 'none';
+    });
     modelSortDropdown.addEventListener('click', (e) => e.stopPropagation());
-    modelSortDropdown.querySelectorAll('.sort-option').forEach(opt => {
+    modelSortDropdown.querySelectorAll('.sort-option').forEach((opt) => {
       opt.addEventListener('click', () => {
         const mode = opt.dataset.sort;
         Storage.set('odysseus-model-sort', mode);
         if (modelsModule) modelsModule.refreshModels();
         modelSortDropdown.style.display = 'none';
-        uiModule.showToast('Models sorted: ' + opt.textContent.trim().toLowerCase());
+        uiModule.showToast(
+          'Models sorted: ' + opt.textContent.trim().toLowerCase(),
+        );
       });
     });
   }
-
-
 
   // Feature visibility — hide admin-disabled features
   // Use prefetched data from login page if available
   const _prefetchedFeatures = sessionStorage.getItem('ody-prefetch-features');
   sessionStorage.removeItem('ody-prefetch-features');
-  window._initFeaturesReady = (_prefetchedFeatures
-    ? Promise.resolve(JSON.parse(_prefetchedFeatures))
-    : fetch(`${API_BASE}/api/auth/features`, { credentials: 'same-origin' }).then(r => r.json())
-  ).then(features => {
+  window._initFeaturesReady = (
+    _prefetchedFeatures
+      ? Promise.resolve(JSON.parse(_prefetchedFeatures))
+      : fetch(`${API_BASE}/api/auth/features`, {
+          credentials: 'same-origin',
+        }).then((r) => r.json())
+  )
+    .then((features) => {
       const map = {
-        web_search:      ['web-toggle-btn'],
-        deep_research:   ['research-toggle-btn', 'tool-research-btn', 'overflow-research-btn', 'rail-research'],
+        web_search: ['web-toggle-btn'],
+        deep_research: [
+          'research-toggle-btn',
+          'tool-research-btn',
+          'overflow-research-btn',
+          'rail-research',
+        ],
         document_editor: ['overflow-doc-btn', 'rail-documents'],
-        gallery:         ['tool-gallery-btn', 'rail-gallery'],
+        gallery: ['tool-gallery-btn', 'rail-gallery'],
       };
       Object.entries(map).forEach(([key, ids]) => {
         if (features[key] === false) {
-          ids.forEach(id => { const e = el(id); if (e) e.style.display = 'none'; });
+          ids.forEach((id) => {
+            const e = el(id);
+            if (e) e.style.display = 'none';
+          });
         }
       });
       // Re-apply the user's Appearance UI-vis preferences after the
@@ -1526,23 +1764,33 @@ function initializeEventListeners() {
       // user's "Show in sidebar" toggle is on. The user has to toggle
       // off then on to trigger applyUIVis a second time, which is the
       // bug they report as "deep research only shows after I toggle".
-      try { if (window.applyUIVis && window.loadUIVis) window.applyUIVis(window.loadUIVis()); } catch (_) {}
+      try {
+        if (window.applyUIVis && window.loadUIVis)
+          window.applyUIVis(window.loadUIVis());
+      } catch (_) {}
     })
     .catch(() => {});
 
   // Hide Gallery when image generation is disabled in settings
   const _prefetchedSettings = sessionStorage.getItem('ody-prefetch-settings');
   sessionStorage.removeItem('ody-prefetch-settings');
-  window._initSettingsReady = (_prefetchedSettings
-    ? Promise.resolve(JSON.parse(_prefetchedSettings))
-    : fetch(`${API_BASE}/api/auth/settings`, { credentials: 'same-origin' }).then(r => r.json())
-  ).then(settings => {
+  window._initSettingsReady = (
+    _prefetchedSettings
+      ? Promise.resolve(JSON.parse(_prefetchedSettings))
+      : fetch(`${API_BASE}/api/auth/settings`, {
+          credentials: 'same-origin',
+        }).then((r) => r.json())
+  )
+    .then((settings) => {
       // NOTE: image_gen_enabled only governs *generating* images in chat — the
       // tool is blocked server-side (chat_routes / agent_loop). The Gallery
       // holds uploads and past images too, so it stays visible regardless;
       // use the `gallery` feature flag to hide the Gallery entirely.
       // Hide TTS overflow button when TTS is disabled or no provider configured
-      const ttsOff = settings.tts_enabled === false || !settings.tts_provider || settings.tts_provider === 'disabled';
+      const ttsOff =
+        settings.tts_enabled === false ||
+        !settings.tts_provider ||
+        settings.tts_provider === 'disabled';
       const overflowTts = el('overflow-tts-btn');
       if (overflowTts) {
         overflowTts.style.display = ttsOff ? 'none' : '';
@@ -1591,8 +1839,8 @@ function initializeEventListeners() {
       try {
         const response = await fetch(`${API_BASE}/api/ai/name`, {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ name: newName })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
         });
 
         const result = await response.json();
@@ -1661,14 +1909,17 @@ function initializeEventListeners() {
           renameSessionModal.classList.add('hidden');
           sessionNameInput.value = '';
           // Update the current session name in the UI
-          const meta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
+          const meta = sessionModule
+            .getSessions()
+            .find((s) => s.id === sessionModule.getCurrentSessionId());
           if (meta) {
             meta.name = newName;
             const ver = window._appVersion ? ` v${window._appVersion}` : '';
-            el('current-meta').textContent = `Session: ${meta.name}${meta.model ? ' ' + meta.model.split('/').pop() : ''}${meta.rag ? ' [RAG]' : ''}${ver}`;
+            el('current-meta').textContent =
+              `Session: ${meta.name}${meta.model ? ' ' + meta.model.split('/').pop() : ''}${meta.rag ? ' [RAG]' : ''}${ver}`;
           }
           // Refresh the sessions list
-        await sessionModule.loadSessions();
+          await sessionModule.loadSessions();
         } else {
           throw new Error(result.detail || 'Failed to rename session');
         }
@@ -1689,8 +1940,10 @@ function initializeEventListeners() {
   if (toolMemoryBtn && memoryModal) {
     toolMemoryBtn.addEventListener('click', () => {
       memoryModal.classList.remove('hidden');
-      if (memoryModule && memoryModule.renderMemoryList) memoryModule.renderMemoryList();
-      if (memoryModule && memoryModule.updateMemoryCount) memoryModule.updateMemoryCount();
+      if (memoryModule && memoryModule.renderMemoryList)
+        memoryModule.renderMemoryList();
+      if (memoryModule && memoryModule.updateMemoryCount)
+        memoryModule.updateMemoryCount();
     });
   }
 
@@ -1716,7 +1969,7 @@ function initializeEventListeners() {
     });
   }
 
-// Voice recording is handled by the dual-purpose send/mic button (see below)
+  // Voice recording is handled by the dual-purpose send/mic button (see below)
 
   // ── Toggle persistence — delegates to Storage module ──
   function loadToggleState() {
@@ -1729,16 +1982,18 @@ function initializeEventListeners() {
   // Mode-affected tools: default ON in Agent mode, default OFF in Chat mode,
   // but the user's explicit per-mode override is persisted and honored.
   const MODE_TOOLS = [
-    { btnId: 'web-toggle-btn',  checkboxId: 'web-toggle',  stateKey: 'web' },
+    { btnId: 'web-toggle-btn', checkboxId: 'web-toggle', stateKey: 'web' },
     { btnId: 'bash-toggle-btn', checkboxId: 'bash-toggle', stateKey: 'bash' },
   ];
 
-  function _modeKey(stateKey, mode) { return `${stateKey}_${mode}`; }
+  function _modeKey(stateKey, mode) {
+    return `${stateKey}_${mode}`;
+  }
 
   function loadToolPref(stateKey, mode) {
     const state = loadToggleState();
     const key = _modeKey(stateKey, mode);
-    if (Object.prototype.hasOwnProperty.call(state, key)) return !!state[key];
+    if (Object.hasOwn(state, key)) return !!state[key];
     return mode === 'agent'; // default: ON in agent, OFF in chat
   }
 
@@ -1809,7 +2064,10 @@ function initializeEventListeners() {
       if (btn.style.display === 'none') return;
       const on = loadToolPref(stateKey, mode);
       btn.classList.toggle('active', on);
-      if (checkboxId) { const chk = el(checkboxId); if (chk) chk.checked = on; }
+      if (checkboxId) {
+        const chk = el(checkboxId);
+        if (chk) chk.checked = on;
+      }
     });
   }
 
@@ -1840,7 +2098,9 @@ function initializeEventListeners() {
       const toggle = agentBtn.closest('.mode-toggle');
       if (toggle) toggle.classList.toggle('mode-chat', mode === 'chat');
       // Workspace pill + overflow entry are agent-only - hide immediately (no flash).
-      try { workspaceModule.applyMode(mode); } catch (_) {}
+      try {
+        workspaceModule.applyMode(mode);
+      } catch (_) {}
       // Delay tool glow-up for a staggered effect
       setTimeout(() => applyModeToToggles(mode), 500);
     }
@@ -1913,10 +2173,22 @@ function initializeEventListeners() {
   const SPLASH_COUNT_KEY = 'odysseus-tool-splash-counts';
   const SPLASH_MAX = 2;
   const _toolSplashes = {
-    web: { role: 'Web Search', text: 'Searches the web for relevant information to include in the response. Results are fetched and summarized before the AI answers.' },
-    bash: { role: 'Shell Access', text: 'Gives the AI access to a sandboxed shell for running commands, installing packages, and executing scripts. Use with caution.' },
-    builder: { role: 'Tool Builder', text: 'Create custom mini-apps and tools the AI can use. Describe what you need and the AI will build a tool you can reuse across conversations.' },
-    research: { role: 'Deep Research', text: 'Multi-round web search with source analysis. Takes longer but produces comprehensive, well-sourced answers. Your next message will trigger a deep research cycle.' },
+    web: {
+      role: 'Web Search',
+      text: 'Searches the web for relevant information to include in the response. Results are fetched and summarized before the AI answers.',
+    },
+    bash: {
+      role: 'Shell Access',
+      text: 'Gives the AI access to a sandboxed shell for running commands, installing packages, and executing scripts. Use with caution.',
+    },
+    builder: {
+      role: 'Tool Builder',
+      text: 'Create custom mini-apps and tools the AI can use. Describe what you need and the AI will build a tool you can reuse across conversations.',
+    },
+    research: {
+      role: 'Deep Research',
+      text: 'Multi-round web search with source analysis. Takes longer but produces comprehensive, well-sourced answers. Your next message will trigger a deep research cycle.',
+    },
   };
   function _showToolSplash(key) {
     const splash = _toolSplashes[key];
@@ -1935,7 +2207,12 @@ function initializeEventListeners() {
     if (!chatBox) return;
     const div = document.createElement('div');
     div.className = 'msg msg-ai tool-splash';
-    div.innerHTML = '<div class="role">' + splash.role + '</div><div class="body" style="opacity:0.7;font-size:0.92em">' + splash.text + '</div>';
+    div.innerHTML =
+      '<div class="role">' +
+      splash.role +
+      '</div><div class="body" style="opacity:0.7;font-size:0.92em">' +
+      splash.text +
+      '</div>';
     chatBox.appendChild(div);
     if (uiModule) uiModule.scrollHistory();
   }
@@ -1945,14 +2222,14 @@ function initializeEventListeners() {
     const btn = el(btnId);
     if (!btn) return;
     // Restore per-mode saved state for both Agent and Chat modes.
-    const mode = (loadToggleState().mode) || 'chat';
+    const mode = loadToggleState().mode || 'chat';
     const saved = loadToolPref(stateKey, mode);
     const chk = el(checkboxId);
     if (chk) chk.checked = saved;
     btn.classList.toggle('active', saved);
     btn.setAttribute('aria-pressed', String(saved));
     btn.addEventListener('click', () => {
-      const curMode = (loadToggleState().mode) || 'chat';
+      const curMode = loadToggleState().mode || 'chat';
       const chk = el(checkboxId);
       chk.checked = !chk.checked;
       btn.classList.toggle('active', chk.checked);
@@ -1971,12 +2248,19 @@ function initializeEventListeners() {
   }
   setupToggle('web-toggle-btn', 'web-toggle', 'web');
   setupToggle('bash-toggle-btn', 'bash-toggle', 'bash');
-  try { workspaceModule.initWorkspace(); } catch (_) {}
+  try {
+    workspaceModule.initWorkspace();
+  } catch (_) {}
 
   // Document editor toggle (special: uses module panel, not a checkbox)
   function bringOpenDocumentToFrontOnMobile() {
     if (window.innerWidth > 768) return false;
-    if (!documentModule || !documentModule.isPanelOpen || !documentModule.isPanelOpen()) return false;
+    if (
+      !documentModule ||
+      !documentModule.isPanelOpen ||
+      !documentModule.isPanelOpen()
+    )
+      return false;
     if (!document.body.classList.contains('email-front')) return false;
     document.body.classList.remove('email-front', 'email-doc-split-active');
     document.documentElement.style.removeProperty('--email-doc-split-left-x');
@@ -1988,7 +2272,9 @@ function initializeEventListeners() {
     if (overflow) overflow.classList.add('active');
     const indicator = el('doc-indicator-btn');
     if (indicator) indicator.classList.add('active');
-    const st = loadToggleState(); st.doc = true; saveToggleState(st);
+    const st = loadToggleState();
+    st.doc = true;
+    saveToggleState(st);
     return true;
   }
 
@@ -2000,11 +2286,17 @@ function initializeEventListeners() {
       if (documentModule.isPanelOpen()) {
         documentModule.closePanel();
         overflowDocBtn.classList.remove('active');
-        const st = loadToggleState(); st.doc = false; saveToggleState(st);
+        const st = loadToggleState();
+        st.doc = false;
+        saveToggleState(st);
       } else {
         let sessionId = sessionModule.getCurrentSessionId();
         // If there's a pending "New Chat", materialize it first
-        if (!sessionId && sessionModule.hasPendingChat && sessionModule.hasPendingChat()) {
+        if (
+          !sessionId &&
+          sessionModule.hasPendingChat &&
+          sessionModule.hasPendingChat()
+        ) {
           await sessionModule.materializePendingSession();
           sessionId = sessionModule.getCurrentSessionId();
         }
@@ -2014,7 +2306,9 @@ function initializeEventListeners() {
           documentModule.ensureDocPanel();
         }
         overflowDocBtn.classList.add('active');
-        const st = loadToggleState(); st.doc = true; saveToggleState(st);
+        const st = loadToggleState();
+        st.doc = true;
+        saveToggleState(st);
       }
     });
   }
@@ -2039,7 +2333,9 @@ function initializeEventListeners() {
       indicator.classList.toggle('active', active);
     }
     if (overflow) overflow.classList.toggle('active', active);
-    const s = loadToggleState(); s.rag = active; saveToggleState(s);
+    const s = loadToggleState();
+    s.rag = active;
+    saveToggleState(s);
     updatePlusDot();
   }
   window._syncRagIndicator = _syncRagIndicator;
@@ -2061,7 +2357,11 @@ function initializeEventListeners() {
     const plusBtn = el('overflow-plus-btn');
     if (!plusBtn) return;
     const menu = el('overflow-menu');
-    const anyActive = menu ? Array.from(menu.querySelectorAll('.overflow-menu-item.active')).some(item => item.style.display !== 'none') : false;
+    const anyActive = menu
+      ? Array.from(menu.querySelectorAll('.overflow-menu-item.active')).some(
+          (item) => item.style.display !== 'none',
+        )
+      : false;
     plusBtn.classList.toggle('has-active', anyActive);
   }
   // External modules (compare) dispatch this when their overflow state changes
@@ -2086,16 +2386,27 @@ function initializeEventListeners() {
       if (e.target.closest('#overflow-plus-btn')) return;
       if (document.activeElement === _msgTextarea) _refocusOnBlur = true;
     }
-    chatInputBar.addEventListener('touchstart', _flagRefocus, { passive: true });
+    chatInputBar.addEventListener('touchstart', _flagRefocus, {
+      passive: true,
+    });
     // Overflow menu is position:fixed — may not bubble through chatInputBar on mobile
     const _overflowMenu = el('overflow-menu');
-    if (_overflowMenu) _overflowMenu.addEventListener('touchstart', _flagRefocus, { passive: true });
+    if (_overflowMenu)
+      _overflowMenu.addEventListener('touchstart', _flagRefocus, {
+        passive: true,
+      });
     // Model picker menu too
     const _pickerMenu = document.getElementById('model-picker-menu');
-    if (_pickerMenu) _pickerMenu.addEventListener('touchstart', _flagRefocus, { passive: true });
+    if (_pickerMenu)
+      _pickerMenu.addEventListener('touchstart', _flagRefocus, {
+        passive: true,
+      });
     // Attach strip (outside chat-input-bar)
     const _attachStrip = el('attach-strip');
-    if (_attachStrip) _attachStrip.addEventListener('touchstart', _flagRefocus, { passive: true });
+    if (_attachStrip)
+      _attachStrip.addEventListener('touchstart', _flagRefocus, {
+        passive: true,
+      });
     _msgTextarea.addEventListener('blur', () => {
       if (_refocusOnBlur) {
         _refocusOnBlur = false;
@@ -2103,7 +2414,15 @@ function initializeEventListeners() {
       }
     });
     // Clear flag if touch ends without causing blur
-    document.addEventListener('touchend', () => { setTimeout(() => { _refocusOnBlur = false; }, 50); }, { passive: true });
+    document.addEventListener(
+      'touchend',
+      () => {
+        setTimeout(() => {
+          _refocusOnBlur = false;
+        }, 50);
+      },
+      { passive: true },
+    );
   }
 
   (function initOverflowMenu() {
@@ -2128,27 +2447,32 @@ function initializeEventListeners() {
       menu.style.left = r.left + 'px';
       menu.style.right = 'auto';
       menu.style.bottom = 'auto';
-      menu.style.maxHeight = '';      // reset so we can measure the natural height
+      menu.style.maxHeight = ''; // reset so we can measure the natural height
       menu.style.overflowY = '';
-      const avail = r.top - 16;        // room above the chevron
+      const avail = r.top - 16; // room above the chevron
       const natural = menu.scrollHeight;
       const h = Math.min(natural, avail);
-      if (natural > avail) {           // only cap + scroll when it doesn't fit
+      if (natural > avail) {
+        // only cap + scroll when it doesn't fit
         menu.style.maxHeight = avail + 'px';
         menu.style.overflowY = 'auto';
       }
-      menu.style.top = (r.top - 8 - h) + 'px';
+      menu.style.top = r.top - 8 - h + 'px';
     }
     // Tapping the chevron must NOT steal focus from the message box, or the
     // mobile keyboard collapses. preventDefault on pointerdown keeps the
     // textarea focused (keyboard stays up) while click still opens the menu.
-    plusBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+    plusBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+    });
     plusBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       // Closing path needs to play the fold-in animation, not just flip
       // .hidden — route through closeOverflowMenu so the second-click
       // close looks the same as click-outside / Escape / item-pick.
-      const isOpen = !menu.classList.contains('hidden') && !menu.classList.contains('closing');
+      const isOpen =
+        !menu.classList.contains('hidden') &&
+        !menu.classList.contains('closing');
       if (isOpen) {
         closeOverflowMenu();
         return;
@@ -2157,7 +2481,7 @@ function initializeEventListeners() {
       menu.classList.remove('closing');
       menu.classList.remove('hidden');
       plusBtn.classList.add('expanded');
-      document.body.appendChild(menu);  // escape the composer's container-type trap
+      document.body.appendChild(menu); // escape the composer's container-type trap
       // Hide pill bar label so it doesn't show through the menu
       if (pickerWrap) pickerWrap.style.visibility = 'hidden';
       // Keep the textarea focused so the keyboard stays up if it was open (the
@@ -2188,21 +2512,24 @@ function initializeEventListeners() {
       setTimeout(() => {
         menu.classList.add('hidden');
         menu.classList.remove('closing');
-        if (ownerWrap) ownerWrap.appendChild(menu);  // restore from <body> portal
+        if (ownerWrap) ownerWrap.appendChild(menu); // restore from <body> portal
       }, 400);
     }
     // Close menu when clicking any item inside it. preventDefault on pointerdown
     // so tapping an item (e.g. Attach files) doesn't steal focus from the message
     // box — keeps the mobile keyboard up.
-    menu.querySelectorAll('.overflow-menu-item').forEach(item => {
-      item.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+    menu.querySelectorAll('.overflow-menu-item').forEach((item) => {
+      item.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+      });
       item.addEventListener('click', () => closeOverflowMenu());
     });
     document.addEventListener('click', (e) => {
       if (!menu.contains(e.target) && e.target !== plusBtn) closeOverflowMenu();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !menu.classList.contains('hidden')) closeOverflowMenu();
+      if (e.key === 'Escape' && !menu.classList.contains('hidden'))
+        closeOverflowMenu();
     });
 
     // Research toggle
@@ -2225,7 +2552,7 @@ function initializeEventListeners() {
         if (webChk && webChk.checked) {
           webChk.checked = false;
           if (webBtn) webBtn.classList.remove('active');
-          saveToolPref('web', (st.mode || 'chat'), false);
+          saveToolPref('web', st.mode || 'chat', false);
         }
       }
 
@@ -2236,21 +2563,23 @@ function initializeEventListeners() {
         if (turningOn) {
           _showToolSplash('research');
           // Clear character — mutually exclusive with research
-          if (presetsModule && presetsModule.deactivateCharacter) presetsModule.deactivateCharacter();
+          if (presetsModule && presetsModule.deactivateCharacter)
+            presetsModule.deactivateCharacter();
           // Research and Web search are mutually exclusive
           const webChk = el('web-toggle');
           const webBtn = el('web-toggle-btn');
           if (webChk && webChk.checked) {
             webChk.checked = false;
             if (webBtn) webBtn.classList.remove('active');
-            saveToolPref('web', (loadToggleState().mode || 'chat'), false);
+            saveToolPref('web', loadToggleState().mode || 'chat', false);
           }
           // Research requires chat mode — force switch from agent
           const rs = loadToggleState();
           if (rs.mode === 'agent') {
             rs.mode = 'chat';
             saveToggleState(rs);
-            const ab = el('mode-agent-btn'), cb = el('mode-chat-btn');
+            const ab = el('mode-agent-btn'),
+              cb = el('mode-chat-btn');
             if (ab) ab.classList.remove('active');
             if (cb) cb.classList.add('active');
             applyModeToToggles('chat');
@@ -2271,18 +2600,22 @@ function initializeEventListeners() {
 
     // Buttons that can be collapsed (in reverse priority — last collapsed first)
     const collapsibleIds = ['bash-toggle-btn', 'web-toggle-btn'];
-    const collapsibleBtns = collapsibleIds.map(id => el(id)).filter(Boolean);
+    const collapsibleBtns = collapsibleIds.map((id) => el(id)).filter(Boolean);
     // Map of toolbar btn id → overflow mirror element (created dynamically)
     const overflowMirrors = new Map();
 
     // Create overflow mirror items for each collapsible button
-    collapsibleBtns.forEach(btn => {
+    collapsibleBtns.forEach((btn) => {
       const mirror = document.createElement('button');
       mirror.type = 'button';
       mirror.className = 'overflow-menu-item toolbar-overflow-mirror';
       mirror.dataset.mirrorOf = btn.id;
       const title = btn.title || btn.id.replace(/-/g, ' ');
-      mirror.innerHTML = btn.querySelector('svg').outerHTML + '<span>' + title + '</span>' +
+      mirror.innerHTML =
+        btn.querySelector('svg').outerHTML +
+        '<span>' +
+        title +
+        '</span>' +
         '<span class="overflow-active-dot"></span>';
       mirror.style.display = 'none';
       mirror.addEventListener('click', () => btn.click());
@@ -2294,7 +2627,8 @@ function initializeEventListeners() {
     function syncMirrorStates() {
       overflowMirrors.forEach((mirror, btnId) => {
         const btn = el(btnId);
-        if (btn) mirror.classList.toggle('active', btn.classList.contains('active'));
+        if (btn)
+          mirror.classList.toggle('active', btn.classList.contains('active'));
       });
       updatePlusDot();
     }
@@ -2303,12 +2637,14 @@ function initializeEventListeners() {
       const inputBottom = inputLeft.parentElement;
       if (!inputBottom) return;
       const rightEl = document.querySelector('.chat-input-right');
-      const available = inputBottom.clientWidth -
-        (rightEl ? rightEl.offsetWidth : 0) - 16;
+      const available =
+        inputBottom.clientWidth - (rightEl ? rightEl.offsetWidth : 0) - 16;
 
       // Uncollapse all to measure natural widths
-      collapsibleBtns.forEach(btn => btn.classList.remove('toolbar-collapsed'));
-      overflowMirrors.forEach(m => m.style.display = 'none');
+      collapsibleBtns.forEach((btn) =>
+        btn.classList.remove('toolbar-collapsed'),
+      );
+      overflowMirrors.forEach((m) => (m.style.display = 'none'));
 
       // Temporarily allow overflow for accurate measurement
       const prevOverflow = inputLeft.style.overflow;
@@ -2322,24 +2658,25 @@ function initializeEventListeners() {
       const wrapperWidth = overflowWrapper.offsetWidth + 4;
 
       // Measure each collapsible button's natural width
-      const btnWidths = collapsibleBtns.map(btn => btn.offsetWidth + 4);
+      const btnWidths = collapsibleBtns.map((btn) => btn.offsetWidth + 4);
 
       // Measure non-collapsible, non-wrapper children (tool indicators etc)
       let otherWidth = 0;
-      Array.from(inputLeft.children).forEach(c => {
+      Array.from(inputLeft.children).forEach((c) => {
         if (c === overflowWrapper) return;
         if (collapsibleBtns.includes(c)) return;
         if (c.offsetWidth) otherWidth += c.offsetWidth + 4;
       });
 
-      let totalWidth = wrapperWidth + otherWidth + btnWidths.reduce((a, b) => a + b, 0);
+      let totalWidth =
+        wrapperWidth + otherWidth + btnWidths.reduce((a, b) => a + b, 0);
 
       // Force-collapse shell & search when research mode + doc panel are both active
       const _resChk = el('research-toggle');
       const _researchOn = _resChk && _resChk.checked;
       const _docViewOn = document.body.classList.contains('doc-view');
       if (_researchOn && _docViewOn) {
-        collapsibleBtns.forEach(btn => {
+        collapsibleBtns.forEach((btn) => {
           btn.classList.add('toolbar-collapsed');
           const mirror = overflowMirrors.get(btn.id);
           if (mirror) mirror.style.display = '';
@@ -2369,30 +2706,37 @@ function initializeEventListeners() {
 
     // Observe active class changes to sync mirror states
     const observer = new MutationObserver(() => syncMirrorStates());
-    collapsibleBtns.forEach(btn => {
+    collapsibleBtns.forEach((btn) => {
       observer.observe(btn, { attributes: true, attributeFilter: ['class'] });
     });
 
     // Run on resize and on load
-    window.addEventListener('resize', () => requestAnimationFrame(checkToolbarOverflow));
+    window.addEventListener('resize', () =>
+      requestAnimationFrame(checkToolbarOverflow),
+    );
     // Run immediately (state is already restored by this point)
     checkToolbarOverflow();
     // Re-check when sidebar toggles (changes available width)
     document.addEventListener('overflow-state-change', () =>
-      requestAnimationFrame(checkToolbarOverflow));
+      requestAnimationFrame(checkToolbarOverflow),
+    );
     // Also re-check when sidebar visibility changes
     const sidebarEl = el('sidebar');
     if (sidebarEl) {
-      new MutationObserver(() => requestAnimationFrame(checkToolbarOverflow))
-        .observe(sidebarEl, { attributes: true, attributeFilter: ['class'] });
+      new MutationObserver(() =>
+        requestAnimationFrame(checkToolbarOverflow),
+      ).observe(sidebarEl, { attributes: true, attributeFilter: ['class'] });
     }
     // Re-check when doc panel opens/closes (body.doc-view toggled)
-    new MutationObserver(() => requestAnimationFrame(checkToolbarOverflow))
-      .observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    new MutationObserver(() =>
+      requestAnimationFrame(checkToolbarOverflow),
+    ).observe(document.body, { attributes: true, attributeFilter: ['class'] });
     // Re-check when input bar itself resizes (e.g. doc panel drag)
     const inputBottom = inputLeft.parentElement;
     if (inputBottom) {
-      new ResizeObserver(() => requestAnimationFrame(checkToolbarOverflow)).observe(inputBottom);
+      new ResizeObserver(() =>
+        requestAnimationFrame(checkToolbarOverflow),
+      ).observe(inputBottom);
     }
   })();
 
@@ -2444,11 +2788,16 @@ function initializeEventListeners() {
 	      setComposerPlaceholder(w);
       // Hide entire bottom toolbar (tools, mode toggle) — only send button remains
       if (inputBottom) {
-        inputBottom.classList.toggle('toolbar-auto-hidden', w < TOOLBAR_HIDE_WIDTH);
+        inputBottom.classList.toggle(
+          'toolbar-auto-hidden',
+          w < TOOLBAR_HIDE_WIDTH,
+        );
       }
     }
 
-    const ro = new ResizeObserver(() => requestAnimationFrame(checkPickerOverflow));
+    const ro = new ResizeObserver(() =>
+      requestAnimationFrame(checkPickerOverflow),
+    );
     ro.observe(inputTop);
     checkPickerOverflow();
   })();
@@ -2463,17 +2812,18 @@ function initializeEventListeners() {
         ttsBtn.classList.add('active');
         if (window.aiTTSManager) window.aiTTSManager.autoPlay = true;
       }
-    } catch(e) {}
+    } catch (e) {}
 
     ttsBtn.addEventListener('click', () => {
       const isActive = !ttsBtn.classList.contains('active');
       ttsBtn.classList.toggle('active', isActive);
       if (window.aiTTSManager) window.aiTTSManager.autoPlay = isActive;
-      const s = loadToggleState(); s.ttsMode = isActive; saveToggleState(s);
+      const s = loadToggleState();
+      s.ttsMode = isActive;
+      saveToggleState(s);
       updatePlusDot();
     });
   })();
-
 
   // ── Compare indicator (sidebar only, no overflow) ──
   const compareIndicatorBtn = el('compare-indicator-btn');
@@ -2511,21 +2861,23 @@ function initializeEventListeners() {
       if (turningOn) {
         _showToolSplash('research');
         // Clear character — mutually exclusive with research
-        if (presetsModule && presetsModule.deactivateCharacter) presetsModule.deactivateCharacter();
+        if (presetsModule && presetsModule.deactivateCharacter)
+          presetsModule.deactivateCharacter();
         // Mutual exclusion with web search
         const webChk = el('web-toggle');
         const webBtn = el('web-toggle-btn');
         if (webChk && webChk.checked) {
           webChk.checked = false;
           if (webBtn) webBtn.classList.remove('active');
-          saveToolPref('web', (loadToggleState().mode || 'chat'), false);
+          saveToolPref('web', loadToggleState().mode || 'chat', false);
         }
         // Research requires chat mode
         const rs2 = loadToggleState();
         if (rs2.mode === 'agent') {
           rs2.mode = 'chat';
           saveToggleState(rs2);
-          const ab2 = el('mode-agent-btn'), cb2 = el('mode-chat-btn');
+          const ab2 = el('mode-agent-btn'),
+            cb2 = el('mode-chat-btn');
           if (ab2) ab2.classList.remove('active');
           if (cb2) cb2.classList.add('active');
           applyModeToToggles('chat');
@@ -2543,18 +2895,20 @@ function initializeEventListeners() {
       if (turningOn) {
         const picked = await groupModule.showModelPicker();
         if (!picked || picked.length < 2) return;
-        groupModule.setActive(true);  // Set early so updateModelPicker sees it
+        groupModule.setActive(true); // Set early so updateModelPicker sees it
         _syncGroupIndicator(true);
         _startFreshChat();
         // Clear any leftover splash screens
         const _chatBox = document.getElementById('chat-history');
         if (_chatBox) {
-          _chatBox.querySelectorAll('.tool-splash').forEach(s => s.remove());
+          _chatBox.querySelectorAll('.tool-splash').forEach((s) => s.remove());
           // Also hide welcome screen
-          if (chatModule && chatModule.hideWelcomeScreen) chatModule.hideWelcomeScreen();
+          if (chatModule && chatModule.hideWelcomeScreen)
+            chatModule.hideWelcomeScreen();
         }
         // Start group — create participant sessions immediately
-        const sid = sessionModule.getCurrentSessionId() || 'group-' + Date.now();
+        const sid =
+          sessionModule.getCurrentSessionId() || 'group-' + Date.now();
         await groupModule.startGroup(picked, sid);
         // Re-hide picker after everything settles
         const _mpw = el('model-picker-wrap');
@@ -2581,15 +2935,23 @@ function initializeEventListeners() {
 
   // ── Incognito mode toggle (on welcome screen) ──
   const incognitoBtn = el('incognito-btn');
-  const INCOGNITO_EYE_OPEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-  const INCOGNITO_EYE_CLOSED = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="8" y1="16" x2="16" y2="8"/><line x1="8" y1="8" x2="16" y2="16"/></svg>';
-  const SESSION_ICON_CHAT = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-  const SESSION_ICON_INCOGNITO = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  const INCOGNITO_EYE_OPEN =
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const INCOGNITO_EYE_CLOSED =
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="8" y1="16" x2="16" y2="8"/><line x1="8" y1="8" x2="16" y2="16"/></svg>';
+  const SESSION_ICON_CHAT =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  const SESSION_ICON_INCOGNITO =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
 
   function _syncSessionIncognitoIcon(active) {
-    const activeSession = document.querySelector('.list-item.active-session .session-icon');
+    const activeSession = document.querySelector(
+      '.list-item.active-session .session-icon',
+    );
     if (activeSession) {
-      activeSession.innerHTML = active ? SESSION_ICON_INCOGNITO : SESSION_ICON_CHAT;
+      activeSession.innerHTML = active
+        ? SESSION_ICON_INCOGNITO
+        : SESSION_ICON_CHAT;
       activeSession.style.color = active ? 'var(--accent)' : '';
     }
   }
@@ -2604,7 +2966,9 @@ function initializeEventListeners() {
       chk.checked = !chk.checked;
       incognitoBtn.classList.toggle('active', chk.checked);
       const tipEl = el('welcome-tip');
-      incognitoBtn.title = chk.checked ? 'Disable Nobody mode' : 'Enable Nobody mode — no memory, no history saved';
+      incognitoBtn.title = chk.checked
+        ? 'Disable Nobody mode'
+        : 'Enable Nobody mode — no memory, no history saved';
       const welcomeName = document.querySelector('.welcome-name');
       if (chk.checked) {
         try {
@@ -2615,34 +2979,54 @@ function initializeEventListeners() {
         incognitoBtn.innerHTML = INCOGNITO_EYE_CLOSED + '<span class="incognito-label">Nobody</span>';
         if (welcomeName) {
           welcomeName.dataset.originalHtml = welcomeName.innerHTML;
-          welcomeName.innerHTML = '<svg class="welcome-boat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="8" y1="16" x2="16" y2="8"/><line x1="8" y1="8" x2="16" y2="16"/></svg>Nobody';
+          welcomeName.innerHTML =
+            '<svg class="welcome-boat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="8" y1="16" x2="16" y2="8"/><line x1="8" y1="8" x2="16" y2="16"/></svg>Nobody';
           // Restart the L→R clip-wipe reveal on the new label
           welcomeName.style.animation = 'none';
           welcomeName.offsetHeight;
           welcomeName.style.animation = '';
         }
-        if (ws) { ws.style.animation = 'none'; ws.offsetHeight; ws.style.animation = 'welcome-enter 0.3s ease-out both'; }
+        if (ws) {
+          ws.style.animation = 'none';
+          ws.offsetHeight;
+          ws.style.animation = 'welcome-enter 0.3s ease-out both';
+        }
         const welcomeSub = el('welcome-sub');
         if (welcomeSub) {
-          if (!welcomeSub.dataset.originalText) welcomeSub.dataset.originalText = welcomeSub.textContent;
+          if (!welcomeSub.dataset.originalText)
+            welcomeSub.dataset.originalText = welcomeSub.textContent;
           welcomeSub.textContent = "Who am I? I'm nobody.";
           welcomeSub.style.display = '';
         }
-        if (tipEl) { tipEl.dataset.originalTip = tipEl.textContent; tipEl.textContent = 'Temporary session \u2014 won\u2019t be saved and no memory activation.'; tipEl.style.opacity = '0.5'; tipEl.style.marginTop = '8px'; }
+        if (tipEl) {
+          tipEl.dataset.originalTip = tipEl.textContent;
+          tipEl.textContent =
+            'Temporary session \u2014 won\u2019t be saved and no memory activation.';
+          tipEl.style.opacity = '0.5';
+          tipEl.style.marginTop = '8px';
+        }
         // Default to plain chat: disable tools visually, switch to chat mode.
         // IMPORTANT: don't overwrite the user's persisted per-mode tool prefs
         // (`web_agent`, `bash_agent`, `web_chat`, `bash_chat`). Nobody mode is
         // ephemeral — their agent-mode defaults must come back on toggle-off.
         const beforeNobody = Storage.getJSON(Storage.KEYS.TOGGLES, {}) || {};
-        if (!beforeNobody.nobody_prev_mode) beforeNobody.nobody_prev_mode = beforeNobody.mode || 'agent';
+        if (!beforeNobody.nobody_prev_mode)
+          beforeNobody.nobody_prev_mode = beforeNobody.mode || 'agent';
         Storage.setJSON(Storage.KEYS.TOGGLES, beforeNobody);
         const _offIds = ['web-toggle', 'bash-toggle', 'research-toggle'];
-        _offIds.forEach(id => { const c = el(id); if (c) c.checked = false; });
-        ['web-toggle-btn', 'bash-toggle-btn'].forEach(id => { const b = el(id); if (b) b.classList.remove('active'); });
+        _offIds.forEach((id) => {
+          const c = el(id);
+          if (c) c.checked = false;
+        });
+        ['web-toggle-btn', 'bash-toggle-btn'].forEach((id) => {
+          const b = el(id);
+          if (b) b.classList.remove('active');
+        });
         if (typeof window.__odysseusSetChatMode === 'function') {
           window.__odysseusSetChatMode('chat');
         } else {
-          const _ab = el('mode-agent-btn'), _cb = el('mode-chat-btn');
+          const _ab = el('mode-agent-btn'),
+            _cb = el('mode-chat-btn');
           if (_ab) {
             _ab.classList.remove('active');
             _ab.setAttribute('aria-pressed', 'false');
@@ -2651,7 +3035,8 @@ function initializeEventListeners() {
             _cb.classList.add('active');
             _cb.setAttribute('aria-pressed', 'true');
           }
-          const _toggle = _ab?.closest('.mode-toggle') || _cb?.closest('.mode-toggle');
+          const _toggle =
+            _ab?.closest('.mode-toggle') || _cb?.closest('.mode-toggle');
           if (_toggle) _toggle.classList.add('mode-chat');
           const ts = Storage.getJSON(Storage.KEYS.TOGGLES, {});
           ts.mode = 'chat';
@@ -2661,7 +3046,8 @@ function initializeEventListeners() {
         ts.research = false;
         Storage.setJSON(Storage.KEYS.TOGGLES, ts);
       } else {
-        incognitoBtn.innerHTML = INCOGNITO_EYE_OPEN + '<span class="incognito-label">Nobody</span>';
+        incognitoBtn.innerHTML =
+          INCOGNITO_EYE_OPEN + '<span class="incognito-label">Nobody</span>';
         if (welcomeName && welcomeName.dataset.originalHtml) {
           welcomeName.innerHTML = welcomeName.dataset.originalHtml;
           // Restart the L→R clip-wipe reveal on the restored label
@@ -2669,7 +3055,11 @@ function initializeEventListeners() {
           welcomeName.offsetHeight;
           welcomeName.style.animation = '';
         }
-        if (ws) { ws.style.animation = 'none'; ws.offsetHeight; ws.style.animation = 'welcome-enter 0.3s ease-out both'; }
+        if (ws) {
+          ws.style.animation = 'none';
+          ws.offsetHeight;
+          ws.style.animation = 'welcome-enter 0.3s ease-out both';
+        }
         const welcomeSub2 = el('welcome-sub');
         if (welcomeSub2) {
           if (welcomeSub2.dataset.originalText) {
@@ -2678,22 +3068,31 @@ function initializeEventListeners() {
           }
           welcomeSub2.style.display = '';
         }
-        if (tipEl && tipEl.dataset.originalTip) { tipEl.textContent = tipEl.dataset.originalTip; tipEl.style.opacity = ''; tipEl.style.marginTop = ''; }
+        if (tipEl && tipEl.dataset.originalTip) {
+          tipEl.textContent = tipEl.dataset.originalTip;
+          tipEl.style.opacity = '';
+          tipEl.style.marginTop = '';
+        }
         // Heal any previously-persisted false values from the old Nobody bug
         // so agent-mode defaults (web/bash ON) come back.
         const _ts = Storage.getJSON(Storage.KEYS.TOGGLES, {});
         const _restoreMode = _ts.nobody_prev_mode || 'agent';
         delete _ts.nobody_prev_mode;
-        ['web_agent', 'bash_agent', 'web_chat', 'bash_chat'].forEach(k => {
+        ['web_agent', 'bash_agent', 'web_chat', 'bash_chat'].forEach((k) => {
           if (_ts[k] === false) delete _ts[k];
         });
         Storage.setJSON(Storage.KEYS.TOGGLES, _ts);
         if (typeof window.__odysseusSetChatMode === 'function') {
-          window.__odysseusSetChatMode(_restoreMode === 'chat' ? 'chat' : 'agent');
+          window.__odysseusSetChatMode(
+            _restoreMode === 'chat' ? 'chat' : 'agent',
+          );
         }
         // Reapply the current mode's real defaults to the visible toggles
-        const _curMode = (Storage.getJSON(Storage.KEYS.TOGGLES, {}) || {}).mode || 'chat';
-        try { applyModeToToggles(_curMode); } catch (_) {}
+        const _curMode =
+          (Storage.getJSON(Storage.KEYS.TOGGLES, {}) || {}).mode || 'chat';
+        try {
+          applyModeToToggles(_curMode);
+        } catch (_) {}
       }
       // If toggled off mid-chat (welcome screen hidden), hide the button
       if (!chk.checked && ws && ws.classList.contains('hidden')) {
@@ -2714,7 +3113,9 @@ function initializeEventListeners() {
       if (incognitoBtn) incognitoBtn.click();
       else {
         const chk = el('incognito-toggle');
-        if (chk) { chk.checked = false; }
+        if (chk) {
+          chk.checked = false;
+        }
         incognitoIndicator.style.display = 'none';
       }
     });
@@ -2735,36 +3136,36 @@ function initializeEventListeners() {
     'sidebar-brand':       '.sidebar-brand-title',
     'sidebar-new-chat':    '#sidebar-new-chat-btn',
     'sidebar-search':      '#sidebar-search-btn',
-	    'sessions-section':    '#sessions-section',
-	    'email-section':       '#email-section',
-	    'tools-section':       '#tools-section',
+    'sessions-section':    '#sessions-section',
+    'email-section':       '#email-section',
+    'tools-section':       '#tools-section',
     // Per-tool visibility — fine-grained control over which entries show
     // inside the Tools section in the sidebar.
-    'tool-calendar':       '#tool-calendar-btn',
-    'tool-compare':        '#tool-compare-btn',
-    'tool-cookbook':       '#tool-cookbook-btn',
-    'tool-research':       '#tool-research-btn',
-    'tool-gallery':        '#tool-gallery-btn',
-    'tool-library':        '#tool-library-btn',
-    'tool-memory':         '#tool-memory-btn',
-    'tool-notes':          '#tool-notes-btn',
-    'tool-tasks':          '#tool-tasks-btn',
-    'tool-theme':          '#tool-theme-btn',
-    'user-bar':            '#user-bar-profile',
-    'sidebar-settings-btn':'#user-bar-settings',
-    'chat-meta':           '.chat-meta-overlay',
-    'welcome-text':        '.welcome-name, .welcome-sub, #welcome-tip',
-    'incognito-btn':       '.incognito-btn',
-    'web-toggle-btn':      '#web-toggle-btn',
-    'doc-toggle-btn':      '#overflow-doc-btn',
-    'rag-toggle-btn':      '#overflow-rag-btn',
-    'bash-toggle-btn':     '#bash-toggle-btn',
-    'overflow-plus-btn':   '.overflow-wrapper',
-    'mode-toggle':         '.mode-toggle',
-    'preset-mini-btn':     '#overflow-preset-btn',
-    'attach-btn':          '#overflow-attach-btn',
-    'research-btn':        '#overflow-research-btn',
-    'rail-new-chat':       '#rail-new-session',
+    'tool-calendar': '#tool-calendar-btn',
+    'tool-compare': '#tool-compare-btn',
+    'tool-cookbook': '#tool-cookbook-btn',
+    'tool-research': '#tool-research-btn',
+    'tool-gallery': '#tool-gallery-btn',
+    'tool-library': '#tool-library-btn',
+    'tool-memory': '#tool-memory-btn',
+    'tool-notes': '#tool-notes-btn',
+    'tool-tasks': '#tool-tasks-btn',
+    'tool-theme': '#tool-theme-btn',
+    'user-bar': '#user-bar-profile',
+    'sidebar-settings-btn': '#user-bar-settings',
+    'chat-meta': '.chat-meta-overlay',
+    'welcome-text': '.welcome-name, .welcome-sub, #welcome-tip',
+    'incognito-btn': '.incognito-btn',
+    'web-toggle-btn': '#web-toggle-btn',
+    'doc-toggle-btn': '#overflow-doc-btn',
+    'rag-toggle-btn': '#overflow-rag-btn',
+    'bash-toggle-btn': '#bash-toggle-btn',
+    'overflow-plus-btn': '.overflow-wrapper',
+    'mode-toggle': '.mode-toggle',
+    'preset-mini-btn': '#overflow-preset-btn',
+    'attach-btn': '#overflow-attach-btn',
+    'research-btn': '#overflow-research-btn',
+    'rail-new-chat': '#rail-new-session',
   };
 
   // Keys hidden by default on first run (no localStorage yet)
@@ -2785,34 +3186,43 @@ function initializeEventListeners() {
     Object.entries(UI_VIS_MAP).forEach(([key, selector]) => {
       // section-drag-reorder uses a body class instead of inline styles
       if (key === 'section-drag-reorder') return;
-      const visible = key in state ? state[key] !== false : !UI_VIS_DEFAULT_OFF.has(key);
-      document.querySelectorAll(selector).forEach(el => {
+      const visible =
+        key in state ? state[key] !== false : !UI_VIS_DEFAULT_OFF.has(key);
+      document.querySelectorAll(selector).forEach((el) => {
         el.style.display = visible ? '' : 'none';
       });
     });
     // Drag reorder: use body class so dynamically created handles are covered
     const dragEnabled = state['section-drag-reorder'] === true;
     document.body.classList.toggle('rearrange-mode', dragEnabled);
-    document.querySelectorAll('.section[draggable]').forEach(el => {
+    document.querySelectorAll('.section[draggable]').forEach((el) => {
       el.setAttribute('draggable', dragEnabled ? 'true' : 'false');
     });
     // Text-only emojis toggle. Default is OFF so model-emitted shortcodes
     // like `:blush:` render through the normal monochrome emoji path.
     applyTextEmojis(state['text-emojis'] === true);
     // Hide thinking sections toggle (show-thinking: checked=show, unchecked=hide)
-    document.body.classList.toggle('hide-thinking', state['show-thinking'] === false);
+    document.body.classList.toggle(
+      'hide-thinking',
+      state['show-thinking'] === false,
+    );
     // Fullwidth chat toggle (chat-fullwidth: checked=fullwidth, unchecked=big-padding
-    document.body.classList.toggle('fullwidth-chat', state['chat-fullwidth'] === true);
+    document.body.classList.toggle(
+      'fullwidth-chat',
+      state['chat-fullwidth'] === true,
+    );
   }
 
   // Rearrange toggles in session/model sort dropdowns
   function syncRearrangeChecks() {
     const on = loadUIVis()['section-drag-reorder'] === true;
-    document.querySelectorAll('.rearrange-toggle .rearrange-check').forEach(ch => {
-      ch.style.opacity = on ? '1' : '0';
-    });
+    document
+      .querySelectorAll('.rearrange-toggle .rearrange-check')
+      .forEach((ch) => {
+        ch.style.opacity = on ? '1' : '0';
+      });
   }
-  document.querySelectorAll('.rearrange-toggle').forEach(toggle => {
+  document.querySelectorAll('.rearrange-toggle').forEach((toggle) => {
     toggle.addEventListener('click', () => {
       const state = loadUIVis();
       const wasOn = state['section-drag-reorder'] === true;
@@ -2831,126 +3241,460 @@ function initializeEventListeners() {
   // Esc exits rearrange mode (no matter where focus/mouse is) — matches the
   // global Esc-cancels-select pattern. Capture phase so a sort dropdown that
   // happens to be open doesn't swallow it first.
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    if (!document.body.classList.contains('rearrange-mode')) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const state = loadUIVis();
-    state['section-drag-reorder'] = false;
-    saveUIVis(state);
-    applyUIVis(state);
-    syncRearrangeChecks();
-    uiModule.showToast('Rearrange disabled');
-  }, true);
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'Escape') return;
+      if (!document.body.classList.contains('rearrange-mode')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const state = loadUIVis();
+      state['section-drag-reorder'] = false;
+      saveUIVis(state);
+      applyUIVis(state);
+      syncRearrangeChecks();
+      uiModule.showToast('Rearrange disabled');
+    },
+    true,
+  );
   // Sync checkmarks when dropdowns open
   const _sessionSortBtn = el('session-sort-btn');
   const _modelSortBtn = el('model-sort-btn');
-  if (_sessionSortBtn) _sessionSortBtn.addEventListener('click', syncRearrangeChecks);
-  if (_modelSortBtn) _modelSortBtn.addEventListener('click', syncRearrangeChecks);
+  if (_sessionSortBtn)
+    _sessionSortBtn.addEventListener('click', syncRearrangeChecks);
+  if (_modelSortBtn)
+    _modelSortBtn.addEventListener('click', syncRearrangeChecks);
   syncRearrangeChecks();
 
   // ── Text-only emoji conversion ──
   // Regex matching most emoji codepoints (Emoji_Presentation + common sequences)
-  const EMOJI_RE = /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})(?:\uFE0F|\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}))*/gu;
+  const EMOJI_RE =
+    /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})(?:\uFE0F|\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}))*/gu;
 
   // Common emoji → text description map
   const EMOJI_MAP = {
-    '😀':'grinning','😃':'smiley','😄':'smile','😁':'grin','😆':'laughing','😅':'sweat smile',
-    '🤣':'rofl','😂':'joy','🙂':'slightly smiling','🙃':'upside down','😉':'wink',
-    '😊':'blush','😇':'innocent','🥰':'smiling hearts','😍':'heart eyes','🤩':'star struck',
-    '😘':'kissing heart','😗':'kissing','😚':'kissing closed eyes','😙':'kissing smiling eyes',
-    '🥲':'smiling tear','😋':'yum','😛':'tongue','😜':'winking tongue','🤪':'zany',
-    '😝':'squinting tongue','🤑':'money mouth','🤗':'hugging','🤭':'hand over mouth',
-    '🤫':'shushing','🤔':'thinking','🫡':'saluting','🤐':'zipper mouth','🤨':'raised eyebrow',
-    '😐':'neutral','😑':'expressionless','😶':'no mouth','🫥':'dotted line face',
-    '😏':'smirk','😒':'unamused','🙄':'eye roll','😬':'grimacing','🤥':'lying',
-    '😌':'relieved','😔':'pensive','😪':'sleepy','🤤':'drooling','😴':'sleeping',
-    '😷':'mask','🤒':'thermometer','🤕':'head bandage','🤢':'nauseated','🤮':'vomiting',
-    '🥵':'hot','🥶':'cold','🥴':'woozy','😵':'dizzy','🤯':'exploding head',
-    '🤠':'cowboy','🥳':'party','🥸':'disguised','😎':'sunglasses','🤓':'nerd',
-    '🧐':'monocle','😕':'confused','🫤':'diagonal mouth','😟':'worried','🙁':'slightly frowning',
-    '😮':'open mouth','😯':'hushed','😲':'astonished','😳':'flushed','🥺':'pleading',
-    '🥹':'holding back tears','😦':'frowning open mouth','😧':'anguished','😨':'fearful',
-    '😰':'anxious sweat','😥':'sad relieved','😢':'crying','😭':'sobbing','😱':'screaming',
-    '😖':'confounded','😣':'persevering','😞':'disappointed','😓':'downcast sweat',
-    '😩':'weary','😫':'tired','🥱':'yawning','😤':'triumph','😡':'pouting',
-    '😠':'angry','🤬':'swearing','😈':'smiling devil','👿':'angry devil',
-    '💀':'skull','☠️':'skull crossbones','💩':'poop','🤡':'clown','👹':'ogre','👺':'goblin',
-    '👻':'ghost','👽':'alien','👾':'space invader','🤖':'robot',
-    '😺':'smiling cat','😸':'grinning cat','😹':'tears of joy cat','😻':'heart eyes cat',
-    '😼':'wry cat','😽':'kissing cat','🙀':'weary cat','😿':'crying cat','😾':'pouting cat',
-    '🙈':'see no evil','🙉':'hear no evil','🙊':'speak no evil',
-    '👋':'wave','🤚':'raised back of hand','🖐️':'hand with fingers splayed','✋':'raised hand',
-    '🖖':'vulcan salute','🫱':'rightward hand','🫲':'leftward hand',
-    '👌':'ok hand','🤌':'pinched fingers','🤏':'pinching hand','✌️':'victory',
-    '🤞':'crossed fingers','🫰':'hand with index finger and thumb crossed',
-    '🤟':'love you','🤘':'rock on','🤙':'call me','👈':'point left','👉':'point right',
-    '👆':'point up','🖕':'middle finger','👇':'point down','☝️':'index up',
-    '🫵':'point at viewer','👍':'thumbs up','👎':'thumbs down','✊':'raised fist',
-    '👊':'fist bump','🤛':'left fist','🤜':'right fist','👏':'clap','🙌':'raising hands',
-    '🫶':'heart hands','👐':'open hands','🤲':'palms up','🤝':'handshake','🙏':'pray',
-    '✍️':'writing','💅':'nail polish','🤳':'selfie','💪':'flexed biceps',
-    '❤️':'red heart','🧡':'orange heart','💛':'yellow heart','💚':'green heart',
-    '💙':'blue heart','💜':'purple heart','🖤':'black heart','🤍':'white heart',
-    '🩷':'pink heart','🩵':'light blue heart','🩶':'grey heart','🤎':'brown heart',
-    '💔':'broken heart','❤️‍🔥':'heart on fire','❤️‍🩹':'mending heart',
-    '💕':'two hearts','💞':'revolving hearts','💓':'heartbeat','💗':'growing heart',
-    '💖':'sparkling heart','💘':'heart with arrow','💝':'heart with ribbon',
-    '💟':'heart decoration','🔥':'fire','💯':'100','✨':'sparkles','⭐':'star',
-    '🌟':'glowing star','💫':'dizzy star','🎉':'party popper','🎊':'confetti ball',
-    '🎈':'balloon','🎁':'gift','🏆':'trophy','🥇':'1st place','🥈':'2nd place','🥉':'3rd place',
-    '⚡':'zap','💡':'light bulb','🔑':'key','🔒':'locked','🔓':'unlocked',
-    '🔔':'bell','🔕':'bell off','📢':'loudspeaker','📣':'megaphone',
-    '💬':'speech bubble','💭':'thought bubble','🗯️':'anger bubble',
-    '✅':'check mark','❌':'cross mark','❓':'question','❗':'exclamation',
-    '⚠️':'warning','🚫':'prohibited','⛔':'no entry','🔴':'red circle','🟢':'green circle',
-    '🔵':'blue circle','🟡':'yellow circle','⚪':'white circle','⚫':'black circle',
-    '🟠':'orange circle','🟣':'purple circle','🟤':'brown circle',
-    '📁':'folder','📂':'open folder','📄':'document','📝':'memo','📎':'paperclip',
-    '📌':'pin','📍':'round pin','🔗':'link','📊':'bar chart','📈':'chart up','📉':'chart down',
-    '🔍':'magnifying glass left','🔎':'magnifying glass right',
-    '🌐':'globe','🌍':'globe europe','🌎':'globe americas','🌏':'globe asia',
-    '🕐':'clock 1','🕑':'clock 2','🕒':'clock 3','🕓':'clock 4',
-    '⏰':'alarm clock','⏳':'hourglass flowing','⌛':'hourglass done',
-    '🚀':'rocket','✈️':'airplane','🚗':'car','🚂':'train','🚢':'ship',
-    '🏠':'house','🏢':'building','🏗️':'construction','🏭':'factory',
-    '🎵':'musical note','🎶':'musical notes','🎤':'microphone','🎧':'headphones',
-    '📷':'camera','📸':'camera flash','🎬':'clapperboard','📺':'television',
-    '💻':'laptop','🖥️':'desktop','📱':'mobile phone','☎️':'telephone',
-    '🔧':'wrench','🔨':'hammer','⚙️':'gear','🧲':'magnet','🧪':'test tube','🔬':'microscope',
-    '📚':'books','📖':'open book','✏️':'pencil','🖊️':'pen','🖋️':'fountain pen',
-    '🎯':'bullseye','♟️':'chess pawn','🎲':'game die','🧩':'puzzle piece',
-    '🍕':'pizza','🍔':'burger','🍟':'fries','🌮':'taco','🍣':'sushi','🍩':'donut',
-    '☕':'coffee','🍺':'beer','🍷':'wine','🥤':'cup with straw',
-    '🐶':'dog','🐱':'cat','🐭':'mouse','🐹':'hamster','🐰':'rabbit','🦊':'fox',
-    '🐻':'bear','🐼':'panda','🐨':'koala','🐯':'tiger','🦁':'lion','🐮':'cow',
-    '🐷':'pig','🐸':'frog','🐵':'monkey','🐔':'chicken','🐧':'penguin','🐦':'bird',
-    '🦅':'eagle','🦆':'duck','🦉':'owl','🐺':'wolf','🐗':'boar','🐴':'horse',
-    '🦄':'unicorn','🐝':'bee','🐛':'bug','🦋':'butterfly','🐌':'snail','🐞':'ladybug',
-    '🐍':'snake','🐢':'turtle','🐙':'octopus','🦀':'crab','🐠':'tropical fish',
-    '🐳':'whale','🐋':'whale','🦈':'shark','🐊':'crocodile','🦕':'sauropod','🦖':'t-rex',
-    '🌸':'cherry blossom','🌹':'rose','🌻':'sunflower','🌺':'hibiscus','🌷':'tulip',
-    '🌱':'seedling','🌲':'evergreen tree','🌳':'deciduous tree','🍀':'four leaf clover',
-    '🍎':'red apple','🍐':'pear','🍊':'tangerine','🍋':'lemon','🍌':'banana',
-    '🍉':'watermelon','🍇':'grapes','🍓':'strawberry','🫐':'blueberries','🍑':'peach',
-    '🌈':'rainbow','☀️':'sun','🌤️':'sun behind cloud','⛅':'sun behind cloud','☁️':'cloud',
-    '🌧️':'rain','⛈️':'thunder','❄️':'snowflake','🌊':'wave',
-    '👀':'eyes','👁️':'eye','👂':'ear','👃':'nose','👄':'mouth','👅':'tongue',
-    '🧠':'brain','🦴':'bone','🦷':'tooth','👶':'baby','🧒':'child','👦':'boy','👧':'girl',
-    '🧑':'person','👨':'man','👩':'woman','🧓':'older person',
-    '👮':'police officer','🧑‍💻':'technologist','👨‍💻':'man technologist',
-    '👩‍💻':'woman technologist',
-    '🎓':'graduation cap','🧢':'billed cap','👑':'crown','💎':'gem','👓':'glasses','🕶️':'sunglasses',
-    '🩸':'drop of blood','💊':'pill','🩹':'bandage','🧬':'dna','🦠':'microbe',
-    '☢️':'radioactive','☣️':'biohazard','♻️':'recycling',
-    '🏳️':'white flag','🏴':'black flag','🚩':'red flag','🏁':'checkered flag',
-    '➡️':'right arrow','⬅️':'left arrow','⬆️':'up arrow','⬇️':'down arrow',
-    '↗️':'upper right arrow','↘️':'lower right arrow','↙️':'lower left arrow','↖️':'upper left arrow',
-    '↩️':'left curve','↪️':'right curve','🔄':'counterclockwise','🔃':'clockwise',
-    '➕':'plus','➖':'minus','➗':'division','✖️':'multiply','♾️':'infinity',
-    '‼️':'double exclamation','⁉️':'exclamation question',
-    '©️':'copyright','®️':'registered','™️':'trademark',
+    '😀': 'grinning',
+    '😃': 'smiley',
+    '😄': 'smile',
+    '😁': 'grin',
+    '😆': 'laughing',
+    '😅': 'sweat smile',
+    '🤣': 'rofl',
+    '😂': 'joy',
+    '🙂': 'slightly smiling',
+    '🙃': 'upside down',
+    '😉': 'wink',
+    '😊': 'blush',
+    '😇': 'innocent',
+    '🥰': 'smiling hearts',
+    '😍': 'heart eyes',
+    '🤩': 'star struck',
+    '😘': 'kissing heart',
+    '😗': 'kissing',
+    '😚': 'kissing closed eyes',
+    '😙': 'kissing smiling eyes',
+    '🥲': 'smiling tear',
+    '😋': 'yum',
+    '😛': 'tongue',
+    '😜': 'winking tongue',
+    '🤪': 'zany',
+    '😝': 'squinting tongue',
+    '🤑': 'money mouth',
+    '🤗': 'hugging',
+    '🤭': 'hand over mouth',
+    '🤫': 'shushing',
+    '🤔': 'thinking',
+    '🫡': 'saluting',
+    '🤐': 'zipper mouth',
+    '🤨': 'raised eyebrow',
+    '😐': 'neutral',
+    '😑': 'expressionless',
+    '😶': 'no mouth',
+    '🫥': 'dotted line face',
+    '😏': 'smirk',
+    '😒': 'unamused',
+    '🙄': 'eye roll',
+    '😬': 'grimacing',
+    '🤥': 'lying',
+    '😌': 'relieved',
+    '😔': 'pensive',
+    '😪': 'sleepy',
+    '🤤': 'drooling',
+    '😴': 'sleeping',
+    '😷': 'mask',
+    '🤒': 'thermometer',
+    '🤕': 'head bandage',
+    '🤢': 'nauseated',
+    '🤮': 'vomiting',
+    '🥵': 'hot',
+    '🥶': 'cold',
+    '🥴': 'woozy',
+    '😵': 'dizzy',
+    '🤯': 'exploding head',
+    '🤠': 'cowboy',
+    '🥳': 'party',
+    '🥸': 'disguised',
+    '😎': 'sunglasses',
+    '🤓': 'nerd',
+    '🧐': 'monocle',
+    '😕': 'confused',
+    '🫤': 'diagonal mouth',
+    '😟': 'worried',
+    '🙁': 'slightly frowning',
+    '😮': 'open mouth',
+    '😯': 'hushed',
+    '😲': 'astonished',
+    '😳': 'flushed',
+    '🥺': 'pleading',
+    '🥹': 'holding back tears',
+    '😦': 'frowning open mouth',
+    '😧': 'anguished',
+    '😨': 'fearful',
+    '😰': 'anxious sweat',
+    '😥': 'sad relieved',
+    '😢': 'crying',
+    '😭': 'sobbing',
+    '😱': 'screaming',
+    '😖': 'confounded',
+    '😣': 'persevering',
+    '😞': 'disappointed',
+    '😓': 'downcast sweat',
+    '😩': 'weary',
+    '😫': 'tired',
+    '🥱': 'yawning',
+    '😤': 'triumph',
+    '😡': 'pouting',
+    '😠': 'angry',
+    '🤬': 'swearing',
+    '😈': 'smiling devil',
+    '👿': 'angry devil',
+    '💀': 'skull',
+    '☠️': 'skull crossbones',
+    '💩': 'poop',
+    '🤡': 'clown',
+    '👹': 'ogre',
+    '👺': 'goblin',
+    '👻': 'ghost',
+    '👽': 'alien',
+    '👾': 'space invader',
+    '🤖': 'robot',
+    '😺': 'smiling cat',
+    '😸': 'grinning cat',
+    '😹': 'tears of joy cat',
+    '😻': 'heart eyes cat',
+    '😼': 'wry cat',
+    '😽': 'kissing cat',
+    '🙀': 'weary cat',
+    '😿': 'crying cat',
+    '😾': 'pouting cat',
+    '🙈': 'see no evil',
+    '🙉': 'hear no evil',
+    '🙊': 'speak no evil',
+    '👋': 'wave',
+    '🤚': 'raised back of hand',
+    '🖐️': 'hand with fingers splayed',
+    '✋': 'raised hand',
+    '🖖': 'vulcan salute',
+    '🫱': 'rightward hand',
+    '🫲': 'leftward hand',
+    '👌': 'ok hand',
+    '🤌': 'pinched fingers',
+    '🤏': 'pinching hand',
+    '✌️': 'victory',
+    '🤞': 'crossed fingers',
+    '🫰': 'hand with index finger and thumb crossed',
+    '🤟': 'love you',
+    '🤘': 'rock on',
+    '🤙': 'call me',
+    '👈': 'point left',
+    '👉': 'point right',
+    '👆': 'point up',
+    '🖕': 'middle finger',
+    '👇': 'point down',
+    '☝️': 'index up',
+    '🫵': 'point at viewer',
+    '👍': 'thumbs up',
+    '👎': 'thumbs down',
+    '✊': 'raised fist',
+    '👊': 'fist bump',
+    '🤛': 'left fist',
+    '🤜': 'right fist',
+    '👏': 'clap',
+    '🙌': 'raising hands',
+    '🫶': 'heart hands',
+    '👐': 'open hands',
+    '🤲': 'palms up',
+    '🤝': 'handshake',
+    '🙏': 'pray',
+    '✍️': 'writing',
+    '💅': 'nail polish',
+    '🤳': 'selfie',
+    '💪': 'flexed biceps',
+    '❤️': 'red heart',
+    '🧡': 'orange heart',
+    '💛': 'yellow heart',
+    '💚': 'green heart',
+    '💙': 'blue heart',
+    '💜': 'purple heart',
+    '🖤': 'black heart',
+    '🤍': 'white heart',
+    '🩷': 'pink heart',
+    '🩵': 'light blue heart',
+    '🩶': 'grey heart',
+    '🤎': 'brown heart',
+    '💔': 'broken heart',
+    '❤️‍🔥': 'heart on fire',
+    '❤️‍🩹': 'mending heart',
+    '💕': 'two hearts',
+    '💞': 'revolving hearts',
+    '💓': 'heartbeat',
+    '💗': 'growing heart',
+    '💖': 'sparkling heart',
+    '💘': 'heart with arrow',
+    '💝': 'heart with ribbon',
+    '💟': 'heart decoration',
+    '🔥': 'fire',
+    '💯': '100',
+    '✨': 'sparkles',
+    '⭐': 'star',
+    '🌟': 'glowing star',
+    '💫': 'dizzy star',
+    '🎉': 'party popper',
+    '🎊': 'confetti ball',
+    '🎈': 'balloon',
+    '🎁': 'gift',
+    '🏆': 'trophy',
+    '🥇': '1st place',
+    '🥈': '2nd place',
+    '🥉': '3rd place',
+    '⚡': 'zap',
+    '💡': 'light bulb',
+    '🔑': 'key',
+    '🔒': 'locked',
+    '🔓': 'unlocked',
+    '🔔': 'bell',
+    '🔕': 'bell off',
+    '📢': 'loudspeaker',
+    '📣': 'megaphone',
+    '💬': 'speech bubble',
+    '💭': 'thought bubble',
+    '🗯️': 'anger bubble',
+    '✅': 'check mark',
+    '❌': 'cross mark',
+    '❓': 'question',
+    '❗': 'exclamation',
+    '⚠️': 'warning',
+    '🚫': 'prohibited',
+    '⛔': 'no entry',
+    '🔴': 'red circle',
+    '🟢': 'green circle',
+    '🔵': 'blue circle',
+    '🟡': 'yellow circle',
+    '⚪': 'white circle',
+    '⚫': 'black circle',
+    '🟠': 'orange circle',
+    '🟣': 'purple circle',
+    '🟤': 'brown circle',
+    '📁': 'folder',
+    '📂': 'open folder',
+    '📄': 'document',
+    '📝': 'memo',
+    '📎': 'paperclip',
+    '📌': 'pin',
+    '📍': 'round pin',
+    '🔗': 'link',
+    '📊': 'bar chart',
+    '📈': 'chart up',
+    '📉': 'chart down',
+    '🔍': 'magnifying glass left',
+    '🔎': 'magnifying glass right',
+    '🌐': 'globe',
+    '🌍': 'globe europe',
+    '🌎': 'globe americas',
+    '🌏': 'globe asia',
+    '🕐': 'clock 1',
+    '🕑': 'clock 2',
+    '🕒': 'clock 3',
+    '🕓': 'clock 4',
+    '⏰': 'alarm clock',
+    '⏳': 'hourglass flowing',
+    '⌛': 'hourglass done',
+    '🚀': 'rocket',
+    '✈️': 'airplane',
+    '🚗': 'car',
+    '🚂': 'train',
+    '🚢': 'ship',
+    '🏠': 'house',
+    '🏢': 'building',
+    '🏗️': 'construction',
+    '🏭': 'factory',
+    '🎵': 'musical note',
+    '🎶': 'musical notes',
+    '🎤': 'microphone',
+    '🎧': 'headphones',
+    '📷': 'camera',
+    '📸': 'camera flash',
+    '🎬': 'clapperboard',
+    '📺': 'television',
+    '💻': 'laptop',
+    '🖥️': 'desktop',
+    '📱': 'mobile phone',
+    '☎️': 'telephone',
+    '🔧': 'wrench',
+    '🔨': 'hammer',
+    '⚙️': 'gear',
+    '🧲': 'magnet',
+    '🧪': 'test tube',
+    '🔬': 'microscope',
+    '📚': 'books',
+    '📖': 'open book',
+    '✏️': 'pencil',
+    '🖊️': 'pen',
+    '🖋️': 'fountain pen',
+    '🎯': 'bullseye',
+    '♟️': 'chess pawn',
+    '🎲': 'game die',
+    '🧩': 'puzzle piece',
+    '🍕': 'pizza',
+    '🍔': 'burger',
+    '🍟': 'fries',
+    '🌮': 'taco',
+    '🍣': 'sushi',
+    '🍩': 'donut',
+    '☕': 'coffee',
+    '🍺': 'beer',
+    '🍷': 'wine',
+    '🥤': 'cup with straw',
+    '🐶': 'dog',
+    '🐱': 'cat',
+    '🐭': 'mouse',
+    '🐹': 'hamster',
+    '🐰': 'rabbit',
+    '🦊': 'fox',
+    '🐻': 'bear',
+    '🐼': 'panda',
+    '🐨': 'koala',
+    '🐯': 'tiger',
+    '🦁': 'lion',
+    '🐮': 'cow',
+    '🐷': 'pig',
+    '🐸': 'frog',
+    '🐵': 'monkey',
+    '🐔': 'chicken',
+    '🐧': 'penguin',
+    '🐦': 'bird',
+    '🦅': 'eagle',
+    '🦆': 'duck',
+    '🦉': 'owl',
+    '🐺': 'wolf',
+    '🐗': 'boar',
+    '🐴': 'horse',
+    '🦄': 'unicorn',
+    '🐝': 'bee',
+    '🐛': 'bug',
+    '🦋': 'butterfly',
+    '🐌': 'snail',
+    '🐞': 'ladybug',
+    '🐍': 'snake',
+    '🐢': 'turtle',
+    '🐙': 'octopus',
+    '🦀': 'crab',
+    '🐠': 'tropical fish',
+    '🐳': 'whale',
+    '🐋': 'whale',
+    '🦈': 'shark',
+    '🐊': 'crocodile',
+    '🦕': 'sauropod',
+    '🦖': 't-rex',
+    '🌸': 'cherry blossom',
+    '🌹': 'rose',
+    '🌻': 'sunflower',
+    '🌺': 'hibiscus',
+    '🌷': 'tulip',
+    '🌱': 'seedling',
+    '🌲': 'evergreen tree',
+    '🌳': 'deciduous tree',
+    '🍀': 'four leaf clover',
+    '🍎': 'red apple',
+    '🍐': 'pear',
+    '🍊': 'tangerine',
+    '🍋': 'lemon',
+    '🍌': 'banana',
+    '🍉': 'watermelon',
+    '🍇': 'grapes',
+    '🍓': 'strawberry',
+    '🫐': 'blueberries',
+    '🍑': 'peach',
+    '🌈': 'rainbow',
+    '☀️': 'sun',
+    '🌤️': 'sun behind cloud',
+    '⛅': 'sun behind cloud',
+    '☁️': 'cloud',
+    '🌧️': 'rain',
+    '⛈️': 'thunder',
+    '❄️': 'snowflake',
+    '🌊': 'wave',
+    '👀': 'eyes',
+    '👁️': 'eye',
+    '👂': 'ear',
+    '👃': 'nose',
+    '👄': 'mouth',
+    '👅': 'tongue',
+    '🧠': 'brain',
+    '🦴': 'bone',
+    '🦷': 'tooth',
+    '👶': 'baby',
+    '🧒': 'child',
+    '👦': 'boy',
+    '👧': 'girl',
+    '🧑': 'person',
+    '👨': 'man',
+    '👩': 'woman',
+    '🧓': 'older person',
+    '👮': 'police officer',
+    '🧑‍💻': 'technologist',
+    '👨‍💻': 'man technologist',
+    '👩‍💻': 'woman technologist',
+    '🎓': 'graduation cap',
+    '🧢': 'billed cap',
+    '👑': 'crown',
+    '💎': 'gem',
+    '👓': 'glasses',
+    '🕶️': 'sunglasses',
+    '🩸': 'drop of blood',
+    '💊': 'pill',
+    '🩹': 'bandage',
+    '🧬': 'dna',
+    '🦠': 'microbe',
+    '☢️': 'radioactive',
+    '☣️': 'biohazard',
+    '♻️': 'recycling',
+    '🏳️': 'white flag',
+    '🏴': 'black flag',
+    '🚩': 'red flag',
+    '🏁': 'checkered flag',
+    '➡️': 'right arrow',
+    '⬅️': 'left arrow',
+    '⬆️': 'up arrow',
+    '⬇️': 'down arrow',
+    '↗️': 'upper right arrow',
+    '↘️': 'lower right arrow',
+    '↙️': 'lower left arrow',
+    '↖️': 'upper left arrow',
+    '↩️': 'left curve',
+    '↪️': 'right curve',
+    '🔄': 'counterclockwise',
+    '🔃': 'clockwise',
+    '➕': 'plus',
+    '➖': 'minus',
+    '➗': 'division',
+    '✖️': 'multiply',
+    '♾️': 'infinity',
+    '‼️': 'double exclamation',
+    '⁉️': 'exclamation question',
+    '©️': 'copyright',
+    '®️': 'registered',
+    '™️': 'trademark',
   };
 
   function emojiToText(str) {
@@ -2978,7 +3722,8 @@ function initializeEventListeners() {
     while (walker.nextNode()) nodes.push(walker.currentNode);
     for (const node of nodes) {
       // Skip UI elements that use unicode symbols as functional icons
-      if (node.parentElement && node.parentElement.closest(_DEOJ_SKIP)) continue;
+      if (node.parentElement && node.parentElement.closest(_DEOJ_SKIP))
+        continue;
       if (EMOJI_RE.test(node.textContent)) {
         EMOJI_RE.lastIndex = 0; // reset regex state
         node.textContent = emojiToText(node.textContent);
@@ -3047,7 +3792,8 @@ function initializeEventListeners() {
         const header = m.querySelector('.modal-header');
         if (!content || !header) return;
         makeWindowDraggable(m, {
-          content, header,
+          content,
+          header,
           skipSelector: '.close-btn',
           enableDock: false,
           enableResize: false,
@@ -3068,7 +3814,9 @@ function initializeEventListeners() {
           wasHidden = isHidden;
         }).observe(m, { attributes: true, attributeFilter: ['class'] });
       });
-    } catch (e) { console.error('Dialog drag init error:', e); }
+    } catch (e) {
+      console.error('Dialog drag init error:', e);
+    }
   })();
 
   // ── Modal minimize → dock ──
@@ -3098,7 +3846,8 @@ function initializeEventListeners() {
       let leftPx = 0;
       let rightPx = 0;
       const sidebarRight = sidebar && sidebar.classList.contains('right-side');
-      const sidebarVisible = sidebar &&
+      const sidebarVisible =
+        sidebar &&
         !sidebar.classList.contains('hidden') &&
         sidebar.offsetWidth > 0;
       const railVisible = iconRail && iconRail.offsetWidth > 0;
@@ -3124,19 +3873,26 @@ function initializeEventListeners() {
     window.addEventListener('resize', updateDockOffset);
     // Side-flip / collapse toggles class names on body or sidebar
     new MutationObserver(updateDockOffset).observe(document.body, {
-      attributes: true, attributeFilter: ['class'],
+      attributes: true,
+      attributeFilter: ['class'],
     });
     const sbEl = document.getElementById('sidebar');
     if (sbEl) {
       new MutationObserver(updateDockOffset).observe(sbEl, {
-        attributes: true, attributeFilter: ['class', 'style'],
+        attributes: true,
+        attributeFilter: ['class', 'style'],
       });
     }
 
     function modalTitle(modal) {
-      const h = modal.querySelector('.modal-header h4, .modal-header h3, .modal-header h2');
+      const h = modal.querySelector(
+        '.modal-header h4, .modal-header h3, .modal-header h2',
+      );
       if (h && h.textContent.trim()) return h.textContent.trim();
-      if (modal.id) return modal.id.replace(/-modal$|-overlay$|-popup$/, '').replace(/-/g, ' ');
+      if (modal.id)
+        return modal.id
+          .replace(/-modal$|-overlay$|-popup$/, '')
+          .replace(/-/g, ' ');
       return 'Window';
     }
 
@@ -3189,13 +3945,20 @@ function initializeEventListeners() {
     }
 
     function injectMinimizeButton(modal) {
-      if (!modal || !modal.classList || !modal.classList.contains('modal')) return;
+      if (!modal || !modal.classList || !modal.classList.contains('modal'))
+        return;
       if (modal.id && SKIP_IDS.has(modal.id)) return;
       // Modals managed by the new modalManager (Modals.register) get their own
       // .modal-minimize-btn and chips via the .minimized-dock-chip system.
       // Skip them entirely so we don't double-up minimize buttons or chips.
       if (modal.id && /^email-reader-/.test(modal.id)) return;
-      if (modal.id && window.Modals && window.Modals.isRegistered && window.Modals.isRegistered(modal.id)) return;
+      if (
+        modal.id &&
+        window.Modals &&
+        window.Modals.isRegistered &&
+        window.Modals.isRegistered(modal.id)
+      )
+        return;
       const header = modal.querySelector('.modal-header');
       if (!header) return;
       if (header.querySelector('.minimize-btn, .modal-minimize-btn')) return;
@@ -3216,7 +3979,10 @@ function initializeEventListeners() {
 
       // Watch this modal's class so close-from-elsewhere clears the dock entry
       new MutationObserver(() => {
-        if (modal.classList.contains('hidden') && !modal.classList.contains('minimized')) {
+        if (
+          modal.classList.contains('hidden') &&
+          !modal.classList.contains('minimized')
+        ) {
           removeDockEntry(modal);
         }
       }).observe(modal, { attributes: true, attributeFilter: ['class'] });
@@ -3266,13 +4032,18 @@ function initializeEventListeners() {
         ragModule.addRagDirectory(uiModule.showToast, uiModule.showError);
       }
     });
-
   }
 
   // Sidebar layout (extracted to js/sidebar-layout.js)
   initSidebarLayout(Storage, {
-    documentModule, _closeCompareIfActive, _deactivateIncognito,
-    presetsModule, sessionModule, el, _defaultChat, _syncResearchIndicator
+    documentModule,
+    _closeCompareIfActive,
+    _deactivateIncognito,
+    presetsModule,
+    sessionModule,
+    el,
+    _defaultChat,
+    _syncResearchIndicator,
   });
 
   // Mobile: horizontal swipe on a tabbed window switches tabs. Works for any
@@ -3291,41 +4062,63 @@ function initializeEventListeners() {
     ];
     const _IGNORE = '.chat-input-bar, input, textarea, select, [contenteditable="true"], .preset-range, ' +
       '.note-cl-row, .minimized-dock-chip, canvas, .email-card-reader';
-    let sx = 0, sy = 0, tracking = false;
-
-    document.addEventListener('touchstart', (e) => {
-      if (window.innerWidth > 768 || e.touches.length !== 1) { tracking = false; return; }
-      if (e.target.closest && e.target.closest(_IGNORE)) { tracking = false; return; }
-      sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
-    }, { passive: true });
-
-    document.addEventListener('touchend', (e) => {
-      if (!tracking) return;
+    let sx = 0,
+      sy = 0,
       tracking = false;
-      const t = e.changedTouches[0];
-      if (!t) return;
-      const dx = t.clientX - sx, dy = t.clientY - sy;
-      // Require a deliberate, mostly-horizontal swipe.
-      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      for (const [barSel, tabSel] of SYSTEMS) {
-        const bar = document.querySelector(barSel);
-        if (!bar || bar.offsetParent === null) continue;  // not the visible window
-        // Only act if the swipe happened inside this bar's window (not some
-        // other on-screen element).
-        const host = bar.closest('.modal, #notes-pane, .preset-modal-content, .admin-card') || bar.parentElement;
-        const startEl = document.elementFromPoint(sx, sy);
-        if (host && startEl && !host.contains(startEl)) continue;
-        const tabs = [...bar.querySelectorAll(tabSel)];
-        if (tabs.length < 2) continue;
-        let idx = tabs.findIndex(tb => tb.classList.contains('active'));
-        if (idx < 0) idx = 0;
-        // Swipe left (dx<0) → next tab; swipe right (dx>0) → previous.
-        const nextIdx = dx < 0 ? idx + 1 : idx - 1;
-        if (nextIdx < 0 || nextIdx >= tabs.length) return;  // at an edge
-        tabs[nextIdx].click();
-        return;
-      }
-    }, { passive: true });
+
+    document.addEventListener(
+      'touchstart',
+      (e) => {
+        if (window.innerWidth > 768 || e.touches.length !== 1) {
+          tracking = false;
+          return;
+        }
+        if (e.target.closest && e.target.closest(_IGNORE)) {
+          tracking = false;
+          return;
+        }
+        sx = e.touches[0].clientX;
+        sy = e.touches[0].clientY;
+        tracking = true;
+      },
+      { passive: true },
+    );
+
+    document.addEventListener(
+      'touchend',
+      (e) => {
+        if (!tracking) return;
+        tracking = false;
+        const t = e.changedTouches[0];
+        if (!t) return;
+        const dx = t.clientX - sx,
+          dy = t.clientY - sy;
+        // Require a deliberate, mostly-horizontal swipe.
+        if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+        for (const [barSel, tabSel] of SYSTEMS) {
+          const bar = document.querySelector(barSel);
+          if (!bar || bar.offsetParent === null) continue; // not the visible window
+          // Only act if the swipe happened inside this bar's window (not some
+          // other on-screen element).
+          const host =
+            bar.closest(
+              '.modal, #notes-pane, .preset-modal-content, .admin-card',
+            ) || bar.parentElement;
+          const startEl = document.elementFromPoint(sx, sy);
+          if (host && startEl && !host.contains(startEl)) continue;
+          const tabs = [...bar.querySelectorAll(tabSel)];
+          if (tabs.length < 2) continue;
+          let idx = tabs.findIndex((tb) => tb.classList.contains('active'));
+          if (idx < 0) idx = 0;
+          // Swipe left (dx<0) → next tab; swipe right (dx>0) → previous.
+          const nextIdx = dx < 0 ? idx + 1 : idx - 1;
+          if (nextIdx < 0 || nextIdx >= tabs.length) return; // at an edge
+          tabs[nextIdx].click();
+          return;
+        }
+      },
+      { passive: true },
+    );
   })();
 
   // Elastic overscroll (rubber-band bounce) — desktop wheel only, on chat-history not container
@@ -3336,51 +4129,73 @@ function initializeEventListeners() {
 
     let wheelPull = 0;
     let wheelTimer = null;
-    hist.addEventListener('wheel', (e) => {
-      const atTop = hist.scrollTop <= 0 && e.deltaY < 0;
-      const atBottom = hist.scrollTop + hist.clientHeight >= hist.scrollHeight - 1 && e.deltaY > 0;
-      if (!atTop && !atBottom) { wheelPull = 0; return; }
+    hist.addEventListener(
+      'wheel',
+      (e) => {
+        const atTop = hist.scrollTop <= 0 && e.deltaY < 0;
+        const atBottom =
+          hist.scrollTop + hist.clientHeight >= hist.scrollHeight - 1 &&
+          e.deltaY > 0;
+        if (!atTop && !atBottom) {
+          wheelPull = 0;
+          return;
+        }
 
-      wheelPull += e.deltaY * -0.03;
-      wheelPull = Math.max(-7, Math.min(7, wheelPull));
-      hist.style.transition = 'none';
-      hist.style.transform = `translateY(${wheelPull}px)`;
+        wheelPull += e.deltaY * -0.03;
+        wheelPull = Math.max(-7, Math.min(7, wheelPull));
+        hist.style.transition = 'none';
+        hist.style.transform = `translateY(${wheelPull}px)`;
 
-      clearTimeout(wheelTimer);
-      wheelTimer = setTimeout(() => {
-        wheelPull = 0;
-        hist.style.transition = SNAP_BACK;
-        hist.style.transform = '';
-      }, 120);
-    }, { passive: true });
+        clearTimeout(wheelTimer);
+        wheelTimer = setTimeout(() => {
+          wheelPull = 0;
+          hist.style.transition = SNAP_BACK;
+          hist.style.transform = '';
+        }, 120);
+      },
+      { passive: true },
+    );
   })();
 
-  async function _handleNewChatAction({ preferModel = true, focus = true } = {}) {
-      if (!sessionModule) return;
-      if (_closeCompareIfActive()) return;
-      _deactivateIncognito();
-      // Clear character on new chat
-      if (presetsModule && presetsModule.deactivateCharacter) presetsModule.deactivateCharacter();
-      // Clear research mode if active
-      const _resChk = el('research-toggle');
-      if (_resChk && _resChk.checked) _syncResearchIndicator(false);
-      if (preferModel && await _createDirectChatFromPreferredModel()) return;
-      // No models at all — show welcome screen
-      _startFreshChat();
-      const docBtn3 = el('overflow-doc-btn');
-      if (docBtn3) docBtn3.classList.remove('active', 'has-docs');
-      document.querySelectorAll('.session-item.active').forEach(s => s.classList.remove('active'));
-      if (focus) {
-        const input = el('message');
-        if (input) { try { input.focus(); } catch (_) {} }
+  async function _handleNewChatAction({
+    preferModel = true,
+    focus = true,
+  } = {}) {
+    if (!sessionModule) return;
+    if (_closeCompareIfActive()) return;
+    _deactivateIncognito();
+    // Clear character on new chat
+    if (presetsModule && presetsModule.deactivateCharacter)
+      presetsModule.deactivateCharacter();
+    // Clear research mode if active
+    const _resChk = el('research-toggle');
+    if (_resChk && _resChk.checked) _syncResearchIndicator(false);
+    if (preferModel && (await _createDirectChatFromPreferredModel())) return;
+    // No models at all — show welcome screen
+    _startFreshChat();
+    const docBtn3 = el('overflow-doc-btn');
+    if (docBtn3) docBtn3.classList.remove('active', 'has-docs');
+    document
+      .querySelectorAll('.session-item.active')
+      .forEach((s) => s.classList.remove('active'));
+    if (focus) {
+      const input = el('message');
+      if (input) {
+        try {
+          input.focus();
+        } catch (_) {}
       }
+    }
   }
 
   // New session button on icon rail
   const railNewSession = el('rail-new-session');
   if (railNewSession) {
     railNewSession.addEventListener('click', async (e) => {
-      if (e) { e.preventDefault(); e.stopPropagation(); }
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       await _handleNewChatAction();
     });
   }
@@ -3396,12 +4211,18 @@ function initializeEventListeners() {
       if (_closeCompareIfActive()) return;
       _deactivateIncognito();
       _startFreshChat();
-      document.querySelectorAll('.session-item.active').forEach(s => s.classList.remove('active'));
+      document
+        .querySelectorAll('.session-item.active')
+        .forEach((s) => s.classList.remove('active'));
       // Focus the composer synchronously so mobile keyboards pop open.
       // iOS Safari only honours programmatic focus inside the original click
       // callback — a setTimeout breaks the user-gesture chain.
       const _input = el('message-input');
-      if (_input) { try { _input.focus(); } catch (_) {} }
+      if (_input) {
+        try {
+          _input.focus();
+        } catch (_) {}
+      }
     });
   }
 
@@ -3409,7 +4230,10 @@ function initializeEventListeners() {
   const brandBtn = el('sidebar-brand-btn');
   if (brandBtn) {
     brandBtn.addEventListener('click', async (e) => {
-      if (e) { e.preventDefault(); e.stopPropagation(); }
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       await _handleNewChatAction();
     });
   }
@@ -3417,7 +4241,10 @@ function initializeEventListeners() {
   const sidebarNewChatBtn = el('sidebar-new-chat-btn');
   if (sidebarNewChatBtn) {
     sidebarNewChatBtn.addEventListener('click', async (e) => {
-      if (e) { e.preventDefault(); e.stopImmediatePropagation(); }
+      if (e) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
       await _handleNewChatAction();
     });
   }
@@ -3430,15 +4257,25 @@ function initializeEventListeners() {
       const currentId = sessionModule.getCurrentSessionId();
       if (!currentId) return;
       const sessions = sessionModule.getSessions();
-      const current = sessions.find(s => s.id === currentId);
+      const current = sessions.find((s) => s.id === currentId);
       const name = current ? current.name : 'this session';
-      if (!await uiModule.styledConfirm(`Delete "${name}"?`, { confirmText: 'Delete', danger: true })) return;
+      if (
+        !(await uiModule.styledConfirm(`Delete "${name}"?`, {
+          confirmText: 'Delete',
+          danger: true,
+        }))
+      )
+        return;
       try {
         // Find the next session below the current one before deleting
-        const idx = sessions.findIndex(s => s.id === currentId);
-        const nextSession = sessions.filter(s => !s.archived && s.id !== currentId)[Math.max(0, idx)] ||
-                            sessions.find(s => !s.archived && s.id !== currentId);
-        const res = await fetch(`${API_BASE}/api/session/${currentId}`, { method: 'DELETE' });
+        const idx = sessions.findIndex((s) => s.id === currentId);
+        const nextSession =
+          sessions.filter((s) => !s.archived && s.id !== currentId)[
+            Math.max(0, idx)
+          ] || sessions.find((s) => !s.archived && s.id !== currentId);
+        const res = await fetch(`${API_BASE}/api/session/${currentId}`, {
+          method: 'DELETE',
+        });
         if (res.ok) {
           await sessionModule.loadSessions();
           if (nextSession) {
@@ -3458,11 +4295,16 @@ function initializeEventListeners() {
   const textarea = el('message');
   if (textarea) {
     _syncMobileEnterKeyHint(textarea);
-    window.addEventListener('odysseus:chat-busy-change', () => _syncMobileEnterKeyHint(textarea));
+    window.addEventListener('odysseus:chat-busy-change', () =>
+      _syncMobileEnterKeyHint(textarea),
+    );
     uiModule.autoResize(textarea);
     let previousTextareaValue = textarea.value || '';
     textarea.addEventListener('beforeinput', (e) => {
-      if (_isLineBreakInputEvent(e) && _shouldQueueFromMobileLineBreak(textarea)) {
+      if (
+        _isLineBreakInputEvent(e) &&
+        _shouldQueueFromMobileLineBreak(textarea)
+      ) {
         e.preventDefault();
         e.stopPropagation();
         _submitMobileQueuedInput(textarea);
@@ -3470,8 +4312,10 @@ function initializeEventListeners() {
     });
     textarea.addEventListener('input', (e) => {
       const currentValue = textarea.value || '';
-      const insertedLineBreak = _isLineBreakInputEvent(e)
-        || _countLineBreaks(currentValue) > _countLineBreaks(previousTextareaValue);
+      const insertedLineBreak =
+        _isLineBreakInputEvent(e) ||
+        _countLineBreaks(currentValue) >
+          _countLineBreaks(previousTextareaValue);
       if (insertedLineBreak && _shouldQueueFromMobileLineBreak(textarea)) {
         textarea.value = currentValue.replace(/\n+$/g, '');
         previousTextareaValue = textarea.value || '';
@@ -3488,7 +4332,10 @@ function initializeEventListeners() {
     textarea.addEventListener('keydown', (e) => {
       const isMobile = _isMobileChatInput();
 
-      if (_shouldQueueFromMobileEnter(e, textarea) || (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !isMobile)) {
+      if (
+        _shouldQueueFromMobileEnter(e, textarea) ||
+        (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !isMobile)
+      ) {
         // If ghost autocomplete is active, accept the suggestion instead of submitting
         if (window._ghostAutocomplete && window._ghostAutocomplete.isActive()) {
           e.preventDefault();
@@ -3501,8 +4348,16 @@ function initializeEventListeners() {
         // Check if already submitting before triggering form submission
         const form = el('chat-form');
         if (form) {
-          if (_isForegroundChatBusy() && textarea.value && textarea.value.trim()) {
-            if (chatModule && chatModule.queueStreamingComposerRequest && chatModule.queueStreamingComposerRequest()) {
+          if (
+            _isForegroundChatBusy() &&
+            textarea.value &&
+            textarea.value.trim()
+          ) {
+            if (
+              chatModule &&
+              chatModule.queueStreamingComposerRequest &&
+              chatModule.queueStreamingComposerRequest()
+            ) {
               return;
             }
             window.__odysseusQueueStreamingSubmit = Date.now();
@@ -3519,20 +4374,23 @@ function initializeEventListeners() {
     const ghost = document.getElementById('message-ghost');
     if (!textarea || !ghost) return;
 
-    let modelCache = null;     // { models: [{ mid, url, endpointId, displayName }], ts }
-    let filtered = [];         // currently matching models
-    let cycleIdx = 0;          // index into filtered[]
-    let active = false;        // is ghost visible?
-    const CACHE_TTL = 60000;   // re-fetch after 60s
+    let modelCache = null; // { models: [{ mid, url, endpointId, displayName }], ts }
+    let filtered = []; // currently matching models
+    let cycleIdx = 0; // index into filtered[]
+    let active = false; // is ghost visible?
+    const CACHE_TTL = 60000; // re-fetch after 60s
     const CMD_RE = /^\/(new|create)\s/i;
 
     async function fetchModels() {
-      if (modelCache && Date.now() - modelCache.ts < CACHE_TTL) return modelCache.models;
+      if (modelCache && Date.now() - modelCache.ts < CACHE_TTL)
+        return modelCache.models;
       try {
-        const res = await fetch(`${API_BASE}/api/models`, { credentials: 'same-origin' });
+        const res = await fetch(`${API_BASE}/api/models`, {
+          credentials: 'same-origin',
+        });
         const data = await res.json();
         const models = [];
-        (data.items || []).forEach(ep => {
+        (data.items || []).forEach((ep) => {
           const displayNames = ep.models_display || ep.models || [];
           (ep.models || []).forEach((mid, i) => {
             models.push({
@@ -3585,27 +4443,43 @@ function initializeEventListeners() {
     async function update() {
       const val = textarea.value;
       const match = val.match(CMD_RE);
-      if (!match) { hide(); return; }
+      if (!match) {
+        hide();
+        return;
+      }
 
       const prefix = val.slice(match[0].length); // text after "/new " or "/create "
       const models = await fetchModels();
-      if (!models.length) { hide(); return; }
+      if (!models.length) {
+        hide();
+        return;
+      }
 
       // Filter models whose mid or displayName starts with the typed prefix (case-insensitive)
       const lp = prefix.toLowerCase();
-      filtered = models.filter(m =>
-        m.mid.toLowerCase().startsWith(lp) || m.displayName.toLowerCase().startsWith(lp)
+      filtered = models.filter(
+        (m) =>
+          m.mid.toLowerCase().startsWith(lp) ||
+          m.displayName.toLowerCase().startsWith(lp),
       );
 
-      if (!filtered.length) { hide(); return; }
+      if (!filtered.length) {
+        hide();
+        return;
+      }
 
       // Clamp cycle index
       cycleIdx = cycleIdx % filtered.length;
       const chosen = filtered[cycleIdx];
       // Determine which name matched for completion
-      const name = chosen.mid.toLowerCase().startsWith(lp) ? chosen.mid : chosen.displayName;
+      const name = chosen.mid.toLowerCase().startsWith(lp)
+        ? chosen.mid
+        : chosen.displayName;
       const remainder = name.slice(prefix.length);
-      if (!remainder && filtered.length <= 1) { hide(); return; }
+      if (!remainder && filtered.length <= 1) {
+        hide();
+        return;
+      }
 
       syncSize();
       show(val, remainder);
@@ -3631,7 +4505,9 @@ function initializeEventListeners() {
           const prefix = val.slice(match[0].length);
           const chosen = filtered[cycleIdx % filtered.length];
           const lp = prefix.toLowerCase();
-          const name = chosen.mid.toLowerCase().startsWith(lp) ? chosen.mid : chosen.displayName;
+          const name = chosen.mid.toLowerCase().startsWith(lp)
+            ? chosen.mid
+            : chosen.displayName;
           textarea.value = match[0] + name;
           textarea.dispatchEvent(new Event('input', { bubbles: true }));
         }
@@ -3664,21 +4540,30 @@ function initializeEventListeners() {
     textarea.addEventListener('blur', hide);
 
     // Observe textarea resize (from autoResize) to keep ghost in sync
-    const ro = new ResizeObserver(() => { if (active) syncSize(); });
+    const ro = new ResizeObserver(() => {
+      if (active) syncSize();
+    });
     ro.observe(textarea);
 
     // Public API for the Enter handler above
     window._ghostAutocomplete = {
-      isActive() { return active && filtered.length > 0; },
+      isActive() {
+        return active && filtered.length > 0;
+      },
       accept() {
         if (!active || !filtered.length) return;
         const val = textarea.value;
         const match = val.match(CMD_RE);
-        if (!match) { hide(); return; }
+        if (!match) {
+          hide();
+          return;
+        }
         const prefix = val.slice(match[0].length);
         const chosen = filtered[cycleIdx % filtered.length];
         const lp = prefix.toLowerCase();
-        const name = chosen.mid.toLowerCase().startsWith(lp) ? chosen.mid : chosen.displayName;
+        const name = chosen.mid.toLowerCase().startsWith(lp)
+          ? chosen.mid
+          : chosen.displayName;
         textarea.value = match[0] + name;
         hide();
         // Trigger input event so autoResize fires
@@ -3688,17 +4573,24 @@ function initializeEventListeners() {
           const form = el('chat-form');
           _submitChatFormDirect(form);
         }, 0);
-      }
+      },
     };
   })();
 
   // Keyboard shortcuts (extracted to js/keyboard-shortcuts.js)
   initKeyboardShortcuts({
-    el, Storage, sessionModule, uiModule, chatModule,
-    adminModule, settingsModule, searchChatModule,
-    _closeCompareIfActive, _deactivateIncognito, API_BASE
+    el,
+    Storage,
+    sessionModule,
+    uiModule,
+    chatModule,
+    adminModule,
+    settingsModule,
+    searchChatModule,
+    _closeCompareIfActive,
+    _deactivateIncognito,
+    API_BASE,
   });
-
 }
 
 // ============================================
@@ -3710,7 +4602,10 @@ function startOdysseusApp() {
   window.__odysseusAppStarted = true;
   const _bumpChatPriority = (ms = 10000) => {
     try {
-      window.__odysseusChatBusyUntil = Math.max(window.__odysseusChatBusyUntil || 0, Date.now() + ms);
+      window.__odysseusChatBusyUntil = Math.max(
+        window.__odysseusChatBusyUntil || 0,
+        Date.now() + ms,
+      );
     } catch (_) {}
   };
   _bumpChatPriority(10000);
@@ -3731,45 +4626,57 @@ function startOdysseusApp() {
           hist.style.scrollBehavior = 'smooth';
           hist.scrollTop = hist.scrollHeight;
           // Reset after animation
-          setTimeout(() => { hist.style.scrollBehavior = ''; }, 300);
+          setTimeout(() => {
+            hist.style.scrollBehavior = '';
+          }, 300);
         }
       }
     });
   }
 
   // Initialize all event listeners
-  try { initializeEventListeners(); } catch(e) { console.error('Event init error:', e); }
+  try {
+    initializeEventListeners();
+  } catch (e) {
+    console.error('Event init error:', e);
+  }
 
   // Reveal the toolbar now that all toggle/overflow state is resolved
   // (hidden via inline style="visibility:hidden" in HTML to prevent FOUC)
   const _inputBottom = document.querySelector('.chat-input-bottom');
   if (_inputBottom) _inputBottom.style.visibility = '';
 
-  fileHandlerModule.init(API_BASE);
-  modelsModule.init(API_BASE);
-  ragModule.init(API_BASE);
-  presetsModule.init(API_BASE);
-  searchModule.init(API_BASE);
-  chatModule.init(API_BASE);
+  fileHandlerModule.initLegacy(API_BASE);
+  modelsModule.initLegacy(API_BASE);
+  ragModule.initLegacy(API_BASE);
+  presetsModule.initLegacy(API_BASE);
+  searchModule.initLegacy(API_BASE);
+  chatModule.initLegacy(API_BASE);
   chatModule.initListeners();
-  groupModule.init(API_BASE);
+  groupModule.initLegacy(API_BASE);
   // Initialize compare module
   if (compareModule) {
-    compareModule.init(API_BASE);
+    compareModule.initLegacy(API_BASE);
   }
-  researchPanelModule.init(API_BASE, markdownModule, sessionModule);
+  researchPanelModule.initLegacy(API_BASE, markdownModule, sessionModule);
   // Initialize document editor module
   if (documentModule) {
-    documentModule.init(API_BASE);
+    documentModule.initLegacy(API_BASE);
+
+    emailInboxModule.initLegacy(documentModule);
+
     // Restore document panel if it was open before refresh
     const _curSession = sessionModule && sessionModule.getCurrentSessionId();
-    if (_curSession && localStorage.getItem('odysseus-doc-open-' + _curSession) === '1') {
+    if (
+      _curSession &&
+      localStorage.getItem('odysseus-doc-open-' + _curSession) === '1'
+    ) {
       documentModule.loadSessionDocs(_curSession);
     }
   }
   // Initialize search chat module
   if (searchChatModule) {
-    searchChatModule.init(API_BASE);
+    searchChatModule.initLegacy(API_BASE);
   }
 
   // Search buttons — icon rail + sidebar
@@ -3782,17 +4689,17 @@ function startOdysseusApp() {
 
   // Rail tool buttons — delegate to sidebar tool buttons
   const _railToolMap = {
-    'rail-compare':   'tool-compare-btn',
-    'rail-research':  'tool-research-btn',
-    'rail-cookbook':   'tool-cookbook-btn',
-    'rail-archive':   'tool-library-btn',
-    'rail-gallery':   'tool-gallery-btn',
-    'rail-tasks':     'tool-tasks-btn',
-    'rail-calendar':  'tool-calendar-btn',
-    'rail-notes':     'tool-notes-btn',
-    'rail-memory':    'tool-memory-btn',
-    'rail-theme':     'tool-theme-btn',
-    'rail-email':     'email-section-title',
+    'rail-compare': 'tool-compare-btn',
+    'rail-research': 'tool-research-btn',
+    'rail-cookbook': 'tool-cookbook-btn',
+    'rail-archive': 'tool-library-btn',
+    'rail-gallery': 'tool-gallery-btn',
+    'rail-tasks': 'tool-tasks-btn',
+    'rail-calendar': 'tool-calendar-btn',
+    'rail-notes': 'tool-notes-btn',
+    'rail-memory': 'tool-memory-btn',
+    'rail-theme': 'tool-theme-btn',
+    'rail-email': 'email-section-title',
   };
   Object.entries(_railToolMap).forEach(([railId, toolId]) => {
     const railBtn = el(railId);
@@ -3837,7 +4744,11 @@ function startOdysseusApp() {
       syncRailSide();
       // Scroll to bottom where settings typically are
       const sidebarInner = document.querySelector('.sidebar-inner');
-      if (sidebarInner) sidebarInner.scrollTo({ top: sidebarInner.scrollHeight, behavior: 'smooth' });
+      if (sidebarInner)
+        sidebarInner.scrollTo({
+          top: sidebarInner.scrollHeight,
+          behavior: 'smooth',
+        });
     });
   }
 
@@ -3846,7 +4757,9 @@ function startOdysseusApp() {
   if (_railAdmin) {
     _railAdmin.addEventListener('click', () => {
       // Try to open admin modal
-      const adminBtn = document.querySelector('[data-modal="admin-modal"]') || el('tool-admin-btn');
+      const adminBtn =
+        document.querySelector('[data-modal="admin-modal"]') ||
+        el('tool-admin-btn');
       if (adminBtn) adminBtn.click();
     });
   }
@@ -3857,13 +4770,17 @@ function startOdysseusApp() {
   // are shown/hidden dynamically here.
   function _syncRailDynamic() {
     // Show doc icon if panel is open OR session has documents
-    const docPanelOpen = window.documentModule && window.documentModule.isPanelOpen();
+    const docPanelOpen =
+      window.documentModule && window.documentModule.isPanelOpen();
     const docIndicator = el('doc-indicator-btn');
     const hasDocs = docIndicator && docIndicator.classList.contains('visible');
     const docOpen = docPanelOpen || hasDocs;
     const hasChatNotif = el('rail-chats')?.classList.contains('rail-notify');
 
-    const _show = (id, visible) => { const b = el(id); if (b) b.style.display = visible ? '' : 'none'; };
+    const _show = (id, visible) => {
+      const b = el(id);
+      if (b) b.style.display = visible ? '' : 'none';
+    };
     _show('rail-documents', docOpen);
     _show('rail-chats', !!hasChatNotif);
   }
@@ -3882,11 +4799,17 @@ function startOdysseusApp() {
   const chatForm = document.getElementById('chat-form');
   const originalSubmit = chatModule.handleChatSubmit;
   let _submitting = false;
-  const _messageInput = document.getElementById('message') || document.getElementById('message-input');
+  const _messageInput =
+    document.getElementById('message') ||
+    document.getElementById('message-input');
   if (_messageInput) {
     _messageInput.addEventListener('focus', () => _bumpChatPriority(15000));
     _messageInput.addEventListener('input', () => _bumpChatPriority(15000));
-    _messageInput.addEventListener('pointerdown', () => _bumpChatPriority(15000), { passive: true });
+    _messageInput.addEventListener(
+      'pointerdown',
+      () => _bumpChatPriority(15000),
+      { passive: true },
+    );
   }
 
   function handleSubmit(e) {
@@ -3896,7 +4819,9 @@ function startOdysseusApp() {
     if (_submitting) return;
     _submitting = true;
     // Release after a short delay (stream start sets its own isStreaming guard)
-    setTimeout(() => { _submitting = false; }, 300);
+    setTimeout(() => {
+      _submitting = false;
+    }, 300);
 
     // Compare mode: route submit to compare handler (same message to all panes)
     if (compareModule && compareModule.isActive()) {
@@ -3908,7 +4833,10 @@ function startOdysseusApp() {
       console.log('[group] Submit intercepted');
       const msgInput = document.getElementById('message');
       const msg = msgInput ? msgInput.value.trim() : '';
-      if (!msg) { console.log('[group] Empty message, skipping'); return; }
+      if (!msg) {
+        console.log('[group] Empty message, skipping');
+        return;
+      }
       console.log('[group] Sending:', msg);
       chatRenderer.hideWelcomeScreen();
       chatRenderer.addMessage('user', msg);
@@ -3921,7 +4849,7 @@ function startOdysseusApp() {
     return originalSubmit.call(chatModule, e);
   }
 
-  chatForm.onsubmit = handleSubmit;
+  // chatForm.onsubmit = handleSubmit;
 
   // ── Dual-purpose send/mic button ──
   const sendBtn = document.querySelector('.send-btn');
@@ -4014,14 +4942,25 @@ function startOdysseusApp() {
   const _newChatIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
   // Expose icons globally so chat.js updateSubmitButton can use them
-  window._odysseusBtnIcons = { send: _sendIcon, mic: _micIcon, stop: _stopIcon, newChat: _newChatIcon };
+  window._odysseusBtnIcons = {
+    send: _sendIcon,
+    mic: _micIcon,
+    stop: _stopIcon,
+    newChat: _newChatIcon,
+  };
 
   function _isSttEnabled() {
-    return voiceRecorderModule._sttProvider && voiceRecorderModule._sttProvider !== 'disabled';
+    return (
+      voiceRecorderModule._sttProvider &&
+      voiceRecorderModule._sttProvider !== 'disabled'
+    );
   }
 
   function _hasAttachments() {
-    return fileHandlerModule.getPendingCount && fileHandlerModule.getPendingCount() > 0;
+    return (
+      fileHandlerModule.getPendingCount &&
+      fileHandlerModule.getPendingCount() > 0
+    );
   }
 
   function _updateStreamingSubmitButton() {
@@ -4030,7 +4969,14 @@ function startOdysseusApp() {
     const nextPhase = hasText ? 'queue' : 'processing';
     if (sendBtn.dataset.phase === nextPhase) return true;
     sendBtn.dataset.phase = nextPhase;
-    sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded', 'anim-spin', 'anim-launch', 'anim-land');
+    sendBtn.classList.remove(
+      'mic-mode',
+      'newchat-mode',
+      'newchat-expanded',
+      'anim-spin',
+      'anim-launch',
+      'anim-land',
+    );
     if (hasText) {
       sendBtn.innerHTML = _sendIcon;
       sendBtn.title = 'Queue message';
@@ -4067,30 +5013,37 @@ function startOdysseusApp() {
         sendBtn.innerHTML = _sendIcon;
         sendBtn.title = 'Send to group';
         newMode = 'idle';
-        sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded');
+        sendBtn.classList.remove(
+          'mic-mode',
+          'newchat-mode',
+          'newchat-expanded',
+        );
       } else {
-      // Check if we're already on a fresh empty session (welcome screen visible)
-      const isEmptySession = document.getElementById('chat-container')?.classList.contains('welcome-active');
-      if (isEmptySession) {
-        // Already on new chat — show arrow in muted style (ready to type)
-        sendBtn.innerHTML = _sendIcon;
-        sendBtn.title = 'Send message';
-        newMode = 'idle';
-        sendBtn.classList.add('newchat-mode'); // muted gray style
-        sendBtn.classList.remove('mic-mode', 'newchat-expanded');
-        clearTimeout(sendBtn._expandTimer);
-      } else {
-        sendBtn.innerHTML = _newChatIcon + '<span class="send-btn-label">+ New</span>';
-        sendBtn.title = 'New chat';
-        newMode = 'newchat';
-        sendBtn.classList.add('newchat-mode');
-        sendBtn.classList.remove('mic-mode');
-        // The button stays a 32px compact icon (no auto-expand to label —
-        // the "+ New" label inside is for screen readers only; sighted users
-        // see the spinning + on hover + the title tooltip).
-        clearTimeout(sendBtn._expandTimer);
-        sendBtn.classList.remove('newchat-expanded');
-      }
+        // Check if we're already on a fresh empty session (welcome screen visible)
+        const isEmptySession = document
+          .getElementById('chat-container')
+          ?.classList.contains('welcome-active');
+        if (isEmptySession) {
+          // Already on new chat — show arrow in muted style (ready to type)
+          sendBtn.innerHTML = _sendIcon;
+          sendBtn.title = 'Send message';
+          newMode = 'idle';
+          sendBtn.classList.add('newchat-mode'); // muted gray style
+          sendBtn.classList.remove('mic-mode', 'newchat-expanded');
+          clearTimeout(sendBtn._expandTimer);
+        } else {
+          sendBtn.innerHTML =
+            _newChatIcon + '<span class="send-btn-label">+ New</span>';
+          sendBtn.title = 'New chat';
+          newMode = 'newchat';
+          sendBtn.classList.add('newchat-mode');
+          sendBtn.classList.remove('mic-mode');
+          // The button stays a 32px compact icon (no auto-expand to label —
+          // the "+ New" label inside is for screen readers only; sighted users
+          // see the spinning + on hover + the title tooltip).
+          clearTimeout(sendBtn._expandTimer);
+          sendBtn.classList.remove('newchat-expanded');
+        }
       } // close group-else
     } else {
       newMode = 'send';
@@ -4105,14 +5058,29 @@ function startOdysseusApp() {
           if (sendBtn.dataset.mode !== 'send') return;
           sendBtn.innerHTML = _sendIcon;
           sendBtn.title = 'Send message';
-          sendBtn.classList.remove('mic-mode', 'newchat-mode', 'anim-spin-swap');
+          sendBtn.classList.remove(
+            'mic-mode',
+            'newchat-mode',
+            'anim-spin-swap',
+          );
           sendBtn.classList.add('anim-spin');
-          sendBtn.addEventListener('animationend', () => sendBtn.classList.remove('anim-spin'), { once: true });
+          sendBtn.addEventListener(
+            'animationend',
+            () => sendBtn.classList.remove('anim-spin'),
+            { once: true },
+          );
         }, delay);
       } else {
         sendBtn.innerHTML = _sendIcon;
         sendBtn.title = 'Send message';
-        sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded', 'anim-spin', 'anim-launch', 'anim-land');
+        sendBtn.classList.remove(
+          'mic-mode',
+          'newchat-mode',
+          'newchat-expanded',
+          'anim-spin',
+          'anim-launch',
+          'anim-land',
+        );
       }
     }
     // Animate icon spin — when switching TO newchat or mic (the + or mic
@@ -4125,7 +5093,11 @@ function startOdysseusApp() {
       if (!sendBtn.classList.contains('anim-spin')) {
         sendBtn.classList.remove('anim-launch', 'anim-land');
         sendBtn.classList.add('anim-spin');
-        sendBtn.addEventListener('animationend', () => sendBtn.classList.remove('anim-spin'), { once: true });
+        sendBtn.addEventListener(
+          'animationend',
+          () => sendBtn.classList.remove('anim-spin'),
+          { once: true },
+        );
       }
     }
     sendBtn.dataset.mode = newMode;
@@ -4134,30 +5106,33 @@ function startOdysseusApp() {
   if (sendBtn) {
     sendBtn.addEventListener('click', (e) => {
       e.preventDefault();
-
       // If recording, stop recording
-      if (sendBtn.dataset.mode === 'recording' || voiceRecorderModule.getIsRecording()) {
+      if (
+        sendBtn.dataset.mode === 'recording' ||
+        voiceRecorderModule.getIsRecording()
+      ) {
         voiceRecorderModule.stopRecording();
         return;
       }
-
       const hasText = messageInput && messageInput.value.trim().length > 0;
       const hasFiles = _hasAttachments();
-
       if (sendBtn.dataset.mode === 'streaming') {
         if (hasText) window.__odysseusQueueStreamingSubmit = Date.now();
         handleSubmit(e);
         return;
       }
-
       // New chat mode — empty input, no attachments, no STT
       if (!hasText && !hasFiles && sendBtn.dataset.mode === 'newchat') {
         if (sessionModule) {
           const sessions = sessionModule.getSessions();
           const currentId = sessionModule.getCurrentSessionId();
-          const current = sessions.find(s => s.id === currentId);
+          const current = sessions.find((s) => s.id === currentId);
           if (current && current.endpoint_url && current.model) {
-            sessionModule.createDirectChat(current.endpoint_url, current.model, current.endpoint_id);
+            sessionModule.createDirectChat(
+              current.endpoint_url,
+              current.model,
+              current.endpoint_id,
+            );
           } else {
             // Fallback to rail button
             const railNew = el('rail-new-session');
@@ -4166,7 +5141,6 @@ function startOdysseusApp() {
         }
         return;
       }
-
       // If input is empty and STT is enabled, start recording
       if (!hasText && !hasFiles && _isSttEnabled()) {
         sendBtn.innerHTML = _stopIcon;
@@ -4176,11 +5150,10 @@ function startOdysseusApp() {
         voiceRecorderModule.startRecording(
           (audioFile) => fileHandlerModule.addFiles([audioFile]),
           uiModule.showToast,
-          uiModule.showError
+          uiModule.showError,
         );
         return;
       }
-
       // Otherwise, send message
       handleSubmit(e);
     });
@@ -4192,19 +5165,32 @@ function startOdysseusApp() {
       if (e.defaultPrevented) return;
       const isMobile = _isMobileChatInput();
 
-      if (_shouldQueueFromMobileEnter(e, messageInput) || (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !isMobile)) {
+      if (
+        _shouldQueueFromMobileEnter(e, messageInput) ||
+        (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !isMobile)
+      ) {
         e.preventDefault();
         // Flush the debounced icon update so dataset.mode reflects the current
         // text state. Without this, a fast type-and-Enter would still see the
         // stale 'newchat' mode and open a new chat instead of sending.
-        try { _updateSendBtnIcon(); } catch {}
+        try {
+          _updateSendBtnIcon();
+        } catch {}
         if (sendBtn && sendBtn.dataset.mode === 'newchat') {
           const railNew = el('rail-new-session');
           if (railNew) railNew.click();
           return;
         }
-        if (_isForegroundChatBusy() && messageInput.value && messageInput.value.trim()) {
-          if (chatModule && chatModule.queueStreamingComposerRequest && chatModule.queueStreamingComposerRequest()) {
+        if (
+          _isForegroundChatBusy() &&
+          messageInput.value &&
+          messageInput.value.trim()
+        ) {
+          if (
+            chatModule &&
+            chatModule.queueStreamingComposerRequest &&
+            chatModule.queueStreamingComposerRequest()
+          ) {
             return;
           }
           window.__odysseusQueueStreamingSubmit = Date.now();
@@ -4231,24 +5217,32 @@ function startOdysseusApp() {
 	    };
     window._syncModelPickerAutohide = _syncModelPickerAutohide;
     _syncModelPickerAutohide();
-    messageInput.addEventListener('input', () => {
-      _syncModelPickerAutohide();
-      if (sendBtn && sendBtn.dataset.mode === 'streaming') {
-        _updateSendBtnIcon();
-      } else {
-        _debouncedUpdateIcon();
-      }
-    }, { passive: true });
+    messageInput.addEventListener(
+      'input',
+      () => {
+        _syncModelPickerAutohide();
+        if (sendBtn && sendBtn.dataset.mode === 'streaming') {
+          _updateSendBtnIcon();
+        } else {
+          _debouncedUpdateIcon();
+        }
+      },
+      { passive: true },
+    );
   }
 
   // Collapse "New Session" label on scroll
   const _chatScroll = document.getElementById('chat-container');
   if (_chatScroll && sendBtn) {
-    _chatScroll.addEventListener('scroll', () => {
-      if (sendBtn.classList.contains('newchat-expanded')) {
-        sendBtn.classList.remove('newchat-expanded');
-      }
-    }, { passive: true });
+    _chatScroll.addEventListener(
+      'scroll',
+      () => {
+        if (sendBtn.classList.contains('newchat-expanded')) {
+          sendBtn.classList.remove('newchat-expanded');
+        }
+      },
+      { passive: true },
+    );
   }
 
   // Expose globally so voiceRecorder can trigger update after async fetch
@@ -4271,9 +5265,11 @@ function startOdysseusApp() {
     chatContainer.style.backgroundColor = 'rgba(0, 170, 255, 0.1)';
     chatContainer.style.transition = 'background-color 0.2s ease';
     if (chatInputBar) {
-      chatInputBar.style.outline = '2px dashed color-mix(in srgb, var(--accent, #0af) 50%, transparent)';
+      chatInputBar.style.outline =
+        '2px dashed color-mix(in srgb, var(--accent, #0af) 50%, transparent)';
       chatInputBar.style.outlineOffset = '-2px';
-      chatInputBar.style.background = 'color-mix(in srgb, var(--accent, #0af) 8%, var(--bg))';
+      chatInputBar.style.background =
+        'color-mix(in srgb, var(--accent, #0af) 8%, var(--bg))';
       chatInputBar.style.transition = 'outline 0.2s ease, background 0.2s ease';
     }
   }
@@ -4299,7 +5295,9 @@ function startOdysseusApp() {
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
     await fileHandlerModule.addFiles(files);
-    uiModule.showToast(`Added ${files.length} file${files.length > 1 ? 's' : ''} to chat`);
+    uiModule.showToast(
+      `Added ${files.length} file${files.length > 1 ? 's' : ''} to chat`,
+    );
   });
 
   chatContainer.addEventListener('dragleave', (e) => {
@@ -4323,8 +5321,9 @@ function startOdysseusApp() {
     if (files.length === 0) return;
     await fileHandlerModule.addFiles(files);
 
-    uiModule.showToast(`Added ${files.length} file${files.length > 1 ? 's' : ''} to chat`);
-
+    uiModule.showToast(
+      `Added ${files.length} file${files.length > 1 ? 's' : ''} to chat`,
+    );
   });
 
   attachStrip.addEventListener('dragleave', (e) => {
@@ -4359,12 +5358,14 @@ function startOdysseusApp() {
       _cmpDropShield = document.createElement('div');
       _cmpDropShield.id = 'compare-drop-shield';
       _cmpDropShield.setAttribute('aria-hidden', 'true');
-      _cmpDropShield.style.cssText = 'position:fixed;inset:0;z-index:2147483646;' +
+      _cmpDropShield.style.cssText =
+        'position:fixed;inset:0;z-index:2147483646;' +
         'display:none;align-items:center;justify-content:center;' +
         'background:color-mix(in srgb, var(--accent, #0af) 16%, rgba(0,0,0,0.5));' +
         'backdrop-filter:blur(2px);';
       const _box = document.createElement('div');
-      _box.style.cssText = 'pointer-events:none;border:2px dashed rgba(255,255,255,0.9);' +
+      _box.style.cssText =
+        'pointer-events:none;border:2px dashed rgba(255,255,255,0.9);' +
         'border-radius:14px;padding:20px 28px;background:rgba(0,0,0,0.4);' +
         'font:600 16px/1.4 system-ui,sans-serif;color:#fff;';
       _box.textContent = 'Drop files to attach';
@@ -4373,31 +5374,51 @@ function startOdysseusApp() {
     }
     _cmpDropShield.style.display = 'flex';
   };
-  const _hideCmpShield = () => { if (_cmpDropShield) _cmpDropShield.style.display = 'none'; };
+  const _hideCmpShield = () => {
+    if (_cmpDropShield) _cmpDropShield.style.display = 'none';
+  };
   // Capture phase so we raise the shield before the pointer reaches an iframe.
-  window.addEventListener('dragenter', (e) => {
-    if (_isFileDrag(e) && _compareActive()) _showCmpShield();
-  }, true);
-  window.addEventListener('dragover', (e) => {
-    if (!_isFileDrag(e) || !_compareActive()) return;
-    e.preventDefault();                       // mark as a valid drop target
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-    _showCmpShield();
-  }, true);
-  window.addEventListener('dragleave', (e) => {
-    // Hide only when the drag actually leaves the window (no relatedTarget).
-    if (_compareActive() && !e.relatedTarget) _hideCmpShield();
-  }, true);
+  window.addEventListener(
+    'dragenter',
+    (e) => {
+      if (_isFileDrag(e) && _compareActive()) _showCmpShield();
+    },
+    true,
+  );
+  window.addEventListener(
+    'dragover',
+    (e) => {
+      if (!_isFileDrag(e) || !_compareActive()) return;
+      e.preventDefault(); // mark as a valid drop target
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      _showCmpShield();
+    },
+    true,
+  );
+  window.addEventListener(
+    'dragleave',
+    (e) => {
+      // Hide only when the drag actually leaves the window (no relatedTarget).
+      if (_compareActive() && !e.relatedTarget) _hideCmpShield();
+    },
+    true,
+  );
   window.addEventListener('dragend', _hideCmpShield, true);
-  window.addEventListener('drop', async (e) => {
-    if (!_isFileDrag(e) || !_compareActive()) return;
-    e.preventDefault();
-    _hideCmpShield();
-    const files = Array.from(e.dataTransfer.files || []);
-    if (!files.length) return;
-    await fileHandlerModule.addFiles(files);
-    uiModule.showToast(`Added ${files.length} file${files.length > 1 ? 's' : ''} to attach`);
-  }, true);
+  window.addEventListener(
+    'drop',
+    async (e) => {
+      if (!_isFileDrag(e) || !_compareActive()) return;
+      e.preventDefault();
+      _hideCmpShield();
+      const files = Array.from(e.dataTransfer.files || []);
+      if (!files.length) return;
+      await fileHandlerModule.addFiles(files);
+      uiModule.showToast(
+        `Added ${files.length} file${files.length > 1 ? 's' : ''} to attach`,
+      );
+    },
+    true,
+  );
 
   // Load initial data
   presetsModule.loadPresets(uiModule.showError);
@@ -4410,19 +5431,25 @@ function startOdysseusApp() {
       showError: uiModule.showError,
       addMessage: chatModule.addMessage,
       renderContent: markdownModule.renderContent,
-      scrollHistory: uiModule.scrollHistoryInstant
+      scrollHistory: uiModule.scrollHistoryInstant,
     });
 
     // Load sessions first (critical path) — remove loader when done
-    sessionModule.loadSessions()
-      .catch(e => console.warn('loadSessions error:', e))
+    sessionModule
+      .loadSessions()
+      .catch((e) => console.warn('loadSessions error:', e))
       .finally(() => {
         const loader = document.getElementById('app-loader');
-        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 300); }
+        if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => loader.remove(), 300);
+        }
         // Fire any URL route opener now that sessions + module wiring are
         // ready. Deferred from up top of init for exactly this reason.
         if (window._odysseusRouteOpener) {
-          try { window._odysseusRouteOpener(); } catch (_) {}
+          try {
+            window._odysseusRouteOpener();
+          } catch (_) {}
           window._odysseusRouteOpener = null;
         }
       });
@@ -4433,15 +5460,22 @@ function startOdysseusApp() {
   const runNonCriticalStartup = (fn, delay = 4000) => {
     let tries = 0;
     const run = () => {
-      const busy = !!window.__odysseusChatBusy
-        || Date.now() < (window.__odysseusChatBusyUntil || 0)
-        || !!document.querySelector('.send-btn[data-mode="streaming"], .send-btn.send-pending');
+      const busy =
+        !!window.__odysseusChatBusy ||
+        Date.now() < (window.__odysseusChatBusyUntil || 0) ||
+        !!document.querySelector(
+          '.send-btn[data-mode="streaming"], .send-btn.send-pending',
+        );
       if (busy && tries < 12) {
         tries += 1;
         setTimeout(run, 2500);
         return;
       }
-      try { fn(); } catch (e) { console.warn('non-critical startup task failed:', e); }
+      try {
+        fn();
+      } catch (e) {
+        console.warn('non-critical startup task failed:', e);
+      }
     };
     setTimeout(() => {
       if ('requestIdleCallback' in window) {
@@ -4464,8 +5498,8 @@ function startOdysseusApp() {
 	  runNonCriticalStartup(() => memoryModule.loadMemories(), 12000);
 
 	  // Ensure proper initial state
-	  voiceRecorderModule.init();
-	  if (censorModule) censorModule.init();
+	  voiceRecorderModule.initLegacy();
+	  if (censorModule) censorModule.initLegacy();
 
 	  // ── Mobile pull-to-refresh for the active chat ──
 	  (function initMobileChatPullRefresh() {
@@ -4571,32 +5605,42 @@ function startOdysseusApp() {
 
   // Initialize mouse-based drag for sidebar sections
   const sidebar = document.getElementById('sidebar');
-  const sidebarInner = sidebar ? sidebar.querySelector('.sidebar-inner') : sidebar;
+  const sidebarInner = sidebar
+    ? sidebar.querySelector('.sidebar-inner')
+    : sidebar;
 
   // ── Subtle elastic overscroll for sidebar ──
   if (sidebarInner) {
     const MAX_PULL = 8;
     let _overscroll = 0;
     let _resetTimer = null;
-    sidebarInner.addEventListener('wheel', (e) => {
-      const el = sidebarInner;
-      const atTop = el.scrollTop <= 0 && e.deltaY < 0;
-      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1 && e.deltaY > 0;
-      if (!atTop && !atBottom) { _overscroll = 0; return; }
-      // Accumulate overscroll with diminishing returns
-      _overscroll += Math.abs(e.deltaY) * 0.15;
-      const pull = Math.min(_overscroll, MAX_PULL);
-      const dir = atTop ? 1 : -1;
-      el.style.transition = 'none';
-      el.style.transform = `translateY(${dir * pull}px)`;
-      // Reset after scrolling stops
-      clearTimeout(_resetTimer);
-      _resetTimer = setTimeout(() => {
-        el.style.transition = 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
-        el.style.transform = '';
-        _overscroll = 0;
-      }, 120);
-    }, { passive: true });
+    sidebarInner.addEventListener(
+      'wheel',
+      (e) => {
+        const el = sidebarInner;
+        const atTop = el.scrollTop <= 0 && e.deltaY < 0;
+        const atBottom =
+          el.scrollTop + el.clientHeight >= el.scrollHeight - 1 && e.deltaY > 0;
+        if (!atTop && !atBottom) {
+          _overscroll = 0;
+          return;
+        }
+        // Accumulate overscroll with diminishing returns
+        _overscroll += Math.abs(e.deltaY) * 0.15;
+        const pull = Math.min(_overscroll, MAX_PULL);
+        const dir = atTop ? 1 : -1;
+        el.style.transition = 'none';
+        el.style.transform = `translateY(${dir * pull}px)`;
+        // Reset after scrolling stops
+        clearTimeout(_resetTimer);
+        _resetTimer = setTimeout(() => {
+          el.style.transition = 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
+          el.style.transform = '';
+          _overscroll = 0;
+        }, 120);
+      },
+      { passive: true },
+    );
   }
 
   // ── Global touch-scroll guard for sidebar ──
@@ -4605,32 +5649,45 @@ function startOdysseusApp() {
   if (sidebarInner && 'ontouchstart' in window) {
     let _sidebarTouchMoved = false;
     let _sidebarTouchStartY = 0;
-    sidebarInner.addEventListener('touchstart', (e) => {
-      _sidebarTouchMoved = false;
-      _sidebarTouchStartY = e.touches[0].clientY;
-    }, { passive: true });
-    sidebarInner.addEventListener('touchmove', (e) => {
-      // Only flag as scroll if finger moved more than 8px vertically
-      if (Math.abs(e.touches[0].clientY - _sidebarTouchStartY) > 8) {
-        _sidebarTouchMoved = true;
-      }
-    }, { passive: true });
-    sidebarInner.addEventListener('click', (e) => {
-      if (_sidebarTouchMoved) {
-        e.stopPropagation();
-        e.preventDefault();
+    sidebarInner.addEventListener(
+      'touchstart',
+      (e) => {
         _sidebarTouchMoved = false;
-      }
-    }, true); // capture phase — intercepts before any child handlers
+        _sidebarTouchStartY = e.touches[0].clientY;
+      },
+      { passive: true },
+    );
+    sidebarInner.addEventListener(
+      'touchmove',
+      (e) => {
+        // Only flag as scroll if finger moved more than 8px vertically
+        if (Math.abs(e.touches[0].clientY - _sidebarTouchStartY) > 8) {
+          _sidebarTouchMoved = true;
+        }
+      },
+      { passive: true },
+    );
+    sidebarInner.addEventListener(
+      'click',
+      (e) => {
+        if (_sidebarTouchMoved) {
+          e.stopPropagation();
+          e.preventDefault();
+          _sidebarTouchMoved = false;
+        }
+      },
+      true,
+    ); // capture phase — intercepts before any child handlers
   }
 
   // Section collapse/expand + drag reorder (extracted to js/section-management.js)
   initSectionCollapse(Storage);
   initSectionDrag(Storage, loadUIVis);
+  initSectionDrag(Storage, window.loadUIVis);
 
   // Handle drag over and out for individual sections
   const sections = document.querySelectorAll('.section[draggable="true"]');
-  sections.forEach(section => {
+  sections.forEach((section) => {
     section.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -4671,7 +5728,7 @@ function startOdysseusApp() {
       }
 
       // Append any remaining sections (in case new ones were added)
-      sections.forEach(section => {
+      sections.forEach((section) => {
         if (!order.includes(section.id)) {
           fragment.appendChild(section);
         }
@@ -4684,11 +5741,9 @@ function startOdysseusApp() {
     }
   }
 
-
-
   if (window.hljs) {
     console.log('Highlighting all code blocks on page load');
-    document.querySelectorAll('pre code:not(.hljs)').forEach(block => {
+    document.querySelectorAll('pre code:not(.hljs)').forEach((block) => {
       window.hljs.highlightElement(block);
     });
   }
