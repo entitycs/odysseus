@@ -12,16 +12,17 @@ import re
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
-_INDEX = (_REPO / "static" / "index.html").read_text(encoding="utf-8")
+_INDEX = (_REPO / "web" / "routes" / "+layout.svelte").read_text(encoding="utf-8")
+_CHATINDEX = (_REPO / "web" / "routes" / "chat" / "+page.svelte").read_text(encoding="utf-8")
 _UI = (_REPO / "web" / "lib" / "legacy" / "ui.js").read_text(encoding="utf-8")
 
 
 def test_static_modals_expose_dialog_role_and_name():
     # Each static tool window must announce itself as a named dialog. These are
     # dockable/tiling windows, so they are role="dialog" WITHOUT aria-modal.
-    for name in ("Brain", "Theme", "Prompt", "Rename session", "Cookbook", "Settings"):
+    for name in ("Brain", "Theme", "Rename session", "Cookbook", "Settings"):
         assert f'role="dialog" aria-label="{name}"' in _INDEX, f"missing dialog role/name for {name!r}"
-
+    assert 'role="dialog" aria-label="Prompt"' in _CHATINDEX, "missing dialog role/name for 'Prompt'"
 
 def test_no_modal_close_button_is_unlabeled():
     # Every .close-btn must carry an accessible name (text glyph alone reads as

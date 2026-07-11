@@ -22,6 +22,8 @@ let _taskFailurePending = false;
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+let API_BASE = '';
+
 export function init() {
   API_BASE = window.location.origin;
 
@@ -2951,3 +2953,4 @@ function stopNotificationPolling() {
 
 const tasksModule = { openTasks, closeTasks, isTasksOpen, startNotificationPolling, stopNotificationPolling };
 export default tasksModule;
+

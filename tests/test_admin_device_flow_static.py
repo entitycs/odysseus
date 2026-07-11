@@ -4,7 +4,8 @@ from pathlib import Path
 
 
 _REPO = Path(__file__).resolve().parent.parent
-_INDEX = (_REPO / "static" / "index.html").read_text(encoding="utf-8")
+# _INDEX = (_REPO / "static" / "index.html").read_text(encoding="utf-8")
+_INDEX = (_REPO / "web" / "routes" / "+layout.svelte").read_text(encoding="utf-8")
 _ADMIN = (_REPO / "web" / "lib" / "legacy" / "admin.js").read_text(encoding="utf-8")
 
 

@@ -31,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0t64 \
     libxcb1 \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # # Docker CLI (client only — daemon stays on the host via the
@@ -62,6 +63,11 @@ ARG INSTALL_OPTIONAL=false
 COPY requirements.txt requirements-optional.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
+
+# python-magic powers content-based MIME sniffing in src/upload_handler.py.
+# Image-only (not in requirements.txt) because it needs the libmagic1 system
+# lib installed above; see the apt note near the top of this stage.
+RUN pip install --no-cache-dir python-magic==0.4.27
 
 # Pre-install the patched basicsr/gfpgan/facexlib wheels built in the
 # realesrgan-wheels stage (--no-deps keeps the image lean — torch & friends are
@@ -98,6 +104,3 @@ EXPOSE 7000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]
-
-
-

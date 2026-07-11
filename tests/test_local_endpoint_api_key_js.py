@@ -20,7 +20,7 @@ import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
 _ADMIN_JS = _REPO / "web" / "lib" / "legacy" / "admin.js"
-_INDEX_HTML = _REPO / "static" / "index.html"
+_INDEX_HTML = _REPO / "web" / "routes" / "+layout.svelte"
 _HAS_NODE = shutil.which("node") is not None
 
 
