@@ -1,8 +1,8 @@
 // compare/models.js — model classification, fetching, display names, persistence
-import Storage from '../storage.js';
-import state from './state.js';
-import uiModule from '../ui.js';
-import { sortModelObjects } from '../modelSort.js';
+import Storage from '$lib/legacy/storage.js';
+import state from '$lib/legacy/compare/state.js';
+import uiModule from '$lib/legacy/ui.js';
+import { sortModelObjects } from '$lib/legacy/modelSort.js';
 
 var escapeHtml = uiModule.esc;
 

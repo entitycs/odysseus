@@ -18,7 +18,7 @@
  *   uiModule:         object,
  * }} deps
  */
-import { state } from './state.js';
+import { state } from '$lib/legacy/editor/state.js';
 
 export function mergeLayerDownAtIndex(idx) {
   if (idx < 1 || idx >= state.layers.length) return null;

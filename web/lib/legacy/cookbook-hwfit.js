@@ -31,11 +31,11 @@ import {
   // Import cookbook.js WITHOUT a ?v= query — the same plain specifier every other
   // importer uses. A query mismatch loads cookbook.js twice as two separate modules
   // (two _envState objects), which silently sent downloads to the wrong server.
-} from './cookbook.js';
-import uiModule from './ui.js';
-import spinnerModule from './spinner.js';
-import { _loadTasks, _tmuxGracefulKill, _nextAvailablePort, _taskPort } from './cookbookRunning.js';
-import { openCookbookDependencies } from './cookbook-diagnosis.js';
+} from '$lib/legacy/cookbook.js';
+import uiModule from '$lib/legacy/ui.js';
+import spinnerModule from '$lib/legacy/spinner.js';
+import { _loadTasks, _tmuxGracefulKill, _nextAvailablePort, _taskPort } from '$lib/legacy/cookbookRunning.js';
+import { openCookbookDependencies } from '$lib/legacy/cookbook-diagnosis.js';
 
 // Map a serve-backend code (vllm / sglang / llamacpp / mlx) → the package name
 // the Dependencies API reports. Used to look up "is this backend installed

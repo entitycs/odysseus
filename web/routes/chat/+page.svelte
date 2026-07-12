@@ -6,7 +6,7 @@ import { handleSubmit } from '$lib/chat/helpers';
 import QueuedMessageItem from '$lib/components/chat/QueuedMessageItem.svelte';
 import ScrollChatBottom from '$lib/components/chat/ScrollChatBottom.svelte';
 import { deEmojify } from '$lib/emoji';
-import chatModule from '$lib/legacy/chat.js';
+import chatModule from '$lib/legacy/chat';
 import fileHandlerModule from '$lib/legacy/fileHandler';
 import groupModule from '$lib/legacy/group';
 import sessionModule from '$lib/legacy/sessions';
@@ -38,6 +38,7 @@ function onQueueSendNow(id: string) {
       fileHandlerModule.renderAttachStrip();
     }
     if (chatModule && chatModule.handleChatSubmit) {
+      // TODO - this will cancel the current submission if called once
       chatModule.handleChatSubmit(new Event('submit'));
     }
   }
@@ -407,7 +408,7 @@ onMount(() => {
   });
   // Modify form submit to handle special modes
   const chatForm = document.getElementById('chat-form');
-  chatForm.onsubmit = handleChatSubmitWithQueue;
+  chatForm.onsubmit = handleSubmit;
 });
 </script>
 
@@ -481,7 +482,7 @@ onMount(() => {
       </div>
    </div>
 
-   <div id="chat-history" class="chat-history block" role="log" aria-live="polite"></div>
+   <div id="chat-history" class="chat-history block" role="log" aria-live="polite" ></div>
    <!-- Attachments strip -->
    <div id="attach-strip" class="attach-strip"></div>
    <!-- Hidden elements for form logic -->
@@ -506,29 +507,26 @@ onMount(() => {
          </div>
       {/if}
       <div class="chat-input-top">
-         <div id="message-ghost" class="ghost-text-overlay" aria-hidden="true"></div>
-         <textarea id="message" placeholder="Message Odysseus..." required autocomplete="off" aria-label="Message input" rows="1"></textarea>
-         <!-- Model picker (inside chatbox, top-right) -->
-         <div class="model-picker-wrap" id="model-picker-wrap">
-            <button type="button" class="model-picker-btn" id="model-picker-btn" title="Switch model">
-               <span id="model-picker-label">Select model</span>
-               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="6 15 12 9 18 15"/>
-               </svg>
-            </button>
-            <div class="model-picker-menu hidden" id="model-picker-menu">
-               <div class="model-picker-search-row">
-                  <input type="text" id="model-picker-search" placeholder="Search models..." autocomplete="off" aria-label="Search models">
-                  <button type="button" class="model-picker-action-btn primary" id="model-picker-add-models-btn" title="Add model endpoints" aria-label="Add model endpoints">
-                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                     </svg>
-                  </button>
-               </div>
-               <div class="model-picker-list" id="model-picker-list"></div>
+        <div id="message-ghost" class="ghost-text-overlay" aria-hidden="true"></div>
+        <textarea id="message" placeholder="Message Odysseus..." required autocomplete="off" aria-label="Message input" rows="1" autofocus></textarea>
+        <!-- Model picker (inside chatbox, top-right) -->
+        <div class="model-picker-wrap" id="model-picker-wrap">
+          <button type="button" class="model-picker-btn" id="model-picker-btn" title="Switch model"><span id="model-picker-label">Select model</span> <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg></button>
+          <div class="model-picker-menu hidden" id="model-picker-menu">
+            <div class="model-picker-search-row">
+              <div class="model-picker-search-wrap">
+                <input type="text" id="model-picker-search" placeholder="Search models..." autocomplete="off" aria-label="Search models">
+                <button type="button" class="model-picker-refresh-btn" id="model-picker-refresh-btn" title="Refresh model picker" aria-label="Refresh model picker">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                </button>
+              </div>
+              <button type="button" class="model-picker-action-btn primary" id="model-picker-add-models-btn" title="Add model endpoints" aria-label="Add model endpoints">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              </button>
             </div>
-         </div>
+            <div class="model-picker-list" id="model-picker-list"></div>
+          </div>
+        </div>
       </div>
       <div id="pinned-tools-bar"></div>
       <div class="chat-input-bottom" style="visibility:hidden">

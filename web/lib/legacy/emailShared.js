@@ -1,4 +1,9 @@
-const API_BASE = window.location.origin;
+let API_BASE = '';
+
+export function init(){
+  API_BASE = window.location.origin;
+}
+
 
 export function emailAccountQuery(prefix = '&') {
   const accountId = window.__odysseusActiveEmailAccount || '';

@@ -1,13 +1,13 @@
 // compare/selector.js — model selection modal
-import state from './state.js';
-import Storage from '../storage.js';
-import { fetchModels, _persistSelections, getExcludedModels } from './models.js';
-import { showScoreboard } from './scoreboard.js';
-import { EYE_OPEN, EYE_CLOSED, ICON_DICE, ICON_PARALLEL, ICON_SEQUENTIAL, SAVE_ICON, WAVE_FRAMES, CHAT_ICON } from './icons.js';
-import { _clearProbeWaves } from './probe.js';
-import uiModule from '../ui.js';
-import spinnerModule from '../spinner.js';
-import themeModule from '../theme.js';
+import state from '$lib/legacy/compare/state.js';
+import Storage from '$lib/legacy/storage.js';
+import { fetchModels, _persistSelections, getExcludedModels } from '$lib/legacy/compare/models.js';
+import { showScoreboard } from '$lib/legacy/compare/scoreboard.js';
+import { EYE_OPEN, EYE_CLOSED, ICON_DICE, ICON_PARALLEL, ICON_SEQUENTIAL, SAVE_ICON, WAVE_FRAMES, CHAT_ICON } from '$lib/legacy/compare/icons.js';
+import { _clearProbeWaves } from '$lib/legacy/compare/probe.js';
+import uiModule from '$lib/legacy/ui.js';
+import spinnerModule from '$lib/legacy/spinner.js';
+import themeModule from '$lib/legacy/theme.js';
 
 const escapeHtml = uiModule.esc;
 

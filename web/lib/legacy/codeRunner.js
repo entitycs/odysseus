@@ -1,6 +1,6 @@
 // static/js/codeRunner.js
 
-import * as uiModule from './ui.js';
+import * as uiModule from '$lib/legacy/ui.js';
 
 /**
  * In-browser code runner for Python (Pyodide), JavaScript, and HTML

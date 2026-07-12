@@ -6,7 +6,7 @@
 import adminModule from '$lib/legacy/admin.js';
 import calendarModule from '$lib/legacy/calendar.js';
 import censorModule from '$lib/legacy/censor.js';
-import chatModule from '$lib/legacy/chat.js';
+import * as chatModule from '$lib/legacy/chat.js';
 import chatRenderer from '$lib/legacy/chatRenderer.js';
 import compareModule from '$lib/legacy/compare/index.js';
 import documentModule from '$lib/legacy/document.js';
@@ -77,6 +77,7 @@ export function init() {
     _initialized = true;
   }
 
+  startOdysseusApp();
 }
 
 function _isMobileChatInput() {
@@ -146,6 +147,7 @@ function _submitMobileQueuedInput(input) {
     chatModule.queueStreamingComposerRequest &&
     chatModule.queueStreamingComposerRequest()
   ) {
+    console.log("made it");
     return true;
   }
   window.__odysseusQueueStreamingSubmit = now;
@@ -4276,6 +4278,7 @@ function initializeEventListeners() {
               chatModule.queueStreamingComposerRequest &&
               chatModule.queueStreamingComposerRequest()
             ) {
+              console.log("made it");
               return;
             }
             window.__odysseusQueueStreamingSubmit = Date.now();
@@ -4941,59 +4944,59 @@ export function startOdysseusApp() {
   }
 
   if (sendBtn) {
-    // sendBtn.addEventListener('click', (e) => {
-    //   e.preventDefault();
-    //   // If recording, stop recording
-    //   if (
-    //     sendBtn.dataset.mode === 'recording' ||
-    //     voiceRecorderModule.getIsRecording()
-    //   ) {
-    //     voiceRecorderModule.stopRecording();
-    //     return;
-    //   }
-    //   const hasText = messageInput && messageInput.value.trim().length > 0;
-    //   const hasFiles = _hasAttachments();
-    //   if (sendBtn.dataset.mode === 'streaming') {
-    //     if (hasText) window.__odysseusQueueStreamingSubmit = Date.now();
-    //     handleSubmit(e);
-    //     return;
-    //   }
-    //   // New chat mode — empty input, no attachments, no STT
-    //   if (!hasText && !hasFiles && sendBtn.dataset.mode === 'newchat') {
-    //     if (sessionModule) {
-    //       const sessions = sessionModule.getSessions();
-    //       const currentId = sessionModule.getCurrentSessionId();
-    //       const current = sessions.find((s) => s.id === currentId);
-    //       if (current && current.endpoint_url && current.model) {
-    //         sessionModule.createDirectChat(
-    //           current.endpoint_url,
-    //           current.model,
-    //           current.endpoint_id,
-    //         );
-    //       } else {
-    //         // Fallback to rail button
-    //         const railNew = el('rail-new-session');
-    //         if (railNew) railNew.click();
-    //       }
-    //     }
-    //     return;
-    //   }
-    //   // If input is empty and STT is enabled, start recording
-    //   if (!hasText && !hasFiles && _isSttEnabled()) {
-    //     sendBtn.innerHTML = _stopIcon;
-    //     sendBtn.title = 'Stop recording';
-    //     sendBtn.dataset.mode = 'recording';
-    //     sendBtn.classList.add('recording');
-    //     voiceRecorderModule.startRecording(
-    //       (audioFile) => fileHandlerModule.addFiles([audioFile]),
-    //       uiModule.showToast,
-    //       uiModule.showError,
-    //     );
-    //     return;
-    //   }
-    //   // Otherwise, send message
-    //   handleSubmit(e);
-    // });
+    sendBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      // If recording, stop recording
+      if (
+        sendBtn.dataset.mode === 'recording' ||
+        voiceRecorderModule.getIsRecording()
+      ) {
+        voiceRecorderModule.stopRecording();
+        return;
+      }
+      const hasText = messageInput && messageInput.value.trim().length > 0;
+      const hasFiles = _hasAttachments();
+      if (sendBtn.dataset.mode === 'streaming') {
+        if (hasText) window.__odysseusQueueStreamingSubmit = Date.now();
+        handleSubmit(e);
+        return;
+      }
+      // New chat mode — empty input, no attachments, no STT
+      if (!hasText && !hasFiles && sendBtn.dataset.mode === 'newchat') {
+        if (sessionModule) {
+          const sessions = sessionModule.getSessions();
+          const currentId = sessionModule.getCurrentSessionId();
+          const current = sessions.find((s) => s.id === currentId);
+          if (current && current.endpoint_url && current.model) {
+            sessionModule.createDirectChat(
+              current.endpoint_url,
+              current.model,
+              current.endpoint_id,
+            );
+          } else {
+            // Fallback to rail button
+            const railNew = el('rail-new-session');
+            if (railNew) railNew.click();
+          }
+        }
+        return;
+      }
+      // If input is empty and STT is enabled, start recording
+      if (!hasText && !hasFiles && _isSttEnabled()) {
+        sendBtn.innerHTML = _stopIcon;
+        sendBtn.title = 'Stop recording';
+        sendBtn.dataset.mode = 'recording';
+        sendBtn.classList.add('recording');
+        voiceRecorderModule.startRecording(
+          (audioFile) => fileHandlerModule.addFiles([audioFile]),
+          uiModule.showToast,
+          uiModule.showError,
+        );
+        return;
+      }
+      // Otherwise, send message
+      handleSubmit(e);
+    });
   }
 
   // Enter to send (shift+enter for newline), or new chat when empty
@@ -5028,6 +5031,7 @@ export function startOdysseusApp() {
             chatModule.queueStreamingComposerRequest &&
             chatModule.queueStreamingComposerRequest()
           ) {
+            console.log("made it");
             return;
           }
           window.__odysseusQueueStreamingSubmit = Date.now();
@@ -5425,7 +5429,7 @@ export function startOdysseusApp() {
 
   // Section collapse/expand + drag reorder (extracted to js/section-management.js)
   initSectionCollapse(Storage);
-  initSectionDrag(Storage, loadUIVis);
+  initSectionDrag(Storage, window.loadUIVis);
 
   // Handle drag over and out for individual sections
   const sections = document.querySelectorAll('.section[draggable="true"]');
@@ -5494,4 +5498,3 @@ export function startOdysseusApp() {
     });
   }
 }
-

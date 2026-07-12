@@ -1,4 +1,4 @@
-import uiModule from '../ui.js';
+import uiModule from '$lib/legacy/ui.js';
 
 /** Sanitize a URL for use in href — only allow http(s) and protocol-relative. */
 export function safeHref(url) {
