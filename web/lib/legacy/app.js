@@ -50,7 +50,7 @@ import spinnerModule from '$lib/legacy/spinner.js';
 import themeModule from '$lib/legacy/theme.js';
 import ttsModule from '$lib/legacy/tts-ai.js';
 
-let API_BASE;
+let API_BASE = '';
 let _initialized = false;
 export function init() {
   API_BASE = window.location.origin;
@@ -65,19 +65,17 @@ export function init() {
   // synchronously; later reads should call _refreshDefaultChat() first.
   _refreshDefaultChat();
 
-  if (!_initialized){
-    _origFetch = window.fetch;
-    window.fetch = async function (...args) {
-      const res = await _origFetch.apply(this, args);
-      if (res.status === 401 && !String(args[0]).includes('/api/auth/')) {
-        window.location.href = '/login';
-      }
-      return res;
-    };
-    _initialized = true;
-  }
-
-  startOdysseusApp();
+  // if (!_initialized) {
+  //   _origFetch = window.fetch;
+  //   window.fetch = async function (...args) {
+  //     const res = await _origFetch.apply(this, args);
+  //     if (res.status === 401 && !String(args[0]).includes('/api/auth/')) {
+  //       window.location.href = '/login';
+  //     }
+  //     return res;
+  //   };
+  //   _initialized = true;
+  // }
 }
 
 function _isMobileChatInput() {
@@ -147,7 +145,6 @@ function _submitMobileQueuedInput(input) {
     chatModule.queueStreamingComposerRequest &&
     chatModule.queueStreamingComposerRequest()
   ) {
-    console.log("made it");
     return true;
   }
   window.__odysseusQueueStreamingSubmit = now;
@@ -4278,7 +4275,6 @@ function initializeEventListeners() {
               chatModule.queueStreamingComposerRequest &&
               chatModule.queueStreamingComposerRequest()
             ) {
-              console.log("made it");
               return;
             }
             window.__odysseusQueueStreamingSubmit = Date.now();
@@ -5031,7 +5027,6 @@ export function startOdysseusApp() {
             chatModule.queueStreamingComposerRequest &&
             chatModule.queueStreamingComposerRequest()
           ) {
-            console.log("made it");
             return;
           }
           window.__odysseusQueueStreamingSubmit = Date.now();

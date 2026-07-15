@@ -5455,3 +5455,4 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from '$lib/legac
   };
 
 export default chatModule;
+

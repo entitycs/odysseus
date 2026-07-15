@@ -5,7 +5,7 @@
 # docker/build-realesrgan-wheels.sh for the full rationale.
 FROM python:3.14-slim AS realesrgan-wheels
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+&& rm -rf /var/lib/apt/lists/*
 COPY docker/build-realesrgan-wheels.sh /usr/local/bin/build-realesrgan-wheels.sh
 RUN bash /usr/local/bin/build-realesrgan-wheels.sh /wheels
 
@@ -70,7 +70,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs
 
+    # Speed up pnpm by configuring cache + store
+RUN corepack enable
+ENV PNPM_HOME="/usr/local/share/pnpm"
+ENV PNPM_CACHE_DIR="/pnpm-store"
+ENV PNPM_SKIP_METADATA_CHECKS="1"
+
+RUN mkdir -p /pnpm-store
+
 WORKDIR /app
+
+# ---- Cache-friendly dependency layer ----
+COPY package.json pnpm-lock.yaml ./
+
+# Fetch dependencies into the store (super fast)
+RUN pnpm fetch
 
 # Install Python deps first (layer cache). Optional extras (PyMuPDF AGPL, etc.)
 # are opt-in so the default image stays MIT-core; see requirements-optional.txt.
@@ -96,14 +110,13 @@ RUN pip install --no-cache-dir --no-deps /tmp/odysseus-wheels/*.whl \
 # Copy app code
 COPY . .
 
-
 # Create data directory (mount a volume here for persistence)
 RUN mkdir -p data logs services/cache/search
 
 # Build SvelteKit (Track B)
-RUN corepack enable
 RUN pnpm install --frozen-lockfile
 # RUN pnpm build:widgets
+RUN rm -rf web-build
 RUN pnpm build:app
 
 # Entrypoint that drops to PUID/PGID (default 1000:1000) and repairs

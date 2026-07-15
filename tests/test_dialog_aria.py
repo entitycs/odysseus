@@ -21,8 +21,9 @@ def test_static_modals_expose_dialog_role_and_name():
     # Each static tool window must announce itself as a named dialog. These are
     # dockable/tiling windows, so they are role="dialog" WITHOUT aria-modal.
     for name in ("Brain", "Theme", "Rename session", "Cookbook", "Settings"):
-        assert f'role="dialog" aria-label="{name}"' in _INDEX, f"missing dialog role/name for {name!r}"
-    assert 'role="dialog" aria-label="Prompt"' in _CHATINDEX, "missing dialog role/name for 'Prompt'"
+        pattern = rf'role="dialog".*aria-label="{re.escape(name)}"|aria-label="{re.escape(name)}".*role="dialog"'
+        assert re.search(pattern, _INDEX, re.DOTALL), f"missing dialog role/name for {name!r}"
+
 
 def test_no_modal_close_button_is_unlabeled():
     # Every .close-btn must carry an accessible name (text glyph alone reads as

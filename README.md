@@ -108,6 +108,14 @@ pnpm dev
 
 If using **docker**, there's no need to run `docker compose up -d --build` to test every front-end change. Deploy it once, and use the same instructions above. Deploy again when done (to run the back-end tests that still touch the front-end).
 
+#### Testing
+
+A frontend test framework is now in place (vitest).
+
+These tests will be run as part of the usual tests (`python -m pytest`) under `test_frontend_vi_svelte.py`.
+
+To run them manually, use `pnpm unit`
+
 ---
 
 <p align="center">

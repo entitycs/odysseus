@@ -20,6 +20,8 @@ import * as cookbookRunning from '$lib/legacy/cookbookRunning';
 import * as cookbookSchedule from '$lib/legacy/cookbookSchedule.js';
 import * as documentModule from '$lib/legacy/document.js';
 import * as dragSort from '$lib/legacy/dragSort.js';
+import * as emailInbox from '$lib/legacy/emailInbox';
+import * as emailLibrary from '$lib/legacy/emailLibrary';
 import * as fileHandler from '$lib/legacy/fileHandler.js';
 import * as gallery from '$lib/legacy/gallery.js';
 import * as initModule from '$lib/legacy/init.js';
@@ -57,7 +59,7 @@ onMount(async () => {
   tourAutoPlay.init?.();
   tourHints.init?.();
   fileHandler.init?.();
-  voiceRecorder.initLegacy?.();
+  voiceRecorder.init?.();
   models.init?.();
   rag.init?.();
   presets.init?.();
@@ -66,6 +68,8 @@ onMount(async () => {
   ttsAi.init?.();
   documentModule.init?.();
   gallery.init?.();
+  emailInbox.init?.();
+  emailLibrary.init?.();
   await calendar.init?.();
   chatRenderer.init?.();
   codeRunner.init?.();

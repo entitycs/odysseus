@@ -3,7 +3,11 @@
  * Handles mobile keyboard behavior and line break queueing
  */
 
-import { isLineBreakInputEvent, countLineBreaks, isMobileChatInput } from './textareaUtils';
+import {
+  countLineBreaks,
+  isLineBreakInputEvent,
+  isMobileChatInput,
+} from './textareaUtils';
 
 /**
  * State for mobile line break queueing
@@ -32,18 +36,20 @@ export function shouldQueueFromMobileLineBreak(): boolean {
  */
 export function submitMobileQueuedInput(): void {
   if (!mobileQueue || !isQueueActive) return;
-  
+
   const ta = document.getElementById('message') as HTMLTextAreaElement;
   if (!ta) return;
-  
+
   ta.value = mobileQueue.prompt;
-  
+
   // Trigger form submission
   const form = document.getElementById('chat-form') as HTMLFormElement;
   if (form) {
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    form.dispatchEvent(
+      new Event('submit', { bubbles: true, cancelable: true }),
+    );
   }
-  
+
   mobileQueue = null;
   isQueueActive = false;
 }
@@ -51,32 +57,38 @@ export function submitMobileQueuedInput(): void {
 /**
  * Handle mobile line break in input
  */
-export function handleMobileLineBreak(e: InputEvent, previousValue: string): boolean {
+export function handleMobileLineBreak(
+  e: InputEvent,
+  previousValue: string,
+): boolean {
   if (!isMobileChatInput()) return false;
   if (!shouldQueueFromMobileLineBreak()) return false;
-  
-  const currentValue = e.target.value || '';
-  const insertedLineBreak = isLineBreakInputEvent(e) || 
+
+  const currentTarget = e.target as HTMLTextAreaElement;
+
+  const currentValue = currentTarget?.value || '';
+  const insertedLineBreak =
+    isLineBreakInputEvent(e) ||
     countLineBreaks(currentValue) > countLineBreaks(previousValue);
-  
+
   if (insertedLineBreak) {
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Get current files (if file handler is available)
     const files = window.fileHandlerModule?.getPendingRaw?.() || [];
-    
+
     // Get current prompt
     const prompt = currentValue.replace(/\n+$/g, '');
-    
+
     mobileQueue = { prompt, files };
     isQueueActive = true;
-    
+
     // Submit the queued input
     submitMobileQueuedInput();
     return true;
   }
-  
+
   return false;
 }
 
@@ -85,10 +97,10 @@ export function handleMobileLineBreak(e: InputEvent, previousValue: string): boo
  */
 export function shouldQueueFromMobileEnter(e: KeyboardEvent): boolean {
   if (!isMobileChatInput()) return false;
-  
+
   // Don't queue if already processing queue
   if (isQueueActive) return false;
-  
+
   // Allow Enter only on mobile (Shift+Enter or Cmd/Ctrl+Enter on desktop)
   return e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey;
 }
@@ -98,10 +110,13 @@ export function shouldQueueFromMobileEnter(e: KeyboardEvent): boolean {
  */
 export function syncMobileEnterKeyHint(textarea: HTMLTextAreaElement): void {
   const inputType = textarea.getAttribute('data-mobile-input-hint') || '';
-  textarea.setAttribute('aria-label', inputType === 'mobile' 
-    ? 'Message input (newline sends message)' 
-    : 'Message input');
-  
+  textarea.setAttribute(
+    'aria-label',
+    inputType === 'mobile'
+      ? 'Message input (newline sends message)'
+      : 'Message input',
+  );
+
   if (inputType === 'mobile') {
     // Mobile devices need this hint
     textarea.setAttribute('placeholder', 'Message Odysseus... (newline sends)');
@@ -136,11 +151,13 @@ export function handleGhostAutocomplete(e: KeyboardEvent): boolean {
 export function isForegroundChatBusy(): boolean {
   const chatForm = document.getElementById('chat-form');
   if (!chatForm) return false;
-  
+
   // Check for active stream indicators
-  const streamingIndicator = document.querySelector('.chat-streaming-indicator.active');
+  const streamingIndicator = document.querySelector(
+    '.chat-streaming-indicator.active',
+  );
   const hasActiveStream = streamingIndicator !== null;
-  
+
   return hasActiveStream;
 }
 
