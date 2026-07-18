@@ -4,14 +4,14 @@
 // command building, preset slots, launch logic
 // ============================================
 
-import uiModule from './ui.js';
-import spinnerModule from './spinner.js';
-import { providerLogo } from './providers.js';
-import { modelColor } from './chatRenderer.js';
-import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { openCookbookDependencies } from './cookbook-diagnosis.js';
 import { _hwfitCache } from './cookbook-hwfit.js';
+import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
+import { modelColor } from './model/models.js';
+import { providerLogo } from './providers.js';
+import spinnerModule from './spinner.js';
 import { topPortalZ } from './toolWindowZOrder.js';
+import uiModule from './ui.js';
 
 // Shared state/functions injected by init()
 let _envState;
@@ -702,6 +702,56 @@ function _estimateMlxContextFit(model, fields, modelCtxMax, modelWeightsGb = 0, 
   };
 }
 
+function _estimateMlxContextFit(model, fields, modelCtxMax, modelWeightsGb = 0, fitSystem = null) {
+  const sys = fitSystem || _hwfitCache?.system || {};
+  const modelMax = Math.max(1024, _modelContextMaxForServe(model, modelCtxMax));
+  const modelGb = _modelSizeGb(model, modelWeightsGb);
+  const availableRamGb = Number(sys.available_ram_gb) || 0;
+  const totalRamGb = Number(sys.total_ram_gb) || 0;
+  const unifiedPoolGb = Math.max(availableRamGb, totalRamGb > 0 ? totalRamGb * 0.75 : 0);
+  if (!unifiedPoolGb) {
+    return {
+      ctx: Math.min(modelMax, 32768),
+      needsHardwareScan: true,
+      reason: 'scan Apple memory first; using model limit fallback',
+    };
+  }
+  if (!modelGb) {
+    return {
+      ctx: Math.min(modelMax, 32768),
+      needsModelSize: true,
+      reason: 'model weight size unknown; using MLX fallback',
+    };
+  }
+
+  const usableGb = Math.max(1, unifiedPoolGb - Math.max(4.0, unifiedPoolGb * 0.10));
+  const freeForKv = usableGb - modelGb;
+  const name = `${model?.repo_id || ''} ${model?.name || ''} ${model?.quant || ''}`.toLowerCase();
+  const totalParams = _parseParamsB(name) || Math.max(1, modelGb / 0.58);
+  const activeMatch = name.match(/\ba(\d+(?:\.\d+)?)b\b/);
+  const activeParams = activeMatch ? parseFloat(activeMatch[1]) : (/moe|minimax|deepseek|mixtral|kimi-k2/.test(name) ? Math.min(totalParams, 32) : totalParams);
+  // MLX uses unified memory. This is intentionally conservative because the
+  // server exposes max generation tokens, not a hard prefill context length.
+  const kvGbPerToken = Math.max(0.00002, 0.0000065 * activeParams);
+  if (freeForKv <= 0) {
+    return {
+      ctx: Math.min(modelMax, 2048),
+      modelGb,
+      kvGbPerToken,
+      reason: `model ${modelGb.toFixed(1)}G exceeds usable unified memory ${usableGb.toFixed(1)}G before KV`,
+    };
+  }
+  const raw = Math.floor(freeForKv / kvGbPerToken);
+  const rounded = Math.max(1024, Math.floor(raw / 1024) * 1024);
+  const ctx = Math.min(modelMax, rounded);
+  return {
+    ctx,
+    modelGb,
+    kvGbPerToken,
+    reason: `MLX --max-tokens from unified memory (${freeForKv.toFixed(1)}G free)`,
+  };
+}
+
 function _selectedServeTarget(panel) {
   const select = panel?.querySelector?.('#hwfit-server-select')
     || document.getElementById('hwfit-server-select')
@@ -736,7 +786,7 @@ function _selectedServeTarget(panel) {
     env: server?.env || '',
     port: host ? (server?.port || _getPort(host) || '') : '',
     venv,
-    platform: host ? (server?.platform || '') : (_envState.hostPlatform || ''),
+    platform: server?.platform || _envState.platform || '',
     label,
   };
 }
@@ -896,10 +946,26 @@ function _isActivelyServing(repoId) {
   try {
     const tasks = JSON.parse(localStorage.getItem('cookbook-tasks')) || [];
     const short = (repoId || '').split('/').pop();
-    return tasks.some(t => t.type === 'serve' && t.status === 'running'
-      && (t.payload?.repo_id === repoId || t.name === repoId || t.name === short
-          || (t.payload?.repo_id || '').split('/').pop() === short));
-  } catch { return false; }
+        return tasks.some(
+      (t) =>
+        t.type === 'serve' &&
+        t.status === 'running' &&
+        (t.payload?.repo_id === repoId ||
+          t.name === repoId ||
+          t.name === short ||
+          (t.payload?.repo_id || '').split('/').pop() === short),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function _isIncompleteCachedModel(model) {
+  return !!model && (
+    model.status === 'stalled'
+    || model.has_incomplete
+    || (model.status === 'downloading' && !_isActivelyDownloading(model.repo_id))
+  );
 }
 
 function _isIncompleteCachedModel(model) {
@@ -935,12 +1001,6 @@ function _selectedGgufSizeGb(model, relPath) {
   const bytes = Number(file?.size_bytes || 0);
   if (!Number.isFinite(bytes) || bytes <= 0) return 0;
   return bytes / (1024 ** 3);
-}
-
-function _projectorGgufFiles(model) {
-  return _ggufFilesForModel(model)
-    .filter(f => (f.role || '') === 'projector' || /(^|\/)mmproj[^/]*\.gguf$/i.test(f.rel_path || f.name || ''))
-    .sort((a, b) => String(a.rel_path || a.name || '').localeCompare(String(b.rel_path || b.name || '')));
 }
 
 function _ggufFileLabel(file) {
@@ -1485,13 +1545,11 @@ function _rerenderCachedModels() {
       if (_replaceTaskId) {
         panelHtml += `<input type="hidden" class="hwfit-sf" data-field="_replaceTaskId" value="${esc(_replaceTaskId)}" />`;
       }
-      // Runtime-readiness note shares the top line with the preset controls
-      // so "vLLM ready on …" reads as panel status instead of a separate
-      // block pushing the form down. Hidden until the readiness probe returns.
-      panelHtml += `<div class="hwfit-serve-topline">`;
-      panelHtml += `<div class="hwfit-serve-runtime-note" style="display:none;font-size:11px;line-height:1.35;color:var(--fg-muted);margin:0;padding:6px 28px 6px 10px;border-radius:5px;background:color-mix(in srgb, var(--fg) 4%, transparent);border:1px solid color-mix(in srgb, var(--border) 60%, transparent);position:relative;"><span class="hwfit-serve-runtime-text"></span><button type="button" class="hwfit-serve-runtime-close" title="Dismiss" aria-label="Dismiss" style="position:absolute;top:-8px;right:5px;background:none;border:0;color:inherit;cursor:pointer;padding:2px 4px;line-height:1;font-size:13px;opacity:0.6;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
-      panelHtml += `<div class="hwfit-serve-preset-row">${_slotsHtml}</div>`;
-      panelHtml += `</div>`;
+      // Runtime-readiness note pinned at the top of the serve area so the
+      // user sees "vLLM ready on …" before scrolling into the configure
+      // form. Hidden until the readiness probe returns. The × button
+      // dismisses it for this panel only (re-shows on re-expand).
+      panelHtml += `<div class="hwfit-serve-runtime-note" style="display:none;font-size:11px;line-height:1.35;color:var(--fg-muted);margin:0 0 8px;padding:6px 28px 6px 10px;border-radius:5px;background:color-mix(in srgb, var(--fg) 4%, transparent);border:1px solid color-mix(in srgb, var(--border) 60%, transparent);position:relative;"><span class="hwfit-serve-runtime-text"></span><button type="button" class="hwfit-serve-runtime-close" title="Dismiss" aria-label="Dismiss" style="position:absolute;top:-8px;right:5px;background:none;border:0;color:inherit;cursor:pointer;padding:2px 4px;line-height:1;font-size:13px;opacity:0.6;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
       // Warn when serving a model whose download hasn't fully completed —
       // the user CAN still hit Launch (vLLM/llama-server will start, then
       // crash trying to read missing shards), but they should know.
@@ -1501,7 +1559,7 @@ function _rerenderCachedModels() {
           : `This model's download isn't complete yet (${esc(m.size || 'partial')}). The serve will start but is likely to crash on a missing shard. Wait for the download to finish, or relaunch after it's done.`;
         panelHtml += `<div class="hwfit-serve-warn" style="margin:0 0 8px;padding:6px 10px;border-radius:5px;font-size:11px;background:color-mix(in srgb, var(--color-warning, #f0ad4e) 14%, transparent);border:1px solid color-mix(in srgb, var(--color-warning, #f0ad4e) 40%, transparent);color:var(--color-warning, #f0ad4e);display:flex;gap:6px;align-items:flex-start;line-height:1.4;"><span aria-hidden="true">⚠</span><span>${_warnText}</span></div>`;
       }
-      panelHtml += `<div class="hwfit-serve-vision-warn" style="display:none;margin:0 0 8px;padding:6px 10px;border-radius:5px;font-size:11px;background:color-mix(in srgb, var(--color-warning, #f0ad4e) 14%, transparent);border:1px solid color-mix(in srgb, var(--color-warning, #f0ad4e) 40%, transparent);color:var(--color-warning, #f0ad4e);gap:6px;align-items:flex-start;line-height:1.4;"><span aria-hidden="true">⚠</span><span>Vision is enabled, but no mmproj GGUF projector was found in the cached model scan. Download an mmproj-*.gguf for this model, then refresh the cached model list before launching.</span></div>`;
+      panelHtml += `<div class="hwfit-serve-preset-row">${_slotsHtml}</div>`;
       // Row 1: Engine + Server + Env
       panelHtml += `<div class="hwfit-serve-row">`;
       const backendOpts = _backendChoices.map(([v,l]) => `<option value="${v}"${defaultBackend===v?' selected':''}>${l}</option>`).join('');
@@ -1535,9 +1593,9 @@ function _rerenderCachedModels() {
         const _savedUnified = !!sv('unified_mem', false);
         const _llamaModeRaw = sv('llama_mode', _llamaModeDefault);
         const _llamaMode = _savedUnified && _llamaModeRaw !== 'cpu' ? 'unified' : _llamaModeRaw;
-        panelHtml += `<label class="hwfit-backend-llamacpp">${_l('Inference','CPU = -ngl 0. GPU = -ngl 99. Unified = GPU offload plus GGML_CUDA_ENABLE_UNIFIED_MEMORY=1 for unified-memory CUDA systems.')}<div class="mode-toggle mode-toggle-three${_llamaMode === 'gpu' ? ' mode-mid' : (_llamaMode === 'unified' ? ' mode-third' : '')}" data-llama-mode-toggle style="display:flex;width:100%;height:32px;position:relative;top:2px;"><button type="button" class="mode-toggle-btn${_llamaMode === 'cpu' ? ' active' : ''}" data-llama-mode="cpu" aria-pressed="${_llamaMode === 'cpu'}" style="flex:1;"><span style="position:relative;top:-7px;">CPU</span></button><button type="button" class="mode-toggle-btn${_llamaMode === 'gpu' ? ' active' : ''}" data-llama-mode="gpu" aria-pressed="${_llamaMode === 'gpu'}" style="flex:1;"><span style="position:relative;top:-7px;">GPU</span></button><button type="button" class="mode-toggle-btn${_llamaMode === 'unified' ? ' active' : ''}" data-llama-mode="unified" aria-pressed="${_llamaMode === 'unified'}" style="flex:1;"><span style="position:relative;top:-7px;">Unified</span></button></div><input type="hidden" class="hwfit-sf" data-field="llama_mode" value="${esc(_llamaMode)}" /><input type="hidden" class="hwfit-sf" data-field="unified_mem" value="${_llamaMode === 'unified' ? '1' : ''}" /></label>`;
+        panelHtml += `<label class="hwfit-backend-llamacpp">${_l('Inference','CPU = -ngl 0. GPU = -ngl 99. Unified = GPU offload plus GGML_CUDA_ENABLE_UNIFIED_MEMORY=1 for unified-memory CUDA systems.')}<div class="mode-toggle mode-toggle-three${_llamaMode === 'gpu' ? ' mode-mid' : (_llamaMode === 'unified' ? ' mode-third' : '')}" data-llama-mode-toggle style="display:flex;width:100%;height:30px;position:relative;top:2px;"><button type="button" class="mode-toggle-btn${_llamaMode === 'cpu' ? ' active' : ''}" data-llama-mode="cpu" aria-pressed="${_llamaMode === 'cpu'}" style="flex:1;"><span style="position:relative;top:-7px;">CPU</span></button><button type="button" class="mode-toggle-btn${_llamaMode === 'gpu' ? ' active' : ''}" data-llama-mode="gpu" aria-pressed="${_llamaMode === 'gpu'}" style="flex:1;"><span style="position:relative;top:-7px;">GPU</span></button><button type="button" class="mode-toggle-btn${_llamaMode === 'unified' ? ' active' : ''}" data-llama-mode="unified" aria-pressed="${_llamaMode === 'unified'}" style="flex:1;"><span style="position:relative;top:-7px;">Unified</span></button></div><input type="hidden" class="hwfit-sf" data-field="llama_mode" value="${esc(_llamaMode)}" /><input type="hidden" class="hwfit-sf" data-field="unified_mem" value="${_llamaMode === 'unified' ? '1' : ''}" /></label>`;
       }
-      panelHtml += `<label>${_l('venv / conda','Path to a Python venv, or a Conda env name/path when the selected server uses Conda.')}<input type="text" class="hwfit-sf hwfit-sf-wide" data-field="venv" value="${esc(sv('venv', _es.envPath || _srvVenv || ''))}" placeholder="~/venv or conda-env" /></label>`;
+      panelHtml += `<label>${_l('venv','Path to Python venv or conda env activate script')}<input type="text" class="hwfit-sf hwfit-sf-wide" data-field="venv" value="${esc(sv('venv', _es.envPath || _srvVenv || ''))}" placeholder="~/venv" /></label>`;
       const defaultPort = defaultBackend === 'ollama' ? '11434' : _nextAvailablePort();
       panelHtml += `<label>${_l('Port','HTTP port for the API server')}<input type="text" class="hwfit-sf" data-field="port" value="${esc(sv('port', defaultPort))}" /></label>`;
       const _activeGpus = (defaultGpus || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -1631,16 +1689,17 @@ function _rerenderCachedModels() {
           ['', 'None'],
           ['minimax_m3_cuda', 'CUDA native sampler'],
         ].map(([v, label]) => `<option value="${v}"${_envPresetVal === v ? ' selected' : ''}>${label}</option>`).join('');
-        panelHtml += `<label class="hwfit-backend-vllm" style="grid-column:1 / 2;">${_l('Env Preset','Adds known-good environment variables without typing them. CUDA native sampler adds VLLM_TARGET_DEVICE=cuda and disables FlashInfer sampler JIT; useful when system nvcc cannot compile the sampler for the GPU architecture.')}<select class="hwfit-sf" data-field="vllm_env_preset" style="height:32px;width:122px;">${_envPresetOpts}</select></label>`;
+        panelHtml += `<label class="hwfit-backend-vllm" style="grid-column:1 / 2;">${_l('Env Preset','Adds known-good environment variables without typing them. CUDA native sampler adds VLLM_TARGET_DEVICE=cuda and disables FlashInfer sampler JIT; useful when system nvcc cannot compile the sampler for the GPU architecture.')}<select class="hwfit-sf" data-field="vllm_env_preset" style="height:32px;">${_envPresetOpts}</select></label>`;
       }
       // Free-text env-vars field. Anything pasted here is prepended to the
       // launch command verbatim. Use for CUDACXX, PATH overrides, NCCL_*
       // tuning, or any other KEY=VALUE pair that doesn't have a dedicated
       // field. After the venv activate runs, $VIRTUAL_ENV / $PATH / etc. are
       // already exported so they expand correctly here.
-      // CSS places this beside vLLM's Env Preset, but lets it span the full
-      // row for SGLang where that preset field is hidden.
-      panelHtml += `<label class="hwfit-backend-vllm hwfit-backend-sglang hwfit-extra-env-label">${_l('Env','Extra KEY=VALUE env-var pairs prepended to the launch (space-separated). The Env Preset above covers the usual MiniMax M3 values; use this for additional overrides.')}<input type="text" class="hwfit-sf" data-field="extra_env" value="${esc(svm('extra_env', sv('extra_env','')))}" placeholder="NCCL_P2P_DISABLE=1" style="width:100%;" /></label>`;
+      // grid-column: 1 / -1 makes Env span every column of the Advanced
+      // row's CSS grid (the old flex:1 1 100% did nothing in a grid
+      // container — left an empty trailing column gap on wide modals).
+      panelHtml += `<label class="hwfit-backend-vllm hwfit-backend-sglang" style="grid-column:2 / -1;">${_l('Env','Extra KEY=VALUE env-var pairs prepended to the launch (space-separated). The Env Preset above covers the usual MiniMax M3 values; use this for additional overrides.')}<input type="text" class="hwfit-sf" data-field="extra_env" value="${esc(svm('extra_env', sv('extra_env','')))}" placeholder="NCCL_P2P_DISABLE=1" style="width:100%;" /></label>`;
       panelHtml += `</div>`;
       // Row 2b: Diffusers settings
       const diffDefaultNegative = 'low quality, blurry, out of focus, deformed, distorted, disfigured, unfinished, smudged, watermark, artifacts';
@@ -1729,21 +1788,21 @@ function _rerenderCachedModels() {
       const llamaSplitModeOpts = ['', 'layer', 'tensor', 'row', 'none'].map(d => `<option value="${d}"${sv('llama_split_mode','')===d?' selected':''}>${d||'default'}</option>`).join('');
 
       // Group 1 — GPU placement (GPU-only, hides in CPU mode)
-      panelHtml += `<div class="hwfit-serve-row hwfit-backend-llamacpp cookbook-llama-gpu-only hwfit-llama-placement-row">`;
+      panelHtml += `<div class="hwfit-serve-row hwfit-backend-llamacpp cookbook-llama-gpu-only">`;
       panelHtml += `<label>${_l('Split Mode','llama.cpp GPU placement. layer = default; tensor splits weights and KV across GPUs.')}<select class="hwfit-sf" data-field="llama_split_mode">${llamaSplitModeOpts}</select></label>`;
       panelHtml += `<label>${_l('Tensor Split','GPU proportions, e.g. 50,50 across two GPUs. Blank = auto.')}<input type="text" class="hwfit-sf" data-field="llama_tensor_split" value="${esc(sv('llama_tensor_split', ''))}" placeholder="auto" /></label>`;
       panelHtml += `<label>${_l('Main GPU','--main-gpu index inside the visible GPU set. Useful for split mode none/row.')}<input type="text" class="hwfit-sf" data-field="llama_main_gpu" value="${esc(sv('llama_main_gpu', ''))}" placeholder="auto" /></label>`;
       panelHtml += `</div>`;
 
       // Group 2 — Memory tuning (KV cache + MoE-on-CPU + Fit policy)
-      panelHtml += `<div class="hwfit-serve-row hwfit-backend-llamacpp hwfit-llama-memory-row">`;
+      panelHtml += `<div class="hwfit-serve-row hwfit-backend-llamacpp">`;
       panelHtml += `<label>${_l('KV Cache','cache-type-k/v: quantize the KV cache. q4_0 = smallest (more context), q8_0 = long-context, f16 = full.')}<select class="hwfit-sf" data-field="cache_type">${_kvOpts}</select></label>`;
       panelHtml += `<label class="cookbook-llama-gpu-only">${_l('CPU MoE','n-cpu-moe: number of MoE expert layers to run on CPU when the model is bigger than VRAM. 0 = all on GPU.')}<input type="text" class="hwfit-sf" data-field="n_cpu_moe" value="${esc(sv('n_cpu_moe',''))}" placeholder="0" /></label>`;
       panelHtml += `<label>${_l('Fit','llama.cpp --fit. Leave default unless you need explicit off/on behavior for a preset.')}<select class="hwfit-sf" data-field="llama_fit">${llamaFitOpts}</select></label>`;
       panelHtml += `</div>`;
 
       // Group 3 — Request batching (Batch / UBatch / Parallel)
-      panelHtml += `<div class="hwfit-serve-row hwfit-backend-llamacpp hwfit-llama-batch-row">`;
+      panelHtml += `<div class="hwfit-serve-row hwfit-backend-llamacpp">`;
       panelHtml += `<label>${_l('Batch','llama.cpp prompt batch size. Blank = default.')}<input type="text" class="hwfit-sf" data-field="llama_batch_size" value="${esc(sv('llama_batch_size', ''))}" placeholder="2048" /></label>`;
       panelHtml += `<label>${_l('UBatch','llama.cpp physical micro-batch size. Blank = default.')}<input type="text" class="hwfit-sf" data-field="llama_ubatch_size" value="${esc(sv('llama_ubatch_size', ''))}" placeholder="512" /></label>`;
       panelHtml += `<label>${_l('Parallel','llama.cpp parallel slots. Blank = default; 1 matches single-lane presets.')}<input type="text" class="hwfit-sf" data-field="llama_parallel" value="${esc(sv('llama_parallel', ''))}" placeholder="1" /></label>`;
@@ -1756,7 +1815,7 @@ function _rerenderCachedModels() {
       // Live VRAM / RAM-spillover monitor for the serve target's GPU. Polls
       // /api/cookbook/gpus while the panel is open so you can SEE whether the
       // config fits VRAM (fast) or spills to system RAM (slow). Populated after mount.
-      panelHtml += `<div class="hwfit-serve-row hwfit-backend-llamacpp hwfit-vram-monitor hwfit-llama-monitor-row" style="align-items:center;gap:8px;font-size:11px;">`;
+      panelHtml += `<div class="hwfit-serve-row hwfit-backend-llamacpp hwfit-vram-monitor" style="align-items:center;gap:8px;font-size:11px;">`;
       panelHtml += `<span style="opacity:0.7;">GPU memory:</span>`;
       panelHtml += `<span class="hwfit-vram-readout" style="opacity:0.5;">checking…</span>`;
       panelHtml += `</div>`;
@@ -1765,13 +1824,13 @@ function _rerenderCachedModels() {
       // automatically in CPU mode. Order: perf-critical → safety → I/O →
       // niche. MTP Spec sits last because it owns its own numstep widget
       // and is the widest item.
-      panelHtml += `<div class="hwfit-serve-checks hwfit-backend-llamacpp hwfit-llama-checks-row">`;
+      panelHtml += `<div class="hwfit-serve-checks hwfit-backend-llamacpp">`;
       panelHtml += `<label class="hwfit-sf-cb cookbook-llama-gpu-only"><input type="checkbox" class="hwfit-sf" data-field="flash_attn"${sv('flash_attn',false)?' checked':''} /> Flash Attn${_h('--flash-attn on: faster attention + needed for quantized KV cache. Auto by default.')}</label>`;
       panelHtml += `<label class="hwfit-sf-cb cookbook-llama-gpu-only"><input type="checkbox" class="hwfit-sf" data-field="llama_cpu_overflow"${sv('llama_cpu_overflow',false)?' checked':''} /> Allow CPU overflow${_h('OFF (default): cookbook blocks launches that would overflow GPU VRAM. ON: layers/KV cache that do not fit get pushed to CPU (slow).')}</label>`;
       panelHtml += `<label class="hwfit-sf-cb cookbook-llama-gpu-only"><input type="checkbox" class="hwfit-sf" data-field="vision"${sv('vision',false)?' checked':''} /> Vision${_h('Serve with the vision encoder so the model can read images. Auto-finds an mmproj-*.gguf next to the model. Adds ~1 GB VRAM.')}</label>`;
       panelHtml += `<label class="hwfit-sf-cb"><input type="checkbox" class="hwfit-sf" data-field="llama_no_mmap"${sv('llama_no_mmap',false)?' checked':''} /> No mmap${_h('Adds --no-mmap. Useful for some high-context/local-storage setups.')}</label>`;
       panelHtml += `<label class="hwfit-sf-cb"><input type="checkbox" class="hwfit-sf" data-field="llama_no_warmup"${sv('llama_no_warmup',false)?' checked':''} /> Skip warmup${_h('Adds --no-warmup. Reduces startup memory spikes; llama.cpp defaults to warming up.')}</label>`;
-      panelHtml += `<label class="hwfit-sf-cb hwfit-spec-group"><input type="checkbox" class="hwfit-sf" data-field="llama_speculative_mtp"${sv('llama_speculative_mtp',false)?' checked':''} /> MTP Spec${_h('llama.cpp native MTP speculative decoding: --spec-type draft-mtp. Requires a GGUF with MTP heads.')} <input type="number" class="hwfit-sf hwfit-spec-tokens hwfit-spec-tokens-bare" data-field="llama_spec_tokens" value="${esc(sv('llama_spec_tokens', '3'))}" min="1" max="10" title="--spec-draft-n-max" /></label>`;
+      panelHtml += `<label class="hwfit-sf-cb hwfit-spec-group"><input type="checkbox" class="hwfit-sf" data-field="llama_speculative_mtp"${sv('llama_speculative_mtp',false)?' checked':''} /> MTP Spec${_h('llama.cpp native MTP speculative decoding: --spec-type draft-mtp. Requires a GGUF with MTP heads.')} <span class="hwfit-numstep"><button type="button" class="hwfit-numstep-btn" data-step="-1" tabindex="-1" aria-label="Decrease">‹</button><input type="number" class="hwfit-sf hwfit-spec-tokens" data-field="llama_spec_tokens" value="${esc(sv('llama_spec_tokens', '3'))}" min="1" max="10" title="--spec-draft-n-max" /><button type="button" class="hwfit-numstep-btn" data-step="1" tabindex="-1" aria-label="Increase">›</button></span></label>`;
       panelHtml += `</div>`;
       // Row 3b: Checkboxes (diffusers)
       panelHtml += `<div class="hwfit-serve-checks hwfit-backend-diffusers hwfit-backend-mlx_image hwfit-diff-checks-row">`;
@@ -1878,11 +1937,11 @@ function _rerenderCachedModels() {
             : m.is_local_dir && m.path
             ? `$({ find ${_ldir} -name '*-00001-of-*.gguf' 2>/dev/null | sort; find ${_ldir} -name '*.gguf' 2>/dev/null | sort; } | head -1)`
             : `$({ find ${dir} -name '*-00001-of-*.gguf' 2>/dev/null | sort; find ${dir} -name '*.gguf' 2>/dev/null | sort; } | head -1)`;
-          // Vision: use the scanned projector (CLIP/mmproj) file when present.
-          // Keeping this as a printf path avoids generating a command substitution
-          // that the backend serve-command validator must reject as unsafe.
-          const selectedProjector = _projectorGgufFiles(m)[0];
-          f._mmproj_path = selectedProjector ? _selectedGgufExpr(m, repo, selectedProjector.rel_path) : '';
+          // Vision: auto-find the mmproj (CLIP/projector) file in the same dir.
+          // Resolved at runtime so the toggle just works if an mmproj-*.gguf is
+          // present (downloaded alongside the model). Empty if none → cmd omits it.
+          const _vsearchdir = (m.is_local_dir && m.path) ? _ldir : dir;
+          f._mmproj_path = `$(find ${_vsearchdir} -iname 'mmproj*.gguf' 2>/dev/null | sort | head -1)`;
         }
         if (f.reasoning_parser) {
           const _rpEl2 = panel.querySelector('[data-field="reasoning_parser"]');
@@ -1898,10 +1957,6 @@ function _rerenderCachedModels() {
         }
         let cmd = _buildServeCmd(f, serveModel, backend);
         if (f.extra && f.extra.trim()) cmd += ' ' + f.extra.trim();
-        const missingVisionProjector = backend === 'llamacpp' && !!f.vision && !f._mmproj_path;
-        panel._visionMissingProjector = missingVisionProjector;
-        const _visionWarn = panel.querySelector('.hwfit-serve-vision-warn');
-        if (_visionWarn) _visionWarn.style.display = missingVisionProjector ? 'flex' : 'none';
         const _ce2 = panel.querySelector('.hwfit-serve-cmd'); _ce2.value = _formatServeCmdPreview(cmd); _ce2.style.height = 'auto'; _ce2.style.height = _ce2.scrollHeight + 'px';
         panel._cmd = cmd;
         panel._host = f.host || '';
@@ -2150,7 +2205,7 @@ function _rerenderCachedModels() {
         mlx: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6l4 7 4-7v12"/><path d="M16 6v12"/><path d="M20 6v12"/></svg>',
         mlx_image: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="M21 15l-5-5L5 20"/><path d="M17.5 4v4M15.5 6h4"/></svg>',
         llamacpp: '<svg width="14" height="14" viewBox="0 0 600 600" fill="none" aria-hidden="true"><path d="M600 392L504.249 558L504.137 557.929C487.252 584.069 458.193 600 426.864 600H120L240 392H600Z" fill="currentColor"/><path d="M240 392H0L199.602 46.0254C216.032 17.5463 246.411 0 279.29 0H466.154L240 392Z" fill="currentColor"/></svg>',
-        ollama: '<span aria-hidden="true" style="display:block;width:14px;height:14px;background:currentColor;-webkit-mask:url(/static/icons/ollama-mark-crop.png) center/contain no-repeat;mask:url(/static/icons/ollama-mark-crop.png) center/contain no-repeat;"></span>',
+        ollama: '<img src="/static/icons/ollama-mark-crop.png" alt="" aria-hidden="true" width="14" height="14" style="display:block;width:14px;height:14px;object-fit:contain;" />',
         diffusers: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>',
       };
 
@@ -2231,7 +2286,6 @@ function _rerenderCachedModels() {
 
       function updateBackendVisibility() {
         const b = panel.querySelector('[data-field="backend"]')?.value || 'vllm';
-        panel.dataset.backendActive = b;
         panel.querySelectorAll('[class*="hwfit-backend-"]').forEach(el => {
           // Skip the entire backend-picker subtree — the picker's own
           // classes (`hwfit-backend-picker`, `-btn`, `-menu`, `-item`,
@@ -2360,7 +2414,7 @@ function _rerenderCachedModels() {
             backend: cmd.includes('llama_cpp') || cmd.includes('llama-server') ? 'llamacpp' : cmd.includes('mlx_image_server') ? 'mlx_image' : cmd.includes('mlx_lm.server') ? 'mlx' : cmd.includes('diffusion_server') ? 'diffusers' : cmd.includes('sglang') ? 'sglang' : cmd.includes('ollama') ? 'ollama' : 'vllm',
             port: _ex(/--port\s+(\d+)/) || '8000',
             tp: _ex(/--tensor-parallel-size\s+(\d+)/) || '1',
-            ctx: _ex(/--max-model-len\s+(\d+)/) || _ex(/--context-length\s+(\d+)/) || _ex(/--max-tokens\s+(\d+)/) || _ex(/--n_ctx\s+(\d+)/) || _ex(/-c\s+(\d+)/) || '8192',
+            ctx: _ex(/--max-model-len\s+(\d+)/) || _ex(/--n_ctx\s+(\d+)/) || _ex(/-c\s+(\d+)/) || '8192',
             gpu_mem: _ex(/--gpu-memory-utilization\s+([\d.]+)/) || '0.90',
             swap: _ex(/--swap-space\s+(\d+)/) || '',
             dtype: _ex(/--dtype\s+(\w+)/) || 'auto',
@@ -3342,6 +3396,7 @@ function _rerenderCachedModels() {
           uiModule.showToast('Diffusers serving is not supported on remote Windows servers yet. Use local Windows or a Linux server.', 9000);
           return;
         }
+
         // Pre-launch: check our own task list for a serve already running
         // on this host. Offer to stop+launch as the default action — the
         // SSH-based port probe below is more thorough but it can miss
@@ -3356,8 +3411,6 @@ function _rerenderCachedModels() {
             && ((t.remoteHost || '') === _hostStr || (t.remoteServerKey || '') === _serverKeyStr)
             && (t.status === 'running' || t.status === 'ready' || t._serveReady)
           );
-          // Only block when the new model's port genuinely collides with
-          // a running serve. Different ports coexist fine (issue #4507).
           if (_active.length) {
             const _newPort = _serveCmdPort(launchCmd);
             const _clashing = _newPort
@@ -3669,7 +3722,7 @@ function _rerenderCachedModels() {
         // The venv field wins; otherwise fall back to the env configured for the
         // selected server in Settings, so the activation isn't silently dropped
         // when the field is left blank (the per-server venv wasn't being applied).
-        if (venvVal) { _envState.env = (_srvEnv === 'conda' ? 'conda' : 'venv'); _envState.envPath = venvVal; }
+        if (venvVal) { _envState.env = 'venv'; _envState.envPath = venvVal; }
         else if (_srvEnvPath) { _envState.env = (_srvEnv === 'conda' ? 'conda' : 'venv'); _envState.envPath = _srvEnvPath; }
         if (gpusVal) _envState.gpus = gpusVal;
         // Preflight: launching a GPU engine (llama.cpp / vLLM / SGLang)
@@ -4111,13 +4164,9 @@ function _renderCachedModelsData(list, data, host) {
 export async function _fetchCachedModels(fresh = false, opts = {}) {
   const list = document.getElementById('hwfit-cached-list');
   if (!list) return;
-  const allowNetwork = fresh || opts.allowNetwork !== false;
 
   list.innerHTML = '';
-  const _dlWp = spinnerModule.createWhirlpool(22);
-  _dlWp.element.classList.add('cookbook-section-loading-wp');
-  _dlWp.element.style.width = '22px';
-  _dlWp.element.style.height = '22px';
+  const _dlWp = spinnerModule.createWhirlpool(18);
   const _dlWrap = document.createElement('div');
   _dlWrap.className = 'hwfit-loading';
   _dlWrap.style.cssText = 'flex-direction:column;gap:6px;';
@@ -4213,16 +4262,83 @@ export async function _fetchCachedModels(fresh = false, opts = {}) {
       throw new Error(`HTTP ${res.status} ${res.statusText}${msg ? `: ${msg}` : ''}`);
     }
     const data = await res.json();
-    if (data && data.error) throw new Error(data.error);
-    _writeCachedModelScan(scanSig, data);
     _dlWp.destroy();
-    _renderCachedModelsData(list, data, host);
+
+    // CHANGELOG: 'ready' already excludes partial downloads;
+    // show every complete model regardless of size/backend.
+    const ready = data.models.filter(m => m.status === 'ready');
+
+    const downloading = data.models.filter(m => m.status === 'downloading');
+    const allModels = [...ready, ...downloading];
+    _cachedAllModels = allModels;
+
+    if (!allModels.length) {
+      if (!host) {
+        list.innerHTML = '<div class="hwfit-loading" style="flex-direction:column;gap:6px;text-align:center;"><div>No cached models found</div><div style="font-size:11px;opacity:0.55;max-width:420px;line-height:1.4;">Docker Local uses Odysseus’s cache in <code>data/huggingface</code>. Download a model here, or copy an existing host HuggingFace cache into that folder once.</div></div>';
+      } else {
+        list.innerHTML = '<div class="hwfit-loading">No cached models found</div>';
+      }
+      document.getElementById('serve-tags').innerHTML = '';
+      return;
+    }
+
+    // Auto-detect type + family tags
+    const _tagMap = {};
+    const _familyMap = {};
+    const _families = [
+      [/qwen/i, 'qwen'], [/llama/i, 'llama'], [/mistral|mixtral/i, 'mistral'],
+      [/deepseek/i, 'deepseek'], [/gemma/i, 'gemma'], [/phi/i, 'phi'],
+      [/minimax/i, 'minimax'], [/glm/i, 'glm'], [/flux/i, 'flux'],
+      [/stable.?diffusion|sdxl/i, 'sd'], [/z-image/i, 'z-image'],
+      [/whisper/i, 'whisper'], [/command|cohere/i, 'cohere'],
+      [/yi-/i, 'yi'], [/intern/i, 'intern'], [/falcon/i, 'falcon'],
+    ];
+    for (const m of allModels) {
+      const n = (m.repo_id || '').toLowerCase();
+      let tag = 'other';
+      if (m.backend === 'ollama' || m.is_ollama) tag = 'llm';
+      else if (m.is_diffusion || /flux|sdxl|stable-diffusion|z-image|qwen-image|diffusion|dreamshar/i.test(n)) tag = 'image';
+      else if (/whisper|stt|asr/i.test(n)) tag = 'stt';
+      else if (/tts|cosyvoice|parler/i.test(n)) tag = 'tts';
+      else if (/embed|bge|minilm|e5-/i.test(n)) tag = 'embedding';
+      else if (/lora|adapter/i.test(n)) tag = 'lora';
+      else tag = 'llm';
+      m._tag = tag;
+      _tagMap[tag] = (_tagMap[tag] || 0) + 1;
+      m._family = '';
+      for (const [re, fam] of _families) {
+        if (re.test(n)) { m._family = fam; _familyMap[fam] = (_familyMap[fam] || 0) + 1; break; }
+      }
+      if ((m.backend === 'ollama' || m.is_ollama) && !m._family) {
+        m._family = 'ollama';
+        _familyMap.ollama = (_familyMap.ollama || 0) + 1;
+      }
+    }
+
+    // Render tag chips
+    const tagContainer = document.getElementById('serve-tags');
+    if (tagContainer) {
+      const tagOrder = ['llm', 'image', 'lora', 'embedding', 'tts', 'stt', 'other'];
+      let tagHtml = `<button class="memory-cat-chip active" data-serve-tag="">All (${allModels.length})</button>`;
+      for (const t of tagOrder) {
+        if (!_tagMap[t]) continue;
+        tagHtml += `<button class="memory-cat-chip" data-serve-tag="${t}">${t} (${_tagMap[t]})</button>`;
+      }
+      const sortedFamilies = Object.entries(_familyMap).sort((a, b) => b[1] - a[1]);
+      if (sortedFamilies.length) {
+        for (const [fam, count] of sortedFamilies) {
+          const logo = providerLogo(fam);
+          const logoHtml = logo ? `<span style="width:12px;height:12px;display:inline-flex;align-items:center;vertical-align:-2px;margin-right:2px;opacity:0.6;">${logo}</span>` : '';
+          tagHtml += `<button class="memory-cat-chip" data-serve-tag="fam:${fam}">${logoHtml}${fam} (${count})</button>`;
+        }
+      }
+      tagContainer.innerHTML = tagHtml;
+    }
+
+    _rerenderCachedModels();
   } catch (e) {
     _dlWp.destroy();
-    list.innerHTML = `<div class="hwfit-loading" style="flex-direction:column;gap:8px;text-align:center;"><div style="color:var(--red);font-weight:600;">Cached model scan failed</div><div style="font-size:11px;opacity:0.65;max-width:420px;line-height:1.4;">${esc(e.message)}</div><button type="button" class="hwfit-gpu-btn serve-empty-scan-btn" style="height:26px;padding:3px 10px;">Retry</button></div>`;
-    list.querySelector('.serve-empty-scan-btn')?.addEventListener('click', () => {
-      _fetchCachedModels(true);
-    });
+    list.innerHTML = `<div class="hwfit-loading">Failed: ${esc(e.message)}</div>`;
   }
 }
 
@@ -4303,3 +4419,4 @@ document.addEventListener('click', (e) => {
   const repo = pill.dataset.repo || '';
   if (repo) _openRunningTabForRepo(repo);
 });
+
