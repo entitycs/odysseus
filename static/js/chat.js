@@ -5,27 +5,42 @@
  */
 // ES6 module — IIFE removed
 
-import Storage from './storage.js';
-import uiModule from './ui.js';
-import sessionModule from './sessions.js';
 import chatRenderer from './chatRenderer.js?v=20260722emailfastindex1';
 import chatStream from './chatStream.js';
-import { addAITTSButton } from './tts-ai.js';
-import markdownModule from './markdown.js';
-import spinnerModule from './spinner.js';
-import presetsModule from './presets.js';
-import fileHandlerModule from './fileHandler.js';
-import searchModule from './search.js';
+import codeRunnerModule from './codeRunner.js';
+import { getUserMessagesFromChatHistory, wireArrowUpRecall } from './composerArrowUpRecall.js?v=20260714promptrecall';
 import documentModule from './document.js?v=20260722emailfastindex1';
 import * as emailInbox from './emailInbox.js?v=20260722emailfastindex1';
-import codeRunnerModule from './codeRunner.js';
-import slashCommands, { initSlashCommands, isCommand, handleSlashCommand, handleSetupInput, handleSetupWizard, typewriterInto } from './slashCommands.js?v=20260722emailfastindex1';
+import fileHandlerModule from './fileHandler.js';
+import markdownModule, { svgifyEmoji } from './markdown.js';
+import { isSubscriptionEndpoint } from './model/endpoint.js';
+import {
+  modelRouteLabel,
+  replyModelPair,
+  sameModelName,
+  shortModel
+} from './model/models.js';
+import { getImageCost, getModelCost } from './model/pricing.js';
+import presetsModule from './presets.js';
 import createResearchSynapse from './researchSynapse.js';
+import searchModule from './search.js';
+import sessionModule from './sessions.js';
+import slashCommands, {
+  handleSetupInput,
+  handleSetupWizard,
+  handleSlashCommand,
+  initSlashCommands,
+  isCommand,
+  typewriterInto,
+} from './slashCommands.js';
+import spinnerModule from './spinner.js';
+import Storage from './storage.js';
 import { createStreamRenderer } from './streamingRenderer.js';
-import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArrowUpRecall.js?v=20260714promptrecall';
+import { addAITTSButton } from './tts-ai.js';
+import uiModule from './ui.js';
 
-  const RESEARCH_TIMEOUT_MS = 360000;
-  const DEFAULT_TIMEOUT_MS = 120000;
+const RESEARCH_TIMEOUT_MS = 360000;
+const DEFAULT_TIMEOUT_MS = 120000;
   const RESEARCH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
 
   let API_BASE = '';
@@ -373,11 +388,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
   let _autoNudges = 0;             // handshakes fired for the CURRENT user turn
   let _autoContinuePending = false; // marks the next submit as an auto-continue (don't reset the counter)
   const _AUTO_NUDGE_CAP = 3;
-
-  // shortModel and modelColor are now in chatRenderer.js
-  var _shortModel = chatRenderer.shortModel;
-  var _modelRouteLabel = chatRenderer.modelRouteLabel;
-  var _sameModelName = chatRenderer.sameModelName;
+  // shortModel, modelColor, and other exports not specific to rendering are now in chat/model.js
   var _applyModelColor = chatRenderer.applyModelColor;
   function _setRoleModelLabel(roleEl, requestedModel, actualModel, opts) {
     if (!roleEl) return;
@@ -385,13 +396,14 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     const tsSpan = roleEl.querySelector('.role-timestamp');
     const req = requestedModel || actualModel || '';
     const actual = actualModel || requestedModel || '';
-    let label = _modelRouteLabel(req, actual);
+    let label = modelRouteLabel(req, actual);
     if (opts.suffix) label += ' (' + opts.suffix + ')';
     if (opts.characterName) label = opts.characterName;
     roleEl.textContent = label + ' ';
     _applyModelColor(roleEl, actual || req);
-    if (req && actual && !_sameModelName(req, actual)) {
-      roleEl.title = req + ' -> ' + actual + (opts.reason ? ': ' + opts.reason : '');
+    if (req && actual && !sameModelName(req, actual)) {
+      roleEl.title =
+        req + ' -> ' + actual + (opts.reason ? ': ' + opts.reason : '');
     } else if (!opts.reason) {
       roleEl.removeAttribute('title');
     }
@@ -607,8 +619,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
 
   // Model/image pricing, _buildImageBubble now in chatRenderer.js
   var _buildImageBubble = chatRenderer.buildImageBubble;
-  var getModelCost = chatRenderer.getModelCost;
-  var getImageCost = chatRenderer.getImageCost;
 
   function _appendGeneratedImageBubble(data) {
     const imageUrl = data?.image_url || data?.url || '';
@@ -687,7 +697,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
   /**
    * Initialize with dependencies
    */
-  export function init(apiBase) {
+  export function initLegacy(apiBase) {
     API_BASE = apiBase;
     initSlashCommands({ apiBase, isStreaming: () => !!_getForegroundStreamState() });
     // Initialize email inbox
@@ -993,9 +1003,9 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     // Get current session
     const sessionId = sessionModule.getCurrentSessionId();
     const session = sessionModule.getSessions().find(s => s.id === sessionId);
-    
+
     const submitBtn = document.querySelector('.send-btn');
-    
+
     // If compare is active, stop all compare streams
     if (window.compareModule && window.compareModule.isActive()) {
       window.compareModule.handleCompareSubmit();
@@ -1062,28 +1072,27 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         const messageInput = uiModule.el('message');
         if (messageInput) messageInput.disabled = false;
         currentAccumulated = '';
-        _drainQueuedAgentRequests();
         return;
       }
       // Render whatever was accumulated so far
       if (currentHolder && currentAccumulated) {
         // Store accumulated in a closure variable before it gets cleared
         const stoppedContent = currentAccumulated;
-        
+
         // Store raw content in dataset for consistency with other messages
         currentHolder.dataset.raw = stoppedContent;
-        
+
         currentHolder.querySelector('.body').innerHTML = markdownModule.processWithThinking(
           markdownModule.squashOutsideCode(stoppedContent)
         );
-        
+
         // Highlight code blocks
         if (window.hljs) {
           currentHolder.querySelectorAll('pre code').forEach((block) => {
             window.hljs.highlightElement(block);
           });
         }
-        
+
         // Add the stopped indicator with continue button
         const stoppedIndicator = document.createElement('div');
         stoppedIndicator.className = 'stopped-indicator';
@@ -1122,14 +1131,14 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
 
         uiModule.scrollHistory();
       }
-      
+
       // Reset button state
       updateSubmitButton('idle', submitBtn);
-      
+
       // Re-enable message input
       const messageInput = uiModule.el('message');
       if (messageInput) messageInput.disabled = false;
-      
+
       // Clear tracking variables
       currentAccumulated = '';
       currentHolder = null;
@@ -1402,7 +1411,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     // Reset tracking variables at start
     currentAccumulated = '';
     currentHolder = null;
-    
+
     try {
       // Re-enable auto-scroll when user sends a message
       uiModule.setAutoScroll(true);
@@ -1649,10 +1658,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       try {
         const getEmailCtx = window.__odysseusGetActiveEmailContext;
         const emCtx = typeof getEmailCtx === 'function' ? getEmailCtx() : null;
-        if (activeEmailComposerCtx && activeEmailComposerCtx.sourceUid) {
-          fd.append('active_email_uid', String(activeEmailComposerCtx.sourceUid));
-          fd.append('active_email_folder', String(activeEmailComposerCtx.sourceFolder || 'INBOX'));
-        } else if (emCtx && emCtx.uid) {
+        if (emCtx && emCtx.uid) {
           fd.append('active_email_uid', String(emCtx.uid));
           fd.append('active_email_folder', String(emCtx.folder || 'INBOX'));
           if (emCtx.account) fd.append('active_email_account', String(emCtx.account));
@@ -1704,7 +1710,8 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       if (ragChk && !ragChk.checked) {
         fd.append('use_rag', 'false');
       }
-      if (isIncognito) {
+      const incognitoChk = el('incognito-toggle');
+      if (incognitoChk && incognitoChk.checked) {
         fd.append('incognito', 'true');
       }
       const _ws = (Storage.KEYS && Storage.get(Storage.KEYS.WORKSPACE, '')) || '';
@@ -1745,24 +1752,16 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         responseTimeoutCleared = true;
         clearTimeout(timeoutId);
       };
-      
+
       const box = el('chat-history');
       holder = document.createElement('div');
       holder.className = 'msg msg-ai streaming';
 
       // Track holder globally so stop button can access it
       currentHolder = holder;
-      _activeStreams.set(streamSessionId, {
-        abortCtrl,
-        holder,
-        query: streamQuery,
-        startedAt: Date.now(),
-        lastActivity: Date.now(),
-      });
-      _syncForegroundStreamGlobals();
       holder._researchQuery = msg; // Store query for notification text
-      
-      const modelName = _bestKnownStreamModel(selectedRouteForSend) || null;
+
+      const modelName = sessionModule.getCurrentModel() || null;
 
       let loadingText = 'Initializing...';
 
@@ -1778,7 +1777,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         loadingText = 'Processing request...';
       }
 
-      var roleLabel = _modelRouteLabel(modelName, modelName);
+      var roleLabel = modelRouteLabel(modelName, modelName);
       var _charNameInit = presetsModule.getCharacterName ? presetsModule.getCharacterName() : '';
       if (_charNameInit) roleLabel = _charNameInit;
       const roleTs = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -1787,14 +1786,14 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       holder._actualModel = modelName;
       _applyModelColor(holder.querySelector('.role'), modelName);
       holder.style.position = 'relative';
-      
+
       // Create spinner
       spinner = spinnerModule.create('Initializing', 'right', 'wave');
       currentSpinner = spinner;
       const bodyDiv = holder.querySelector('.body');
       bodyDiv.appendChild(spinner.createElement());
       spinner.start();
-      
+
       // Update spinner message based on mode
       if (el('web-toggle').checked && !_isAgent) {
         spinner.updateMessage('Searching web with ' + (searchModule ? searchModule.getProviderLabel() : 'SearXNG'));
@@ -1806,7 +1805,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         spinner.updateMessage('Processing request');
         scheduleFirstTokenWaitMessages();
       }
-      
+
       const researchBtn = el('research-toggle-btn');
       if (el('research-toggle').checked && researchBtn) {
         researchBtn.disabled = true;
@@ -1844,7 +1843,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       });
       _sendPerf.mark('chat_stream_headers');
       _sendPerf.report('headers_received');
-      
+
       if (!res.ok) {
         clearResponseTimeout();
         if (res.status === 404) {
@@ -1984,14 +1983,12 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         'web_search': 'Searching',
         'bash': 'Running',
         'python': 'Running',
+        'create_document': 'Writing',
+        'update_document': 'Writing',
         'read_document': 'Reading',
         'edit_file': 'Editing',
         'read_file': 'Reading',
         'write_file': 'Writing',
-        'create_document': 'Writing',
-        'edit_document': 'Editing',
-        'update_document': 'Rewriting',
-        'suggest_document': 'Reviewing',
         'list_files': 'Browsing',
         'image_gen': 'Generating',
         'generate_image': 'Generating',
@@ -2169,11 +2166,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         // what keeps code-block hover buttons from flickering and avoids the O(N^2)
         // re-parse/re-highlight of the whole message on every token.
         // See streamingRenderer.js / streamingSegmenter.js.
-        if (_docFenceOpened && !dt.trim()) {
-          _showDocumentWritingStatus(contentEl);
-          uiModule.scrollHistory();
-          return;
-        }
         const renderer = contentEl._streamRenderer ||
           (contentEl._streamRenderer = createStreamRenderer(contentEl, {
             render: (t) => markdownModule.processWithThinking(markdownModule.squashOutsideCode(t)),
@@ -2237,9 +2229,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
               _streamSawDone = true;
               // Always update background map if entry exists (even if user switched back)
               var bgDone = _backgroundStreams.get(streamSessionId);
-              if (bgDone && !_isBg) {
-                _backgroundStreams.delete(streamSessionId);
-              } else if (bgDone) {
+              if (bgDone) {
                 bgDone.status = 'completed';
                 bgDone.accumulated = accumulated;
                 if (_isBg) {
@@ -2468,9 +2458,9 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
                         <div class="thinking-header-left"><span class="live-think-header-text">Thinking\u2026</span></div>
                         <span class="live-think-spinner-slot" style="flex-shrink:0;margin-left:auto;"></span>
                         <span class="live-think-timer" style="font-size:11px;opacity:0.4;font-variant-numeric:tabular-nums;margin-left:6px;margin-right:5px;"></span>
-                        <span class="thinking-toggle live-think-toggle expanded" id="${_liveThinkDomId}-toggle"></span>
+                        <span class="thinking-toggle live-think-toggle" id="${_liveThinkDomId}-toggle"></span>
                       </div>
-                      <div class="thinking-content expanded" id="${_liveThinkDomId}">
+                      <div class="thinking-content" id="${_liveThinkDomId}">
                         <div class="thinking-content-inner live-think-inner"></div>
                       </div>
                     </div>`;
@@ -2516,15 +2506,13 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
                       _liveThinkTimerEl.textContent = _formatThinkStats(_elapsedLive, _liveThinkTokenCount);
                     }
                     // Keep thinking box scrolled to bottom, but let user scroll up
-                    var _followThinking = true;
                     var thinkBox = _liveThinkInner.closest('.thinking-content');
                     if (thinkBox) {
                       var nearBottom = thinkBox.scrollHeight - thinkBox.clientHeight - thinkBox.scrollTop < 80;
                       if (nearBottom) thinkBox.scrollTop = thinkBox.scrollHeight;
-                      _followThinking = nearBottom;
                     }
                   }
-                  if (_followThinking) uiModule.scrollHistory();
+                  uiModule.scrollHistory();
                   continue;
                 } else if (!hasUnclosedThink && isThinking) {
                   isThinking = false;
@@ -2791,8 +2779,8 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
                 // it visible so a misconfigured provider is never silently
                 // masked under the selected model's name.
                 if (!_isBg) {
-                  var _selM = _shortModel(json.selected_model || '');
-                  var _ansM = _shortModel(json.answered_by || '');
+                  var _selM = shortModel(json.selected_model || '');
+                  var _ansM = shortModel(json.answered_by || '');
                   uiModule.showToast('⚠ ' + _selM + ' failed — answered by ' + _ansM, 6000);
                   if (holder) {
                     var _rEl = holder.querySelector('.role');
@@ -2804,7 +2792,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
                       _applyModelColor(_rEl, json.answered_by);
                       if (_tsS) _rEl.appendChild(_tsS);
                       holder._requestedModel = json.selected_model || holder._requestedModel || modelName;
-                      const _hasResolvedActual = holder._actualModel && !_sameModelName(holder._actualModel, holder._requestedModel);
+                      const _hasResolvedActual = holder._actualModel && !sameModelName(holder._actualModel, holder._requestedModel);
                       holder._actualModel = _hasResolvedActual ? holder._actualModel : (json.answered_by || holder._actualModel || holder._requestedModel);
                       _setRoleModelLabel(_rEl, holder._requestedModel, holder._actualModel, {
                         suffix: holder._roleSuffix,
@@ -3196,7 +3184,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
                 if (json.screenshot && currentToolBubble) {
                   const contentEl = currentToolBubble.querySelector('.agent-thread-content');
                   if (contentEl) {
-                    const screenshotSrc = chatRenderer.safeToolScreenshotSrc(json.screenshot);
+                    const screenshotSrc = safeToolScreenshotSrc(json.screenshot);
                     if (screenshotSrc) {
                       const details = document.createElement('details');
                       details.className = 'agent-tool-output';
@@ -3454,7 +3442,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       }
 
       _renderStream();
-      if (spinner && spinner.element) { try { spinner.destroy(); } catch (_) {} spinner = null; }
       _cancelThinkingTimer();
       _removeThinkingSpinner();
       // Stop any thread pulse animations
@@ -3516,10 +3503,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         // Clear streaming minHeight lock
         const _streamContent = roundHolder.querySelector('.stream-content');
         if (_streamContent) _streamContent.style.minHeight = '';
-        if (_docFenceOpened) {
-          _finishDocumentWritingStatus(roundHolder, true);
-          roundHolder.style.display = '';
-        }
 
         // Finalize the last round's bubble — flatten stream-content wrapper for clean DOM
         const finalDisplay = _streamDisplayText(roundText, { final: _docFenceOpened });
@@ -3604,12 +3587,13 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         }
 
 
-        if (window.hljs) {
-          roundHolder.querySelectorAll('pre code').forEach((block) => {
-            window.hljs.highlightElement(block);
-          });
-        }
-        if (markdownModule.renderMermaid) markdownModule.renderMermaid(roundHolder);
+      if (window.hljs) {
+        roundHolder.querySelectorAll('pre code').forEach((block) => {
+          window.hljs.highlightElement(block);
+        });
+      }
+      if (markdownModule.renderMermaid)
+        markdownModule.renderMermaid(roundHolder);
 
         uiModule.scrollHistory();
         // Render RAG sources if present
@@ -3832,12 +3816,12 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
             return;
           }
 
-          // User-initiated stop (or browser navigation abort).
-          // Stopped before any text arrived — keep the bubble as a
-          // "Cancelled by user" record (so it survives a refresh).
-          if (holder && !accumulated) {
-            _renderCancelledBubble(holder);
-          }
+        // User-initiated stop (or browser navigation abort).
+        // Stopped before any text arrived — keep the bubble as a
+        // "Cancelled by user" record (so it survives a refresh).
+        if (holder && !accumulated) {
+          _renderCancelledBubble(holder);
+        }
 
           // But just in case the stop button didn't render it, render it here
           if (holder && accumulated && !currentHolder) {
@@ -4022,7 +4006,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
           sessionModule.loadSessions();
         }
       }, 3000);
-      _drainQueuedAgentRequests();
     }
   }
 
@@ -4319,7 +4302,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     const holder = document.createElement('div');
     holder.className = 'msg msg-ai';
     const meta = sessionModule.getSessions().find(s => s.id === sessionId);
-    const roleLabel = _shortModel(meta && meta.model);
+    const roleLabel = shortModel(meta && meta.model);
     const roleTs = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     holder.innerHTML = '<div class="role">' + uiModule.esc(roleLabel) +
       ' <span class="role-timestamp">' + roleTs + '</span></div>' +
@@ -4337,7 +4320,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     const decoder = new TextDecoder();
     let buffer = '';
     let roundText = '';
-    let docFenceOpened = false;
     let gotDelta = false;
     let leftSession = false;
     let metricsData = null;
@@ -4388,10 +4370,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
           try { json = JSON.parse(payload); } catch (_) { continue; }
           if (json.delta) {
             roundText += json.delta;
-            if (!docFenceOpened && (roundText.includes('```create_document\n') || roundText.includes('```document\n') || roundText.includes('```documen\n'))) {
-              docFenceOpened = true;
-              rich = true;
-            }
             if (!gotDelta) { gotDelta = true; try { spinner.destroy(); } catch (_) {} }
             renderDelta();
           } else if (json.type === 'doc_stream_open') {
@@ -4399,7 +4377,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
             if (documentModule) documentModule.streamDocOpen(json.title || '', json.lang || '');
           } else if (json.type === 'doc_stream_delta') {
             rich = true;
-            if (documentModule) documentModule.streamDocDelta(json.content || json.delta || '');
+            if (documentModule && json.delta) documentModule.streamDocDelta(json.delta);
           } else if (json.type === 'metrics') {
             metricsData = json.data || metricsData;
           } else if (json.type === 'tool_start' || json.type === 'tool_output' ||
@@ -4416,7 +4394,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     }
 
     cleanup();
-    if (docFenceOpened) _finishDocumentWritingStatus(holder, true);
     if (leftSession) { if (holder.parentNode) holder.remove(); return true; }
 
     const onThisSession = sessionModule.getCurrentSessionId &&
@@ -4436,7 +4413,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
 
     // Rich response (tools, sources, docs, multi-round) or user moved on:
     // reload from the DB for the full canonical render.
-    if (holder._docWritingThread && holder._docWritingThread.parentNode) holder._docWritingThread.remove();
     if (holder.parentNode) holder.remove();
     if (onThisSession) sessionModule.selectSession(sessionId);
     else sessionModule.loadSessions();
@@ -4486,7 +4462,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       var holder = document.createElement('div');
       holder.className = 'msg msg-ai';
       var meta = sessionModule.getSessions().find(function(s) { return s.id === sessionId; });
-      var roleLabel = _shortModel(meta && meta.model);
+      var roleLabel = shortModel(meta && meta.model);
       var roleTs = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       holder.innerHTML = '<div class="role">' + uiModule.esc(roleLabel) + ' <span class="role-timestamp">' + roleTs + '</span></div><div class="body"></div>';
       _applyModelColor(holder.querySelector('.role'), meta && meta.model);
@@ -5236,10 +5212,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     if (!sessionId) return;
     try {
       const res = await fetch(`${API_BASE}/api/research/status/${sessionId}`);
-      if (!res.ok) {
-        if (sessionModule && sessionModule.clearResearching) sessionModule.clearResearching(sessionId);
-        return; // 404 = no research for this session
-      }
+      if (!res.ok) return; // 404 = no research for this session
       const data = await res.json();
 
       if (data.status === 'done') {
@@ -5269,7 +5242,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
               var _role = document.createElement('div');
               _role.className = 'role';
               var _meta = sessionModule.getSessions().find(function(s) { return s.id === sessionId; });
-              _role.textContent = _shortModel(_meta?.model);
+              _role.textContent = shortModel(_meta?.model);
               _applyModelColor(_role, _meta?.model);
               _role.appendChild(chatRenderer.roleTimestamp());
               var _body = document.createElement('div');
@@ -5305,7 +5278,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       holder.dataset.researchSession = sessionId;
       const roleTs = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       const agentMeta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
-      const agentModelLabel = _shortModel(agentMeta?.model);
+      const agentModelLabel = shortModel(agentMeta?.model);
       holder.innerHTML = `<div class="role">${uiModule.esc(agentModelLabel)} <span class="role-timestamp">${roleTs}</span></div><div class="body"></div>`;
       _applyModelColor(holder.querySelector('.role'), agentMeta?.model);
       box.appendChild(holder);
@@ -5956,7 +5929,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     hideWelcomeScreen: chatRenderer.hideWelcomeScreen,
     showWelcomeScreen: chatRenderer.showWelcomeScreen,
     checkPendingResearch,
-    getImageCost: chatRenderer.getImageCost,
+    getImageCost: getImageCost,
     setDisplayOverride,
     setHideUserBubble,
     setPendingContinue,
@@ -5997,5 +5970,6 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     window.__odysseus_thread_click_bound = true;
   }
 
-  export default chatModule;
-  window.chatModule = chatModule;
+export default chatModule;
+window.chatModule = chatModule;
+

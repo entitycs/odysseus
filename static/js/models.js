@@ -9,7 +9,7 @@ import uiModule from './ui.js';
 import sessionModule from './sessions.js';
 import dragSortModule from './dragSort.js';
 import spinnerModule from './spinner.js';
-import { modelColor } from './chatRenderer.js';
+import { modelColor } from './model/models.js';
 import { providerLogo } from './providers.js';
 import { sortModelIds } from './modelSort.js';
 
@@ -587,6 +587,33 @@ export async function refreshModels(force = false, opts = {}) {
           + '<span class="muted-sm">Ask an admin to configure model endpoints</span>';
       }
       box.appendChild(noModels);
+      // No endpoints yet: keep the welcome screen focused on first setup.
+      const welcomeSub = document.getElementById('welcome-sub');
+      if (welcomeSub) welcomeSub.innerHTML = 'Type <span class="setup-trigger-link" style="color:var(--accent,var(--red));font-weight:600;cursor:pointer;text-decoration:underline;" title="Click to launch setup">/setup</span> to get started.';
+      const welcomeTip = document.getElementById('welcome-tip');
+      if (welcomeTip) welcomeTip.textContent = 'Type /setup, then choose Local models or API.';
+    } else {
+      // Configured installs should feel ready, not stuck in onboarding.
+      const welcomeSub = document.getElementById('welcome-sub');
+      if (welcomeSub) welcomeSub.textContent = 'Yours for the voyage.';
+      const welcomeTip = document.getElementById('welcome-tip');
+      if (welcomeTip) {
+        const tips = window.innerWidth <= 768
+          ? [
+              'Tip: Long-press a session for rename, delete, and memory options.',
+              'Tip: Tap the eye icon for Nobody mode - no history saved.',
+              'Tip: Switch to Agent mode when you want tools.',
+              'Tip: Attach images or files using the + button next to the input.',
+            ]
+          : [
+              'Tip: Press Ctrl+K to search across all your conversations.',
+              'Tip: Press Ctrl+B to quickly toggle the sidebar.',
+              'Tip: Shift-click the sidebar toggle to swap it to the other side.',
+              'Tip: Drag and drop files onto the chat to attach them.',
+              'Tip: Right-click a session for rename, delete, and memory options.',
+            ];
+        welcomeTip.textContent = tips[Math.floor(Math.random() * tips.length)];
+      }
     }
   } catch (e) {
     console.error(e);
