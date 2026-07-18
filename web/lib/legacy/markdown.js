@@ -952,44 +952,74 @@ export default markdownModule;
 // Mermaid is loaded async so it cannot delay the app shell.
 function initMermaid() {
   if (!window.mermaid || window.__odysseusMermaidReady) return;
-  window.mermaid.initialize({ startOnLoad: false,   theme: "base",
-  themeCSS: `
-    svg {
-      background: var(--bg) !important;
-      color: var(--fg) !important;
-      stroke: var(--red) !important;
-    }
 
-    .node g{
-      fill: var(--bg) !important;
-      color: var(--fg) !important;
-    }
+  window.mermaid.initialize({
+    startOnLoad: false,
+    theme: "base",
+    themeCSS: `
+      svg {
+        background: var(--bg) ;
+        color: var(--fg) ;
+        stroke: var(--red) ;
+      }
 
-    .node rect {
-      fill: var(--red) !important;
-    }
+      /* Slightly lighter shade for polygons */
+      .node polygon {
+        fill: color-mix(in srgb, var(--bg) 85%, var(--bg)) ;
+        stroke: var(--fg) ;
+      }
 
-    .node rect + g span{
-      color: var(--panel) !important;
-    }
+      /* Slightly darker shade for rects */
+      .node rect, g rect {
+        fill: color-mix(in srgb, var(--red) 70%, white) ;
+        stroke: var(--fg) ;
+      }
 
-    .label {
-      fill: var(--fg) !important;
-    }
+      /* Background fill for inner g path */
+      .node g path {
+        fill: var(--bg) ;
+      }
 
-    .edgePaths, .flowchart-link, g path {
-      stroke: var(--red) !important;
-      color: var(--red) !important;
+      .main rect {
+        fill: var(--bg) ;
+      }
 
-    }
+      /* Text inside node */
+      .node * span, g text, .titleText {
+        color: var(--fg) ;
+        fill: var(--fg) ;
+      }
 
-    .edge  {
-      stroke: var(--fg) !important;
-    }
-    `, securityLevel: 'loose'
+      /* Label span inside the g immediately after rect */
+      .node rect + g span {
+        color: var(--panel) ;
+      }
+
+      * text, .label {
+        fill: var(--fg) ;
+      }
+
+      .label-container {
+        fill: var(--bg) ;
+      }
+
+      .edgePaths,
+      .flowchart-link,
+      g path, .relation {
+        stroke: var(--red) ;
+        color: var(--red) ;
+      }
+
+      .edge, .transition {
+        stroke: var(--fg) ;
+      }
+    `,
+    securityLevel: 'loose'
   });
+
   window.__odysseusMermaidReady = true;
 }
+
 
 // Persist which thinking sections were expanded across page refreshes.
 // IDs are render-generated (Date.now-based) so we key by a stable hash of
