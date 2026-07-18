@@ -750,7 +750,10 @@
       autocomplete="off"
       action="javascript:void(0);"
       style="display:none;"
-   ></form>
+   >
+      <input type="checkbox" id="web-toggle" style="display:none;">
+      <input type="checkbox" id="bash-toggle" style="display:none;">
+   </form>
    <!-- Character (custom preset) modal -->
    <div id="custom-preset-modal" class="modal hidden">
       <div

@@ -244,7 +244,7 @@
   function handleTextareaInput(e: Event) {
     const target = e.target as HTMLTextAreaElement;
     message = target.value;
-
+    let previousValue = ghostText;
     // Auto-resize
     autoResize(target);
 
@@ -492,6 +492,8 @@
     <textarea
       bind:this={textareaElement}
       bind:value={message}
+      id="message"
+      class="message"
       {placeholder}
       {disabled}
       rows="1"
@@ -499,6 +501,7 @@
       use:autoResize
       oninput={handleTextareaInput}
       onbeforeinput={handleTextareaBeforeInput}
+      onsubmit={handleChatSubmitWithQueue}
       onkeydown={handleTextareaKeyDown}
       onpaste={handleTextareaPaste}
       onfocus={() => (isTextareaFocused = true)}

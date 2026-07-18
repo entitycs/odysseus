@@ -68,8 +68,6 @@ onMount(async () => {
   ttsAi.init?.();
   documentModule.init?.();
   gallery.init?.();
-  emailInbox.init?.();
-  emailLibrary.init?.();
   await calendar.init?.();
   chatRenderer.init?.();
   codeRunner.init?.();
@@ -85,6 +83,8 @@ onMount(async () => {
   settings.init?.();
   admin.init?.();
   assistant.init?.();
+  emailLibrary.init?.();
+  emailInbox.init?.();
   app.init?.();
   await initModule.init?.();
   app.startOdysseusApp();

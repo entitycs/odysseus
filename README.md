@@ -112,7 +112,7 @@ If using **docker**, there's no need to run `docker compose up -d --build` to te
 
 A frontend test framework is now in place (vitest).
 
-These tests will be run as part of the usual tests (`python -m pytest`) under `test_frontend_vi_svelte.py`.
+Unit tests will be run as part of the usual tests (`python -m pytest`) under `test_frontend_vi_svelte.py`.
 
 To run them manually, use `pnpm unit`
 
