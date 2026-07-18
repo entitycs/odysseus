@@ -10,6 +10,7 @@ import * as chatModule from '$lib/legacy/chat.js';
 import chatRenderer from '$lib/legacy/chatRenderer.js';
 import compareModule from '$lib/legacy/compare/index.js';
 import documentModule from '$lib/legacy/document.js';
+import * as emailInboxModule from '$lib/legacy/emailInbox';
 import fileHandlerModule from '$lib/legacy/fileHandler.js';
 import galleryModule from '$lib/legacy/gallery.js';
 import markdownModule from '$lib/legacy/markdown.js';
@@ -4578,6 +4579,9 @@ export function startOdysseusApp() {
   // Initialize document editor module
   if (documentModule) {
     documentModule.initLegacy(API_BASE);
+
+    emailInboxModule.initLegacy(documentModule);
+
     // Restore document panel if it was open before refresh
     const _curSession = sessionModule && sessionModule.getCurrentSessionId();
     if (

@@ -952,7 +952,42 @@ export default markdownModule;
 // Mermaid is loaded async so it cannot delay the app shell.
 function initMermaid() {
   if (!window.mermaid || window.__odysseusMermaidReady) return;
-  window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+  window.mermaid.initialize({ startOnLoad: false,   theme: "base",
+  themeCSS: `
+    svg {
+      background: var(--bg) !important;
+      color: var(--fg) !important;
+      stroke: var(--red) !important;
+    }
+
+    .node g{
+      fill: var(--bg) !important;
+      color: var(--fg) !important;
+    }
+
+    .node rect {
+      fill: var(--red) !important;
+    }
+
+    .node rect + g span{
+      color: var(--panel) !important;
+    }
+
+    .label {
+      fill: var(--fg) !important;
+    }
+
+    .edgePaths, .flowchart-link, g path {
+      stroke: var(--red) !important;
+      color: var(--red) !important;
+
+    }
+
+    .edge  {
+      stroke: var(--fg) !important;
+    }
+    `, securityLevel: 'loose'
+  });
   window.__odysseusMermaidReady = true;
 }
 
