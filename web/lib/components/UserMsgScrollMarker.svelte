@@ -59,11 +59,11 @@ function positionTrack(track: HTMLDivElement): void {
   const thumbHeight = (chat.clientHeight / chat.scrollHeight) * trackHeight;
 
   const ua = navigator.userAgent.toLowerCase();
-  const hasNoArrows =
-    ua.includes('macintosh') ||
-    ua.includes('ipad') ||
-    ua.includes('iphone') ||
-    ua.includes('android');
+  const hasNoArrows = true;//- use first/last markers//
+    // ua.includes('macintosh') ||
+    // ua.includes('ipad') ||
+    // ua.includes('iphone') ||
+    // ua.includes('android');
 
   const yMargin = (hasNoArrows ? 0 : 16) + thumbHeight / 2;
   const xMargin = 6;
@@ -92,7 +92,7 @@ function drawMarkers(root: Element | ShadowRoot, track: HTMLDivElement): void {
 
   const trackHeight = track.clientHeight || chat.clientHeight;
   const thumbHeight = (chat.clientHeight / chat.scrollHeight) * trackHeight;
-  const usableTrack = trackHeight - thumbHeight;
+  const usableTrack = trackHeight;
 
   track.innerHTML = '';
 
@@ -107,7 +107,7 @@ function drawMarkers(root: Element | ShadowRoot, track: HTMLDivElement): void {
     desiredScrollTop = Math.max(0, Math.min(desiredScrollTop, scrollRange));
 
     const thumbTop = (desiredScrollTop / scrollRange) * usableTrack;
-    const markerY = thumbTop + thumbHeight / 2;
+    const markerY = (msgTopInScrollSpace / scrollRange) * usableTrack - thumbHeight / 2;
 
     const marker = document.createElement('div');
     marker.className = 'scroll-marker';
@@ -192,6 +192,7 @@ function init(track: HTMLDivElement): () => void {
     pointer-events: none;
     z-index: 9999;
     display:block;
+    transition: transform 0.3s ease, opacity 0.35s ease;
   }
 
   /* Markers themselves need pointer-events to be clickable. */
@@ -199,18 +200,19 @@ function init(track: HTMLDivElement): () => void {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    width: 8px;
+    width: 17px;
     height: 8px;
-    border-radius: 50%;
+    border-radius: 20%;
     background: var(--red, #4f8ef7);
     opacity: 0.7;
     cursor: pointer;
     pointer-events: auto;
-    transition: opacity 0.15s ease, transform 0.1s ease;
+    transition: opacity 0.35s ease, transform 0.3s ease;
   }
 
-  #scroll-marker-track .scroll-marker:hover :global {
+  :global(#scroll-marker-track .scroll-marker:hover) {
     opacity: 1;
-    transform: translateX(-50%) scale(1.35);
+    transform: translateX(-50%) scale(1.35, 2);
+    background: color-mix(in srgb, var(--red) 80%, var(--fg) 20%)
   }
 </style>

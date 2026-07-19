@@ -9,6 +9,7 @@ const config = {
   },
   kit: {
     files: {
+      assets: 'web/assets',
       routes: 'web/routes',
       lib: 'web/lib',
       appTemplate: 'web/app.html',

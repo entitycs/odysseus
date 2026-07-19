@@ -13,12 +13,15 @@
   		<!-- <link rel="apple-touch-icon" href="/static/icons/icon-192.png"> -->
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
 		<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4L16 22L6 22Z' fill='%23e06c75'/%3E%3Cpath d='M16 8L16 22L24 22Z' fill='%23e06c75' opacity='0.6'/%3E%3Cpath d='M4 24Q10 20 16 24Q22 28 28 24' stroke='%23e06c75' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
-		<link rel="stylesheet" href="/static/css/style.css" />
+		<link rel="stylesheet" href="%sveltekit.assets%/css/style.css" />
 		<link rel="manifest" href="/static/manifest.json">
 
 		<script defer src="/static/lib/highlight.min.js"></script><!--consider moving to specific pages requiring it (.svelte)-->
 		<!-- Inter font — self-hosted, no Google dependencies -->
 		<style>
+			html {
+			  scrollbar-gutter: stable;
+			}
 			@font-face { font-family: 'Inter'; font-weight: 400; font-style: normal; font-display: swap; src: url('/static/fonts/Inter-Regular.woff2') format('woff2'); }
 			@font-face { font-family: 'Inter'; font-weight: 500; font-style: normal; font-display: swap; src: url('/static/fonts/Inter-Medium.woff2') format('woff2'); }
 			@font-face { font-family: 'Inter'; font-weight: 600; font-style: normal; font-display: swap; src: url('/static/fonts/Inter-SemiBold.woff2') format('woff2'); }
@@ -65,3 +68,119 @@
 		<script  nonce="{{CSP_NONCE}}">if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>
 	</body>
 </html>
+<style>
+
+
+#container {
+  height: 300px;
+  overflow-y: scroll;
+
+  scroll-timeline: --square-timeline y;
+  /* Firefox supports the non-standard vertical/horizontal syntax */
+  scroll-timeline: --square-timeline vertical;
+
+  position: relative;
+}
+#square {
+  background-color: deeppink;
+  width: 100px;
+  height: 100px;
+  position: absolute;
+  bottom: 0;
+
+  animation: rotateAnimation 1ms linear;
+  animation-timeline: --square-timeline;
+}
+#stretcher {
+  height: 600px;
+  background: #dedede;
+}
+
+@keyframes rotateAnimation {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+@layer no-support {
+  @supports not (scroll-timeline: --square-timeline) {
+    body::before {
+      content: "Your browser doesn't support the `scroll-timeline` property.";
+      background-color: wheat;
+      display: block;
+      text-align: center;
+      padding: 1rem 0;
+    }
+  }
+}
+
+html{
+	scrollbar-gutter: auto;
+}
+html::-webkit-scrollbar-track {
+	background: color-mix(in srgb, var(--bg) 85%, black);
+}
+:root{
+--scroll-width: 18px;
+--scroll-track: color-mix(in srgb, var(--bg) 85%, black);
+--scroll-thumb: color-mix(in srgb, var(--fg) 70%, var(--bg));
+--scroll-thumb-hover: color-mix(in srgb, var(--fg) 90%, var(--red));
+--scroll-thumb-active: var(--red);
+--scroll-thumb-min-height: auto; /*50%; the give-up-accuracy value*/
+}
+@supports selector(::-webkit-scrollbar) {
+	/* Width + transition */
+	::-webkit-scrollbar {
+		scrollbar-gutter: stable;
+	width: var(--scroll-width);
+	transition: background-color 0.25s ease, width 0.25s ease;
+	}
+
+	/* Track (background) */
+	::-webkit-scrollbar-track {
+	background: color-mix(in srgb, var(--bg) 85%, black);
+	}
+
+	/* Thumb (the draggable part) */
+	::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--fg) 70%, var(--bg));
+	border-radius: 8px;
+	border: 3px solid var(--bg); /* creates a nice inset effect */
+	transition: background-color 0.25s ease;
+	min-height: var(--scroll-thumb-min-height);
+	}
+
+	/* Hover */
+	::-webkit-scrollbar-thumb:hover {
+	background: color-mix(in srgb, var(--fg) 90%, var(--red));
+	}
+
+	/* Active (while dragging) */
+	::-webkit-scrollbar-thumb:active {
+	background: var(--red);
+	}
+}
+/* Scrollbar styling */
+/* @supports selector(::-webkit-scrollbar) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--panel);
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--red);
+    border-radius: 4px;
+    border: 2px solid var(--panel);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--red) 80%, white);
+  }
+}
+
+
+</style>
