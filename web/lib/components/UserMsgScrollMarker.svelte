@@ -31,6 +31,10 @@ let {
 // --- DOM refs --------------------------------------------------------
 let trackEl = $state<HTMLDivElement | null>(null);
 
+// --- Marker state ----------------------------------------------------
+// Track which marker has active hover class based on scroll position
+let activeMarkerId: string | null = $state(null);
+
 onMount(async () => {
   if (!trackEl) return;
   init(trackEl);
@@ -76,6 +80,56 @@ function positionTrack(track: HTMLDivElement): void {
   track.style.height = `${rect.height - 2 * yMargin}px`;
 }
 
+/**
+ * Add scroll handler to chat container to detect when markers come into view
+ */
+function addScrollHandler(chat: HTMLElement, track: HTMLDivElement): () => void {
+  const handleScroll = () => {
+    if (!trackEl) return;
+
+    // Clear any previously active marker
+    activeMarkerId = null;
+
+    // Find which marker is currently within viewport (threshold: 15% from edges)
+    const visibleThreshold = chat.clientHeight * 0.10;
+    const chatRect = chat.getBoundingClientRect();
+
+    const markers = trackEl.querySelectorAll<HTMLDivElement>('.scroll-marker');
+    const msgs = chat.querySelectorAll<HTMLElement>(msgSelector);
+    markers.forEach((marker, index) => {
+      const markedEl = msgs[index];
+      const markerRect = markedEl.getBoundingClientRect();//marker.getBoundingClientRect();
+      const isVisible = (
+        markerRect.top <= chatRect.top
+        && markerRect.bottom >= chatRect.bottom
+      ) || (
+        markerRect.top >= chatRect.top + visibleThreshold && markerRect.top <= chatRect.bottom - visibleThreshold
+      )
+      || (
+        markerRect.bottom >= chatRect.top + visibleThreshold && markerRect.bottom <= chatRect.bottom - visibleThreshold
+      )
+      ;
+
+      if (isVisible) {
+        activeMarkerId = marker.getAttribute('data-marker-id') || `marker-${index}`;
+      }
+
+      // Remove active class from all markers first
+      marker.classList.remove('active');
+
+      // Add active class to the marker whose message is visible
+      if (isVisible) {
+        marker.classList.add('active');
+      }
+
+    });
+  };
+
+  chat.addEventListener('scrollend', handleScroll);
+
+  return () => chat.removeEventListener('scrollend', handleScroll);
+}
+
 function drawMarkers(root: Element | ShadowRoot, track: HTMLDivElement): void {
   if (!root || !track) return;
 
@@ -97,7 +151,7 @@ function drawMarkers(root: Element | ShadowRoot, track: HTMLDivElement): void {
   track.innerHTML = '';
 
   const msgs = root.querySelectorAll<HTMLElement>(msgSelector);
-  msgs.forEach((msg) => {
+  msgs.forEach((msg, index) => {
     const chatRect = chat.getBoundingClientRect();
     const msgRect = msg.getBoundingClientRect();
 
@@ -111,6 +165,7 @@ function drawMarkers(root: Element | ShadowRoot, track: HTMLDivElement): void {
 
     const marker = document.createElement('div');
     marker.className = 'scroll-marker';
+    marker.setAttribute('data-marker-id', `msg-${index}`);
     marker.style.top = `${markerY}px`;
     marker.onclick = () => {
       chat.scrollTo({ top: desiredScrollTop, behavior: 'instant' });
@@ -165,6 +220,9 @@ function init(track: HTMLDivElement): () => void {
     characterData: true,
   });
 
+  // --- Scroll handler for hover effect ---
+  const scrollCleanup = addScrollHandler(chat, track);
+
   // Initial draw.
   drawMarkers(root, track);
 
@@ -173,6 +231,7 @@ function init(track: HTMLDivElement): () => void {
     resizeObserver?.disconnect();
     window.removeEventListener('resize', onWindowResize);
     mutationObserver.disconnect();
+    scrollCleanup();
   };
 }
 </script>
@@ -210,9 +269,11 @@ function init(track: HTMLDivElement): () => void {
     transition: opacity 0.35s ease, transform 0.3s ease;
   }
 
-  :global(#scroll-marker-track .scroll-marker:hover) {
+  /* Active/hover state via JavaScript - markers scroll into view */
+  :global(#scroll-marker-track .scroll-marker.active) {
     opacity: 1;
     transform: translateX(-50%) scale(1.35, 2);
     background: color-mix(in srgb, var(--red) 80%, var(--fg) 20%)
   }
+
 </style>
