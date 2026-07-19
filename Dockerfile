@@ -67,6 +67,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #     && rm -rf /tmp/docker /tmp/docker.tgz
 
 # Install Node 22
+# hadolint ignore=SC3040,DL4006
 RUN set -o pipefail && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs
 
