@@ -67,7 +67,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #     && rm -rf /tmp/docker /tmp/docker.tgz
 
 # Install Node 22
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+RUN set -o pipefail && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs
 
     # Speed up pnpm by configuring cache + store
@@ -114,10 +114,7 @@ COPY . .
 RUN mkdir -p data logs services/cache/search
 
 # Build SvelteKit (Track B)
-RUN pnpm install --frozen-lockfile
-# RUN pnpm build:widgets
-RUN rm -rf web-build
-RUN pnpm build:app
+RUN pnpm install --frozen-lockfile && rm -rf web-build && pnpm build:app
 
 # Entrypoint that drops to PUID/PGID (default 1000:1000) and repairs
 # ownership on the bind-mounted /app/data and /app/logs. Without this,
