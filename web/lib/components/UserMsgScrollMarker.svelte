@@ -269,28 +269,4 @@
       transform 0.3s ease,
       opacity 0.35s ease;
   }
-
-  /* Markers themselves need pointer-events to be clickable. */
-  :global(#scroll-marker-track .scroll-marker) {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 17px;
-    height: 8px;
-    border-radius: 20%;
-    background: var(--red, #4f8ef7);
-    opacity: 0.7;
-    cursor: pointer;
-    pointer-events: auto;
-    transition:
-      opacity 0.35s ease,
-      transform 0.3s ease;
-  }
-
-  /* Active/hover state via JavaScript - markers scroll into view */
-  :global(#scroll-marker-track .scroll-marker.active) {
-    opacity: 1;
-    transform: translateX(-50%) scale(1.35, 2);
-    background: color-mix(in srgb, var(--red) 80%, var(--fg) 20%);
-  }
 </style>
