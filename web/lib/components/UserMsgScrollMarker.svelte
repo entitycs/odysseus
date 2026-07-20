@@ -1,18 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import ScrollMarker, { type Props as ScrollMarkerProps } from "$lib/components/ScrollMarker.svelte";
+  import ScrollMarker, {
+    type Props as ScrollMarkerProps,
+  } from "$lib/components/ScrollMarker.svelte";
+
   // ScrollMarker component
   //
-  // A self-contained scroll-position preview overlay.  Mounted into the legacy
-  // index.html shell via web/entries/scroll-marker.ts via:
-  //   <div data-svelte="scroll-marker"></div>
-  //
   // Watches #chat-history for content mutations and container resizes, then
-  // renders small clickable dots alongside the native scrollbar — one per
+  // renders small clickable pills alongside the native scrollbar — one per
   // .msg-user element — so the user can jump directly to any user turn.
 
   // --- Props -----------------------------------------------------------
-  // All optional; defaults match the original plugin behaviour.
   interface Props {
     chat: HTMLElement | null;
     /** CSS selector for the scrollable chat container. */
@@ -22,44 +20,71 @@
     /** Debounce delay (ms) before redrawing after a mutation / resize. */
     debounceMs?: number;
   }
-
   let {
     chat = null,
-    chatSelector = "#chat-history",
     msgSelector = ".msg-user",
     debounceMs = 300,
   }: Props = $props();
 
   // --- DOM refs --------------------------------------------------------
-  let trackEl = $state<HTMLDivElement | null>(null);
+  let trackEl = $state<HTMLDivElement>();
+
+  // --- State data ------------------------------------------------------
   let msgs = $state<NodeListOf<HTMLElement>>();
   let markers = $state<ScrollMarkerProps[]>([]);
-  import { springSlide } from "$lib/transitions/springSlide.js";
-    import { createMsgFooter } from "$lib/legacy/chatRenderer";
 
-  // --- Marker state ----------------------------------------------------
-  // Track which marker has active hover class based on scroll position
-  let activeMarkerId: string | null = $state(null);
-  // let chat: HTMLElement | null = null;
+  // --- on Mount --------------------------------------------------------
   onMount(async () => {
     if (!trackEl) return;
-    init(trackEl);
-    // chat = document.querySelector<HTMLElement>(chatSelector);
-    // Reveal the host element (hidden until widget is ready, matching
-    // the ThemeToggle pattern).
-    const host = document.querySelector('[data-svelte="scroll-marker"]');
-    if (host) host.removeAttribute("hidden");
+    init(trackEl); // ignoring return value when not in $effect
   });
 
-  // --- Lifecycle -------------------------------------------------------
-  $effect(() => {});
-
+  // --- Events ----------------------------------------------------------
   const onMarkerClick = (e: Event, top: number) => {
     if (!chat) return;
-    chat.scrollTo({ top: top, behavior: "instant" });
+    chat.scrollTo({ top: top, behavior: "smooth" });
   };
 
-  // --- Core logic (mirrors the original plugin) -----------------------
+  $effect(() => {
+    if (!trackEl || !chat || !!!msgs || msgs.length === 0) return;
+
+    const scrollRange = chat.scrollHeight - chat.clientHeight;
+    if (scrollRange <= 0) {
+      markers.splice(0, markers.length);
+      return;
+    }
+
+    const trackHeight = trackEl.clientHeight || chat.clientHeight;
+    const thumbHeight = (chat.clientHeight / chat.scrollHeight) * trackHeight;
+    const usableTrack = trackHeight;
+
+    markers = Array.from(msgs).map((msg, index) => {
+      if (!trackEl) throw new EvalError("track element not found");
+      const chatRect = chat.getBoundingClientRect();
+      const msgRect = msg.getBoundingClientRect();
+
+      const msgTopInScrollSpace = msgRect.top - chatRect.top + chat.scrollTop;
+
+      let desiredScrollTop = msgTopInScrollSpace - chat.clientHeight / 2;
+      desiredScrollTop = Math.max(0, Math.min(desiredScrollTop, scrollRange));
+
+      const markerY =
+        (msgTopInScrollSpace / scrollRange) * usableTrack - thumbHeight / 2;
+
+      const marker: ScrollMarkerProps = {
+        message: msg,
+        dataMarkerId: index,
+        className: "scroll-marker",
+        top: markerY,
+        scrollTop: desiredScrollTop,
+        onclick: (e) => onMarkerClick(e, desiredScrollTop),
+        isVisible: false,
+      };
+      return marker;
+    });
+  });
+
+  // --- Core logic (mirrors the original plugin) ------------------------
 
   function positionTrack(): void {
     if (!chat || !trackEl) return;
@@ -68,7 +93,7 @@
     const thumbHeight = (chat.clientHeight / chat.scrollHeight) * trackHeight;
 
     const ua = navigator.userAgent.toLowerCase();
-    const hasNoArrows = true; //- use first/last markers//
+    const hasNoArrows = true; //for all -- use first/last markers
     // ua.includes('macintosh') ||
     // ua.includes('ipad') ||
     // ua.includes('iphone') ||
@@ -92,17 +117,14 @@
     if (!chat || !trackEl) return () => {};
     const handleScroll = () => {
       if (!chat || !trackEl) return;
-      // Clear any previously active marker
-      activeMarkerId = null;
 
-      // Find which marker is currently within viewport (threshold: 15% from edges)
+      // Find which markers are currently within viewport (threshold: 15% from edges)
       const visibleThreshold = chat.clientHeight * 0.1;
       const chatRect = chat.getBoundingClientRect();
 
-      // markers = trackEl.querySelectorAll<HTMLDivElement>(".scroll-marker");
-      const msgs = chat.querySelectorAll<HTMLElement>(msgSelector);
+      // const msgs = chat.querySelectorAll<HTMLElement>(msgSelector);
       markers.forEach((marker, index) => {
-        const markedEl = msgs[index];
+        const markedEl = marker.message;
         const markerRect = markedEl.getBoundingClientRect(); //marker.getBoundingClientRect();
         const isVisible =
           (markerRect.top <= chatRect.top &&
@@ -117,14 +139,15 @@
 
     chat.addEventListener("scrollend", handleScroll, { passive: true });
 
-    return () => chat?.removeEventListener("scrollend", handleScroll);
+    return () => {
+      chat?.removeEventListener("scrollend", handleScroll);
+    };
   }
 
-  function drawMarkers( ): void {
+  function drawMarkers(): void {
     if (!chat || !trackEl) return;
 
     positionTrack();
-
 
     const scrollRange = chat.scrollHeight - chat.clientHeight;
     if (scrollRange <= 0) {
@@ -150,22 +173,20 @@
       let desiredScrollTop = msgTopInScrollSpace - chat.clientHeight / 2;
       desiredScrollTop = Math.max(0, Math.min(desiredScrollTop, scrollRange));
 
-      const thumbTop = (desiredScrollTop / scrollRange) * usableTrack;
       const markerY =
         (msgTopInScrollSpace / scrollRange) * usableTrack - thumbHeight / 2;
 
       const marker: ScrollMarkerProps = {
         message: msg,
-        style: {},
         dataMarkerId: index,
         className: "scroll-marker",
         top: markerY,
         scrollTop: desiredScrollTop,
         onclick: (e) => onMarkerClick(e, desiredScrollTop),
-        isVisible: false
+        isVisible: false,
       };
       markers.push(marker);
-      // track.appendChild(marker);
+      // track.appendChild(marker); // legacy way
     });
   }
 
@@ -174,7 +195,6 @@
    * Svelte's $effect can tear everything down when the component unmounts.
    */
   function init(track: HTMLDivElement): () => void {
-    const chat = document.querySelector<HTMLElement>(chatSelector);
     if (!chat) return () => {};
 
     // Ensure the chat element is positioned so child markers can use
@@ -182,15 +202,13 @@
     const cs = getComputedStyle(chat);
     if (cs.position === "static") chat.style.position = "relative";
 
-    const root: Element | ShadowRoot = chat.shadowRoot ?? chat;
-
     let redrawTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const scheduleDraw = (includePosition = false) => {
       if (redrawTimeout !== null) clearTimeout(redrawTimeout);
       redrawTimeout = setTimeout(() => {
         if (includePosition) positionTrack();
-        drawMarkers( );
+        drawMarkers();
       }, debounceMs);
     };
 
@@ -218,14 +236,14 @@
     if (!_scrollHandler) _scrollHandler = addScrollHandler();
 
     // Initial draw.
-    drawMarkers( );
+    drawMarkers();
 
     return () => {
       if (redrawTimeout !== null) clearTimeout(redrawTimeout);
       resizeObserver?.disconnect();
       window.removeEventListener("resize", onWindowResize);
       mutationObserver.disconnect();
-      // scrollCleanup();
+      _scrollHandler?.();
     };
   }
 </script>
@@ -235,28 +253,9 @@
   bind:this hands the reference to $effect so the imperative logic
   can use it without querySelector('#scroll-marker-track').
 -->
-<div
-  bind:this={trackEl}
-  id="scroll-marker-track"
-  aria-hidden="true"
->
+<div bind:this={trackEl} id="scroll-marker-track" aria-hidden="true">
   {#each markers as marker, index}
-    <ScrollMarker
-      {...marker}
-      // className=".scroll-marker"
-      // dataMarkerId={index}
-      // style={{ top: marker.top }}
-      // onclick={(e) => onMarkerClick(e, marker.scroll.top)}
-    />
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <!-- <div
-      transition:springSlide={{ duration: 600, overshoot: 45 }}
-      class="scroll-marker{marker.isVisible ? ' active' : ''}"
-      data-marker-id={`msg-${marker.dataMarkerId}`}
-      style="top:{marker.top}px"
-      onclick={(e) => onMarkerClick(e, marker.scrollTop)}
-    ></div> -->
+    <ScrollMarker {...marker} />
   {/each}
 </div>
 
