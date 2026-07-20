@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-
+  import ScrollMarker, { type Props as ScrollMarkerProps } from "$lib/components/ScrollMarker.svelte";
   // ScrollMarker component
   //
   // A self-contained scroll-position preview overlay.  Mounted into the legacy
@@ -14,6 +14,7 @@
   // --- Props -----------------------------------------------------------
   // All optional; defaults match the original plugin behaviour.
   interface Props {
+    chat: HTMLElement | null;
     /** CSS selector for the scrollable chat container. */
     chatSelector?: string;
     /** CSS selector for the message elements to mark. */
@@ -23,6 +24,7 @@
   }
 
   let {
+    chat = null,
     chatSelector = "#chat-history",
     msgSelector = ".msg-user",
     debounceMs = 300,
@@ -31,17 +33,18 @@
   // --- DOM refs --------------------------------------------------------
   let trackEl = $state<HTMLDivElement | null>(null);
   let msgs = $state<NodeListOf<HTMLElement>>();
-  let markers = $state([]);
+  let markers = $state<ScrollMarkerProps[]>([]);
   import { springSlide } from "$lib/transitions/springSlide.js";
+    import { createMsgFooter } from "$lib/legacy/chatRenderer";
 
   // --- Marker state ----------------------------------------------------
   // Track which marker has active hover class based on scroll position
   let activeMarkerId: string | null = $state(null);
-  let chat: HTMLElement | null = null;
+  // let chat: HTMLElement | null = null;
   onMount(async () => {
     if (!trackEl) return;
     init(trackEl);
-    chat = document.querySelector<HTMLElement>(chatSelector);
+    // chat = document.querySelector<HTMLElement>(chatSelector);
     // Reveal the host element (hidden until widget is ready, matching
     // the ThemeToggle pattern).
     const host = document.querySelector('[data-svelte="scroll-marker"]');
@@ -58,11 +61,10 @@
 
   // --- Core logic (mirrors the original plugin) -----------------------
 
-  function positionTrack(track: HTMLDivElement): void {
-    const chat = document.querySelector<HTMLElement>(chatSelector);
-    if (!chat) return;
+  function positionTrack(): void {
+    if (!chat || !trackEl) return;
 
-    const trackHeight = track.clientHeight || chat.clientHeight;
+    const trackHeight = trackEl.clientHeight || chat.clientHeight;
     const thumbHeight = (chat.clientHeight / chat.scrollHeight) * trackHeight;
 
     const ua = navigator.userAgent.toLowerCase();
@@ -76,23 +78,20 @@
     const xMargin = 6;
     const rect = chat.getBoundingClientRect();
 
-    track.style.position = "fixed";
-    track.style.top = `${rect.top + yMargin}px`;
-    track.style.left = `${rect.right - xMargin}px`;
-    track.style.width = "20px";
-    track.style.height = `${rect.height - 2 * yMargin}px`;
+    trackEl.style.position = "fixed";
+    trackEl.style.top = `${rect.top + yMargin}px`;
+    trackEl.style.left = `${rect.right - xMargin}px`;
+    trackEl.style.width = "20px";
+    trackEl.style.height = `${rect.height - 2 * yMargin}px`;
   }
   let _scrollHandler: (() => void) | null = null;
   /**
    * Add scroll handler to chat container to detect when markers come into view
    */
-  function addScrollHandler(
-    chat: HTMLElement,
-    track: HTMLDivElement,
-  ): () => void {
+  function addScrollHandler(): () => void {
+    if (!chat || !trackEl) return () => {};
     const handleScroll = () => {
-      if (!trackEl) return;
-
+      if (!chat || !trackEl) return;
       // Clear any previously active marker
       activeMarkerId = null;
 
@@ -112,36 +111,20 @@
             markerRect.top <= chatRect.bottom - visibleThreshold) ||
           (markerRect.bottom >= chatRect.top + visibleThreshold &&
             markerRect.bottom <= chatRect.bottom - visibleThreshold);
-        if (isVisible) {
-          activeMarkerId = marker.dataMarkerId || `marker-${index}`;
-        }
-
-        // Remove active class from all markers first
         marker.isVisible = isVisible;
-        // classList.remove("active");
-
-        // // Add active class to the marker whose message is visible
-        // if (isVisible) {
-        //   marker.classList.add("active");
-        // }
       });
     };
 
-    chat.addEventListener("scrollend", handleScroll);
+    chat.addEventListener("scrollend", handleScroll, { passive: true });
 
-    return () => chat.removeEventListener("scrollend", handleScroll);
+    return () => chat?.removeEventListener("scrollend", handleScroll);
   }
 
-  function drawMarkers(
-    root: Element | ShadowRoot,
-    track: HTMLDivElement,
-  ): void {
-    if (!root || !track) return;
+  function drawMarkers( ): void {
+    if (!chat || !trackEl) return;
 
-    positionTrack(track);
+    positionTrack();
 
-    const chat = document.querySelector<HTMLElement>(chatSelector);
-    if (!chat) return;
 
     const scrollRange = chat.scrollHeight - chat.clientHeight;
     if (scrollRange <= 0) {
@@ -149,15 +132,16 @@
       return;
     }
 
-    const trackHeight = track.clientHeight || chat.clientHeight;
+    const trackHeight = trackEl.clientHeight || chat.clientHeight;
     const thumbHeight = (chat.clientHeight / chat.scrollHeight) * trackHeight;
     const usableTrack = trackHeight;
 
     // track.innerHTML = "";
 
-    msgs = root.querySelectorAll<HTMLElement>(msgSelector);
+    msgs = chat.querySelectorAll<HTMLElement>(msgSelector);
     markers.splice(0, markers.length);
     msgs.forEach((msg, index) => {
+      if (!chat) return;
       const chatRect = chat.getBoundingClientRect();
       const msgRect = msg.getBoundingClientRect();
 
@@ -170,13 +154,15 @@
       const markerY =
         (msgTopInScrollSpace / scrollRange) * usableTrack - thumbHeight / 2;
 
-      const marker = { style: {}, scroll: {} };
-      marker.className = "scroll-marker";
-      marker.dataMarkerId = index;
-      marker.style.top = markerY;
-      marker.scroll.top = desiredScrollTop;
-      marker.onclick = () => {
-        chat.scrollTo({ top: desiredScrollTop, behavior: "instant" });
+      const marker: ScrollMarkerProps = {
+        message: msg,
+        style: {},
+        dataMarkerId: index,
+        className: "scroll-marker",
+        top: markerY,
+        scrollTop: desiredScrollTop,
+        onclick: (e) => onMarkerClick(e, desiredScrollTop),
+        isVisible: false
       };
       markers.push(marker);
       // track.appendChild(marker);
@@ -203,8 +189,8 @@
     const scheduleDraw = (includePosition = false) => {
       if (redrawTimeout !== null) clearTimeout(redrawTimeout);
       redrawTimeout = setTimeout(() => {
-        if (includePosition) positionTrack(track);
-        drawMarkers(root, track);
+        if (includePosition) positionTrack();
+        drawMarkers( );
       }, debounceMs);
     };
 
@@ -218,21 +204,21 @@
 
     // --- Window resize ---
     const onWindowResize = () => scheduleDraw(true);
-    window.addEventListener("resize", onWindowResize);
+    window.addEventListener("resize", onWindowResize, { passive: true });
 
     // --- Content mutations ---
     const mutationObserver = new MutationObserver(() => scheduleDraw(true));
-    mutationObserver.observe(root, {
+    mutationObserver.observe(chat, {
       childList: true,
       subtree: true,
       characterData: true,
     });
 
     // --- Scroll handler for hover effect ---
-    if (!_scrollHandler) _scrollHandler = addScrollHandler(chat, track);
+    if (!_scrollHandler) _scrollHandler = addScrollHandler();
 
     // Initial draw.
-    drawMarkers(root, track);
+    drawMarkers( );
 
     return () => {
       if (redrawTimeout !== null) clearTimeout(redrawTimeout);
@@ -253,18 +239,24 @@
   bind:this={trackEl}
   id="scroll-marker-track"
   aria-hidden="true"
-  onclick={() => init(trackEl)}
 >
   {#each markers as marker, index}
+    <ScrollMarker
+      {...marker}
+      // className=".scroll-marker"
+      // dataMarkerId={index}
+      // style={{ top: marker.top }}
+      // onclick={(e) => onMarkerClick(e, marker.scroll.top)}
+    />
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
+    <!-- <div
       transition:springSlide={{ duration: 600, overshoot: 45 }}
       class="scroll-marker{marker.isVisible ? ' active' : ''}"
       data-marker-id={`msg-${marker.dataMarkerId}`}
-      style="top:{marker.style.top}px"
-      onclick={(e) => onMarkerClick(e, marker.scroll.top)}
-    ></div>
+      style="top:{marker.top}px"
+      onclick={(e) => onMarkerClick(e, marker.scrollTop)}
+    ></div> -->
   {/each}
 </div>
 
