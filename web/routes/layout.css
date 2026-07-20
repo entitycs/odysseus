@@ -16,6 +16,9 @@
   --column-margin-top: 4rem;
   font-family: var(--font-body);
   color: var(--color-text);
+  --bp-mobile: 480px;
+  --bp-tablet: 768px;
+  --bp-desktop: 1024px;
 }
 
 body {
