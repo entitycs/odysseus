@@ -20,6 +20,7 @@
    import * as sessionModule from "$lib/legacy/sessions";
    import uiModule from "$lib/legacy/ui";
    import { updatePlusDot } from "$lib/overflow";
+    import UserMsgScrollMarker from "$lib/components/UserMsgScrollMarker.svelte";
 
    let chatHistory: HTMLElement;
    let unsubscribeModelItems;
@@ -1078,7 +1079,7 @@
 		     The inline scroll script in web/app.html (lines 288-347) can be
 		     removed once this component is confirmed working. -->
 <ScrollChatBottom />
-
+<UserMsgScrollMarker chat = {chatHistory} />
 <!-- Rename Session Modal -->
 <style>
    .chat-history {
