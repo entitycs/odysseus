@@ -92,8 +92,6 @@ onMount(async () => {
 </script>
 {@render children()}
 <div>
-   <UserMsgScrollMarker />
-   <!-- <script type="module" src="/static/svelte/scroll-marker.js"></script> -->
 </div>
 <div id="welcome-screen">
    <div class="welcome-name">
