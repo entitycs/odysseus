@@ -2125,7 +2125,6 @@
           title="Delete session">&#x2715;</button
         >
         <div class="rail-separator"></div>
-        <!-- Dynamic contextual indicators (shown only while active) -->
         <!-- todo {const hasChatNotif = el('rail-chats')?.classList.contains('rail-notify');}-->
         <!-- in English: attempting: if rail-notify, then rail-dynamic -->
         <button
@@ -2152,9 +2151,9 @@
               console.log("has NO chat notif");
               e.stopPropagation();
               if (window.sessionModule)
-                window.sessionModule.openLibrary("chats");
-            }
-          }}
+              window.sessionModule.openLibrary("chats");
+          }
+        }}
           // style="display:none"
           ><svg
             width="16"
@@ -2169,8 +2168,9 @@
               d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
             /></svg
           ></button
-        >
-        <button
+          >
+          <!-- Dynamic contextual indicators (shown only while active) -->
+          <button
           class="icon-rail-btn rail-dynamic"
           id="rail-documents"
           title="Documents"

@@ -1,14 +1,10 @@
 // Model Picker — chatbox model selector dropdown
 // Extracted from sessions.js
 
-import { providerLogo } from './providers.js';
-import uiModule from './ui.js';
-import settingsModule from './settings.js';
-import { sortModelObjects } from './modelSort.js';
-import spinnerModule from './spinner.js';
 import { sortModelObjects } from '$lib/legacy/modelSort.js';
 import { providerLogo } from '$lib/legacy/providers.js';
 import settingsModule from '$lib/legacy/settings.js';
+import spinnerModule from '$lib/legacy/spinner.js';
 import uiModule from '$lib/legacy/ui.js';
 
 /**
@@ -21,6 +17,7 @@ export function init() {
     API_BASE = window.location.origin;
   }
 }
+
 
 // ── Recent + Favorites persistence ──
 // Recent is auto-tracked (last 5 picks, most-recent-first) and lives in its
@@ -37,29 +34,19 @@ function _loadList(key) {
   try {
     const a = JSON.parse(localStorage.getItem(key) || '[]');
     return Array.isArray(a) ? a : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 function _saveList(key, list) {
-  try {
-    localStorage.setItem(key, JSON.stringify(list));
-  } catch {
-    /* quota / private mode */
-  }
+  try { localStorage.setItem(key, JSON.stringify(list)); } catch { /* quota / private mode */ }
 }
-function _loadRecent() {
-  return _loadList(RECENT_KEY);
-}
-function _pushRecent(mid) {
+function _loadRecent() { return _loadList(RECENT_KEY); }
+export function pushRecent(mid) {
   if (!mid) return;
-  const next = _loadRecent().filter((x) => x !== mid);
+  const next = _loadRecent().filter(x => x !== mid);
   next.unshift(mid);
   _saveList(RECENT_KEY, next.slice(0, RECENT_MAX));
 }
-function _loadFavorites() {
-  return _loadList(FAVORITES_KEY);
-}
+function _loadFavorites() { return _loadList(FAVORITES_KEY); }
 function _toggleFavorite(mid) {
   const favs = _loadFavorites();
   const i = favs.indexOf(mid);
@@ -68,15 +55,10 @@ function _toggleFavorite(mid) {
   _saveList(FAVORITES_KEY, favs);
   // Keep the sidebar Models section (same key) in sync if it's mounted.
   try {
-    if (
-      window.modelsModule &&
-      typeof window.modelsModule.refreshModels === 'function'
-    ) {
+    if (window.modelsModule && typeof window.modelsModule.refreshModels === 'function') {
       window.modelsModule.refreshModels();
     }
-  } catch {
-    /* sidebar not present */
-  }
+  } catch { /* sidebar not present */ }
   return i < 0; // true when now favorited
 }
 
@@ -87,26 +69,19 @@ function _pickerModelKey(m) {
 
 // ── Shared keyboard nav for model pickers ──
 function _handlePickerKeydown(e, listEl, itemSelector, closeFn) {
-  if (e.key === 'Escape') {
-    closeFn();
-    return;
-  }
+  if (e.key === 'Escape') { closeFn(); return; }
   if (e.key === 'Enter') {
     e.preventDefault();
-    const active =
-      listEl.querySelector(itemSelector + '.kb-active') ||
-      listEl.querySelector(itemSelector);
+    const active = listEl.querySelector(itemSelector + '.kb-active') || listEl.querySelector(itemSelector);
     if (active) active.click();
     return;
   }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
-    const items = [...listEl.querySelectorAll(itemSelector)].filter(
-      (el) => el.style.display !== 'none',
-    );
+    const items = [...listEl.querySelectorAll(itemSelector)].filter(el => el.style.display !== 'none');
     if (!items.length) return;
-    const cur = items.findIndex((el) => el.classList.contains('kb-active'));
-    items.forEach((el) => el.classList.remove('kb-active'));
+    const cur = items.findIndex(el => el.classList.contains('kb-active'));
+    items.forEach(el => el.classList.remove('kb-active'));
     let next;
     if (e.key === 'ArrowDown') next = cur < items.length - 1 ? cur + 1 : 0;
     else next = cur > 0 ? cur - 1 : items.length - 1;
@@ -122,17 +97,41 @@ let _defaultChatPickInFlight = false;
 let _defaultPendingSeq = 0;
 
 function _modelExists(modelId, url) {
-  if (!modelId || !window.modelsModule || !window.modelsModule.getCachedItems)
-    return false;
+  if (!modelId || !window.modelsModule || !window.modelsModule.getCachedItems) return false;
   const items = window.modelsModule.getCachedItems() || [];
   if (!items.length) return true;
   const targetUrl = (url || '').replace(/\/+$/, '');
-  return items.some((item) => {
+  return items.some(item => {
     if (item.offline) return false;
     const itemUrl = (item.url || '').replace(/\/+$/, '');
     const models = (item.models || []).concat(item.models_extra || []);
     return models.includes(modelId) && (!targetUrl || itemUrl === targetUrl);
   });
+}
+
+function _firstAvailableModel() {
+  if (!window.modelsModule || !window.modelsModule.getCachedItems) return null;
+  const items = window.modelsModule.getCachedItems() || [];
+  for (const item of items) {
+    if (item.offline) continue;
+    const models = (item.models || []).concat(item.models_extra || []);
+    if (!models.length) continue;
+    return {
+      url: item.url,
+      modelId: models[0],
+      endpointId: item.endpoint_id || '',
+    };
+  }
+  return null;
+}
+
+async function _ensureModelCacheForFallback() {
+  if (!window.modelsModule || !window.modelsModule.getCachedItems) return;
+  const items = window.modelsModule.getCachedItems() || [];
+  if (items.length) return;
+  if (typeof window.modelsModule.refreshModels === 'function') {
+    try { await window.modelsModule.refreshModels(false); } catch (_) {}
+  }
 }
 
 async function _ensureDefaultPendingChat() {
@@ -211,9 +210,7 @@ function _initModelPickerDropdown() {
   const menu = document.getElementById('model-picker-menu');
   const search = document.getElementById('model-picker-search');
   const listEl = document.getElementById('model-picker-list');
-  const searchRow = menu
-    ? menu.querySelector('.model-picker-search-row')
-    : null;
+  const searchRow = menu ? menu.querySelector('.model-picker-search-row') : null;
   const refreshBtn = document.getElementById('model-picker-refresh-btn');
   if (!wrap || !btn || !menu || !search || !listEl) return;
   if (wrap.dataset.modelPickerBound === '1') return;
@@ -225,16 +222,12 @@ function _initModelPickerDropdown() {
     const _scrollBtn = document.getElementById('scroll-bottom-btn');
     if (_scrollBtn) _scrollBtn.style.display = '';
     menu.classList.add('closing');
-    menu.addEventListener(
-      'animationend',
-      function _onDone() {
-        menu.removeEventListener('animationend', _onDone);
-        menu.classList.remove('closing');
-        menu.classList.add('hidden');
-        search.value = '';
-      },
-      { once: true },
-    );
+    menu.addEventListener('animationend', function _onDone() {
+      menu.removeEventListener('animationend', _onDone);
+      menu.classList.remove('closing');
+      menu.classList.add('hidden');
+      search.value = '';
+    }, { once: true });
     // Fallback if animationend doesn't fire
     setTimeout(() => {
       if (!menu.classList.contains('hidden')) {
@@ -249,25 +242,16 @@ function _initModelPickerDropdown() {
     _close();
     try {
       if (kind === 'cookbook') {
-        if (
-          window.cookbookModule &&
-          typeof window.cookbookModule.open === 'function'
-        ) {
+        if (window.cookbookModule && typeof window.cookbookModule.open === 'function') {
           window.cookbookModule.open();
         } else {
-          const btn =
-            document.getElementById('tool-cookbook-btn') ||
-            document.getElementById('rail-cookbook');
+          const btn = document.getElementById('tool-cookbook-btn') || document.getElementById('rail-cookbook');
           if (btn) btn.click();
           else location.hash = '#cookbook';
         }
       } else if (kind === 'settings') {
-        if (settingsModule && typeof settingsModule.open === 'function')
-          settingsModule.open();
-      } else if (
-        window.adminModule &&
-        typeof window.adminModule.open === 'function'
-      ) {
+        if (settingsModule && typeof settingsModule.open === 'function') settingsModule.open();
+      } else if (window.adminModule && typeof window.adminModule.open === 'function') {
         window.adminModule.open('services');
       } else if (settingsModule && typeof settingsModule.open === 'function') {
         settingsModule.open('services');
@@ -286,27 +270,23 @@ function _initModelPickerDropdown() {
   let _pickerLoadSeq = 0;
 
   async function _refreshLocalProbe() {
+    try {
+      if (window.__odysseusChatBusy || Date.now() < (window.__odysseusChatBusyUntil || 0)) return;
+    } catch (_) {}
     const now = Date.now();
     if (now - _localProbeFetchedAt < _LOCAL_PROBE_TTL_MS) return;
     _localProbeFetchedAt = now;
     try {
-      const r = await fetch('/api/model-endpoints/probe-local', {
-        credentials: 'same-origin',
-      });
+      const r = await fetch('/api/model-endpoints/probe-local', { credentials: 'same-origin' });
       if (r.ok) _localProbe = (await r.json()) || {};
-    } catch (_) {
-      /* leave stale data; picker still works */
-    }
+    } catch (_) { /* leave stale data; picker still works */ }
   }
 
   function _getAllModels() {
-    const items =
-      window.modelsModule && window.modelsModule.getCachedItems
-        ? window.modelsModule.getCachedItems()
-        : [];
+    const items = (window.modelsModule && window.modelsModule.getCachedItems) ? window.modelsModule.getCachedItems() : [];
     const result = [];
     const seen = new Set();
-    items.forEach((item) => {
+    items.forEach(item => {
       // Previously: offline endpoints were skipped entirely, so a server
       // that briefly went down disappeared from the picker — confusing
       // when the user can still see it (offline-tagged) in Settings.
@@ -316,13 +296,9 @@ function _initModelPickerDropdown() {
       // existing "local server appears offline" path on line 301).
       const epOffline = !!item.offline;
       const allModels = (item.models || []).concat(item.models_extra || []);
-      const allDisplay = (item.models_display || []).concat(
-        item.models_extra_display || [],
-      );
+      const allDisplay = (item.models_display || []).concat(item.models_extra_display || []);
       // Mark local endpoints whose live probe failed.
-      const probeResult = item.endpoint_id
-        ? _localProbe[item.endpoint_id]
-        : null;
+      const probeResult = item.endpoint_id ? _localProbe[item.endpoint_id] : null;
       const isLocalDead = !!(probeResult && probeResult.alive === false);
       const isApiEndpoint = item.category && item.category !== 'local';
       allModels.forEach((mid, i) => {
@@ -349,15 +325,11 @@ function _initModelPickerDropdown() {
             item.category || '',
             item.host || '',
             item.url || '',
-          ]
-            .filter(Boolean)
-            .join(' '),
+          ].filter(Boolean).join(' '),
           stale: isLocalDead || epOffline,
           staleReason: epOffline
-            ? item.ping_error || 'endpoint offline'
-            : isLocalDead
-              ? probeResult.error || 'not responding'
-              : '',
+            ? (item.ping_error || 'endpoint offline')
+            : (isLocalDead ? (probeResult.error || 'not responding') : ''),
           offline: epOffline,
         });
       });
@@ -409,101 +381,43 @@ function _initModelPickerDropdown() {
 
   // ── Provider display names and grouping ──
   const _PROVIDER_NAMES = {
-    '01-ai': 'Yi',
-    abacusai: 'Abacus AI',
-    adept: 'Adept',
-    ai21: 'AI21 Labs',
-    ai21labs: 'AI21 Labs',
-    'aion-labs': 'Aion Labs',
-    aisingapore: 'AI Singapore',
-    allenai: 'Allen AI',
-    amazon: 'Amazon',
-    'anthracite-org': 'Anthracite',
-    anthropic: 'Anthropic',
-    'arcee-ai': 'Arcee AI',
-    baai: 'BAAI',
-    baidu: 'Baidu',
-    bigcode: 'BigCode',
-    'black-forest-labs': 'Black Forest Labs',
-    bytedance: 'ByteDance',
-    'bytedance-seed': 'ByteDance',
-    cognitivecomputations: 'Cognitive Computations',
-    cohere: 'Cohere',
-    databricks: 'Databricks',
-    deepcogito: 'DeepCogito',
-    deepseek: 'DeepSeek',
-    'deepseek-ai': 'DeepSeek',
-    essentialai: 'Essential AI',
-    google: 'Google',
-    gryphe: 'Gryphe',
-    ibm: 'IBM',
-    'ibm-granite': 'IBM Granite',
-    inception: 'Inception',
-    inclusionai: 'Inclusion AI',
-    inflection: 'Inflection',
-    kwaipilot: 'KwaiPilot',
-    liquid: 'Liquid AI',
-    mancer: 'Mancer',
-    meta: 'Llama',
-    'meta-llama': 'Llama',
-    microsoft: 'Microsoft',
-    minimax: 'MiniMax',
-    minimaxai: 'MiniMax',
-    mistralai: 'Mistral',
-    moonshotai: 'Moonshot',
-    morph: 'Morph',
-    'nex-agi': 'Nex AGI',
-    nousresearch: 'Nous Research',
-    'nv-mistralai': 'NVIDIA x Mistral',
-    nvidia: 'NVIDIA',
-    openai: 'OpenAI',
-    openrouter: 'OpenRouter',
-    perceptron: 'Perceptron',
-    perplexity: 'Perplexity',
-    poolside: 'Poolside',
-    'prime-intellect': 'Prime Intellect',
-    qwen: 'Qwen',
-    rekaai: 'Reka',
-    relace: 'Relace',
-    sao10k: 'Sao10k',
-    sarvamai: 'Sarvam AI',
-    snowflake: 'Snowflake',
-    stepfun: 'StepFun',
-    'stepfun-ai': 'StepFun',
-    stockmark: 'Stockmark',
-    switchpoint: 'SwitchPoint',
-    tencent: 'Tencent',
-    thedrummer: 'TheDrummer',
-    undi95: 'Undi95',
-    upstage: 'Upstage',
-    writer: 'Writer',
-    'x-ai': 'xAI',
-    xiaomi: 'Xiaomi',
-    'z-ai': 'Zhipu',
-    zyphra: 'Zyphra',
-    '~anthropic': 'Anthropic',
-    '~google': 'Google',
-    '~moonshotai': 'Moonshot',
-    '~openai': 'OpenAI',
+    '01-ai': 'Yi', 'abacusai': 'Abacus AI', 'adept': 'Adept',
+    'ai21': 'AI21 Labs', 'ai21labs': 'AI21 Labs', 'aion-labs': 'Aion Labs',
+    'aisingapore': 'AI Singapore', 'allenai': 'Allen AI', 'amazon': 'Amazon',
+    'anthracite-org': 'Anthracite', 'anthropic': 'Anthropic', 'arcee-ai': 'Arcee AI',
+    'baai': 'BAAI', 'baidu': 'Baidu', 'bigcode': 'BigCode',
+    'black-forest-labs': 'Black Forest Labs', 'bytedance': 'ByteDance',
+    'bytedance-seed': 'ByteDance', 'cognitivecomputations': 'Cognitive Computations',
+    'cohere': 'Cohere', 'databricks': 'Databricks', 'deepcogito': 'DeepCogito',
+    'deepseek': 'DeepSeek', 'deepseek-ai': 'DeepSeek', 'essentialai': 'Essential AI',
+    'google': 'Google', 'gryphe': 'Gryphe', 'ibm': 'IBM',
+    'ibm-granite': 'IBM Granite', 'inception': 'Inception',
+    'inclusionai': 'Inclusion AI', 'inflection': 'Inflection',
+    'kwaipilot': 'KwaiPilot', 'liquid': 'Liquid AI', 'mancer': 'Mancer',
+    'meta': 'Llama', 'meta-llama': 'Llama', 'microsoft': 'Microsoft',
+    'minimax': 'MiniMax', 'minimaxai': 'MiniMax', 'mistralai': 'Mistral',
+    'moonshotai': 'Moonshot', 'morph': 'Morph', 'nex-agi': 'Nex AGI',
+    'nousresearch': 'Nous Research', 'nv-mistralai': 'NVIDIA x Mistral',
+    'nvidia': 'NVIDIA', 'openai': 'OpenAI', 'openrouter': 'OpenRouter',
+    'perceptron': 'Perceptron', 'perplexity': 'Perplexity', 'poolside': 'Poolside',
+    'prime-intellect': 'Prime Intellect', 'qwen': 'Qwen', 'rekaai': 'Reka',
+    'relace': 'Relace', 'sao10k': 'Sao10k', 'sarvamai': 'Sarvam AI',
+    'snowflake': 'Snowflake', 'stepfun': 'StepFun', 'stepfun-ai': 'StepFun',
+    'stockmark': 'Stockmark', 'switchpoint': 'SwitchPoint', 'tencent': 'Tencent',
+    'thedrummer': 'TheDrummer', 'undi95': 'Undi95', 'upstage': 'Upstage',
+    'writer': 'Writer', 'x-ai': 'xAI', 'xiaomi': 'Xiaomi',
+    'z-ai': 'Zhipu', 'zyphra': 'Zyphra',
+    '~anthropic': 'Anthropic', '~google': 'Google',
+    '~moonshotai': 'Moonshot', '~openai': 'OpenAI',
   };
   const _PROVIDER_ALIAS = {
-    'meta-llama': 'meta',
-    deepseek: 'deepseek-ai',
-    minimaxai: 'minimax',
-    'stepfun-ai': 'stepfun',
-    ai21labs: 'ai21',
-    'ibm-granite': 'ibm',
-    'bytedance-seed': 'bytedance',
-    '~anthropic': 'anthropic',
-    '~google': 'google',
-    '~moonshotai': 'moonshotai',
-    '~openai': 'openai',
+    'meta-llama': 'meta', 'deepseek': 'deepseek-ai', 'minimaxai': 'minimax',
+    'stepfun-ai': 'stepfun', 'ai21labs': 'ai21', 'ibm-granite': 'ibm',
+    'bytedance-seed': 'bytedance', '~anthropic': 'anthropic',
+    '~google': 'google', '~moonshotai': 'moonshotai', '~openai': 'openai',
   };
   function _providerDisplayName(slug) {
-    return (
-      _PROVIDER_NAMES[slug] ||
-      slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, ' ')
-    );
+    return _PROVIDER_NAMES[slug] || slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, ' ');
   }
   function _providerGroupKey(m) {
     if (m && m.category && m.category !== 'local' && m.epName) {
@@ -532,9 +446,7 @@ function _initModelPickerDropdown() {
     listEl.classList.toggle('is-empty', !hasAnyModel);
     menu.classList.toggle('no-models', !hasAnyModel);
     if (search) {
-      search.placeholder = hasAnyModel
-        ? 'Search models…'
-        : 'No models connected';
+      search.placeholder = hasAnyModel ? 'Search models…' : 'No models connected';
     }
     if (searchRow) {
       searchRow.classList.toggle('searching', !!q);
@@ -596,13 +508,7 @@ function _initModelPickerDropdown() {
       const epSpan = document.createElement('span');
       epSpan.className = 'model-switch-ep';
       // Don't show endpoint name if it matches the model name (local self-hosted)
-      const _epDisplay =
-        m.epName &&
-        !m.display
-          .toLowerCase()
-          .includes(m.epName.toLowerCase().split('/').pop())
-          ? m.epName
-          : '';
+      const _epDisplay = m.epName && !m.display.toLowerCase().includes(m.epName.toLowerCase().split('/').pop()) ? m.epName : '';
       epSpan.textContent = _epDisplay;
       row.appendChild(epSpan);
 
@@ -614,10 +520,7 @@ function _initModelPickerDropdown() {
       const _setFavState = (on) => {
         favDot.classList.toggle('active', on);
         favDot.title = on ? 'Remove from favorites' : 'Add to favorites';
-        favDot.setAttribute(
-          'aria-label',
-          on ? 'Remove from favorites' : 'Add to favorites',
-        );
+        favDot.setAttribute('aria-label', on ? 'Remove from favorites' : 'Add to favorites');
         favDot.setAttribute('aria-pressed', on ? 'true' : 'false');
       };
       _setFavState(favs.includes(m.mid));
@@ -632,8 +535,7 @@ function _initModelPickerDropdown() {
         const idx = favs.indexOf(m.mid);
         if (nowFav && idx < 0) favs.push(m.mid);
         else if (!nowFav && idx >= 0) favs.splice(idx, 1);
-        if (uiModule && uiModule.showToast)
-          uiModule.showToast(nowFav ? 'Favorited' : 'Unfavorited');
+        if (uiModule && uiModule.showToast) uiModule.showToast(nowFav ? 'Favorited' : 'Unfavorited');
         // In browse mode the Favorites section membership changed — rebuild
         // (cheap: Recent + Favorites). In search mode the row stays put, so
         // the in-place favorite update above is enough.
@@ -651,15 +553,10 @@ function _initModelPickerDropdown() {
 
     // ── Search mode: flat, filtered results across the whole catalog ──
     if (q) {
-      const matches = all.filter((m) => {
-        const provName = _providerDisplayName(
-          _providerSlug(m.mid),
-        ).toLowerCase();
+      const matches = all.filter(m => {
+        const provName = _providerDisplayName(_providerSlug(m.mid)).toLowerCase();
         return [m.mid, m.display, m.epName, m.providerText, provName]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-          .includes(q);
+          .filter(Boolean).join(' ').toLowerCase().includes(q);
       });
       if (matches.length === 0) _addEmpty('No matching models');
       else matches.forEach(_addRow);
@@ -715,7 +612,7 @@ function _initModelPickerDropdown() {
       const sorted = [...groups.keys()].sort((a, b) =>
         _providerGroupName(a).localeCompare(_providerGroupName(b)));
 
-      sorted.forEach((provider) => {
+      sorted.forEach(provider => {
         const models = groups.get(provider);
         const isCollapsed = _collapsedProviders.has(provider);
         const header = document.createElement('div');
@@ -741,10 +638,8 @@ function _initModelPickerDropdown() {
         listEl.appendChild(header);
         if (!isCollapsed) {
           const group = document.createElement('div');
-          group.className =
-            'mp-provider-group' +
-            (_justExpandedProvider === provider ? ' mp-just-expanded' : '');
-          models.forEach((m) => {
+          group.className = 'mp-provider-group' + (_justExpandedProvider === provider ? ' mp-just-expanded' : '');
+          models.forEach(m => {
             _addRow(m);
             // Move the just-appended row into the group container
             group.appendChild(listEl.lastElementChild);
@@ -785,11 +680,7 @@ async function _pick(m) {
 
     // Broadcast immediately so listeners (e.g. the tour) can advance without
     // waiting for the async session-create/PATCH that follows.
-    try {
-      document.dispatchEvent(
-        new CustomEvent('odysseus:model-picked', { detail: m }),
-      );
-    } catch {}
+    try { document.dispatchEvent(new CustomEvent('odysseus:model-picked', { detail: m })); } catch {}
 
     // Blur search input before closing to dismiss keyboard on mobile
     if (document.activeElement) document.activeElement.blur();
@@ -801,12 +692,7 @@ async function _pick(m) {
     }
     if (!currentSessionId && _pendingChat) {
       // Already have a deferred session — just update the model
-      _deps.setPendingChat({
-        url: m.url,
-        modelId: m.mid,
-        endpointId: m.endpointId,
-        source: 'manual',
-      });
+      _deps.setPendingChat({ url: m.url, modelId: m.mid, endpointId: m.endpointId, source: 'manual' });
       // Header stays as session name — model switch only updates picker
       updateModelPicker();
       uiModule.showToast(`Using ${m.display}`);
@@ -832,10 +718,7 @@ async function _pick(m) {
       fd.append('endpoint_url', m.url);
       if (m.endpointId) fd.append('endpoint_id', m.endpointId);
       try {
-        const res = await fetch(`${API_BASE}/api/session/${currentSessionId}`, {
-          method: 'PATCH',
-          body: fd,
-        });
+        const res = await fetch(`${API_BASE}/api/session/${currentSessionId}`, { method: 'PATCH', body: fd });
         if (!res.ok) {
           uiModule.showError('Failed to set model');
           finishSwitch();
@@ -859,38 +742,23 @@ async function _pick(m) {
     const detail = (e && e.detail) || {};
     const currentSessionId = _deps.getCurrentSessionId();
     const sessions = _deps.getSessions();
-    const current = sessions.find((x) => x.id === currentSessionId);
+    const current = sessions.find(x => x.id === currentSessionId);
     const pending = _deps.getPendingChat();
     if ((current && current.model) || (pending && pending.modelId)) return;
 
     if (window.modelsModule && window.modelsModule.refreshModels) {
-      try {
-        await window.modelsModule.refreshModels(false);
-      } catch (_) {}
+      try { await window.modelsModule.refreshModels(false); } catch (_) {}
     }
-    const items =
-      window.modelsModule && window.modelsModule.getCachedItems
-        ? window.modelsModule.getCachedItems()
-        : [];
+    const items = window.modelsModule && window.modelsModule.getCachedItems ? window.modelsModule.getCachedItems() : [];
     const targetEndpointId = detail.endpointId ? String(detail.endpointId) : '';
     const targetModel = detail.modelId || '';
     let match = null;
     for (const item of items) {
       if (item.offline) continue;
-      if (
-        targetEndpointId &&
-        String(item.endpoint_id || '') !== targetEndpointId
-      )
-        continue;
+      if (targetEndpointId && String(item.endpoint_id || '') !== targetEndpointId) continue;
       const models = (item.models || []).concat(item.models_extra || []);
-      const displays = (item.models_display || []).concat(
-        item.models_extra_display || [],
-      );
-      const idx = targetModel
-        ? models.indexOf(targetModel)
-        : models.length
-          ? 0
-          : -1;
+      const displays = (item.models_display || []).concat(item.models_extra_display || []);
+      const idx = targetModel ? models.indexOf(targetModel) : (models.length ? 0 : -1);
       if (idx >= 0) {
         match = {
           mid: models[idx],
@@ -898,12 +766,7 @@ async function _pick(m) {
           url: item.url || detail.url || '',
           endpointId: item.endpoint_id || detail.endpointId || '',
           epName: item.endpoint_name || detail.endpointName || '',
-          providerText: [
-            item.endpoint_name || detail.endpointName || '',
-            item.url || detail.url || '',
-          ]
-            .filter(Boolean)
-            .join(' '),
+          providerText: [item.endpoint_name || detail.endpointName || '', item.url || detail.url || ''].filter(Boolean).join(' '),
         };
         break;
       }
@@ -915,9 +778,7 @@ async function _pick(m) {
         url: detail.url,
         endpointId: detail.endpointId || '',
         epName: detail.endpointName || '',
-        providerText: [detail.endpointName || '', detail.url || '']
-          .filter(Boolean)
-          .join(' '),
+        providerText: [detail.endpointName || '', detail.url || ''].filter(Boolean).join(' '),
       };
     }
     if (match) await _pick(match);
@@ -928,10 +789,7 @@ async function _pick(m) {
   });
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (
-      menu.classList.contains('hidden') ||
-      menu.classList.contains('closing')
-    ) {
+    if (menu.classList.contains('hidden') || menu.classList.contains('closing')) {
       // Force-clear any in-progress close animation
       menu.classList.remove('closing', 'hidden');
       const hasCache = _hasModelCache();
@@ -1011,9 +869,7 @@ export function updateModelPicker() {
   // Hide model picker when group chat is active
   const wrap = document.getElementById('model-picker-wrap');
   if (window.groupModule && window.groupModule.isActive()) {
-    if (wrap) {
-      wrap.style.display = 'none';
-    }
+    if (wrap) { wrap.style.display = 'none'; }
     return;
   }
   // Reset inline visibility (may have been hidden by typing in previous session)
@@ -1025,7 +881,7 @@ export function updateModelPicker() {
   const currentSessionId = _deps.getCurrentSessionId();
   const sessions = _deps.getSessions();
   const _pendingChat = _deps.getPendingChat();
-  const s = sessions.find((x) => x.id === currentSessionId);
+  const s = sessions.find(x => x.id === currentSessionId);
   let modelId = null;
   if (s && s.model) {
     modelId = s.model;
@@ -1075,25 +931,16 @@ export function updateModelPicker() {
   ) {
     const items = window.modelsModule.getCachedItems();
     const allAvailable = [];
-    items.forEach((item) => {
+    items.forEach(item => {
       if (item.offline) return;
-      (item.models || [])
-        .concat(item.models_extra || [])
-        .forEach((m) => allAvailable.push(m));
+      (item.models || []).concat(item.models_extra || []).forEach(m => allAvailable.push(m));
     });
     if (allAvailable.length > 0 && !allAvailable.includes(modelId)) {
       // Model no longer available — switch to first available
-      const fallback = items.find(
-        (item) => !item.offline && (item.models || []).length > 0,
-      );
+      const fallback = items.find(item => !item.offline && (item.models || []).length > 0);
       if (fallback) {
         modelId = fallback.models[0];
-        _deps.setPendingChat({
-          url: fallback.url,
-          modelId,
-          endpointId: fallback.endpoint_id,
-          source: 'fallback',
-        });
+        _deps.setPendingChat({ url: fallback.url, modelId, endpointId: fallback.endpoint_id, source: 'fallback' });
       }
     }
   }
@@ -1107,19 +954,17 @@ export function updateModelPicker() {
   ) {
     _ensureDefaultPendingChat();
   }
-  // Svelte - moved to ModelPicker.svelte
-  // this had to be removed because it broke the instant reactivity and forced
-  // the app/page/component/element to wait ~5 seconds for various setTimeout
-  // routines to finish (routines not related to user auth)
 
+  /* Svelte */
+  /* Moved to ModelPicker.svelte.  Avoid replacing innerHTML/textContent on state-
+   * driven elements / contents */
   // const displayName = modelId ? modelId.split('/').pop() : 'Select model';
   // // The header indicator clips long names with ellipsis; show the full model
   // // identifier on hover (#1982). No tooltip on the "Select model" placeholder.
   // label.title = modelId || '';
   // const logo = modelId ? providerLogo(modelId) : null;
   // if (logo) {
-  //   label.innerHTML =
-  //     '<span class="model-picker-logo">' + logo + '</span> ' + displayName;
+  //   label.innerHTML = '<span class="model-picker-logo">' + logo + '</span> ' + displayName;
   // } else {
   //   label.textContent = displayName;
   // }

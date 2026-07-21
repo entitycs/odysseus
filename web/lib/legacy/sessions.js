@@ -2596,7 +2596,7 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   currentSessionId = null;
   try { window.__odysseusLastSelectedSessionId = ''; } catch (_) {}
   Storage.remove('lastSessionId');
-  pushState('', page);
+  pushState('', {});
   // history.replaceState(null, '', window.location.pathname);
   document
     .querySelectorAll('.list-item.active-session, .session-item.active')
@@ -2640,6 +2640,10 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
     _clearComposerUnlessStartupTyped(msgInput);
     msgInput.focus();
   }
+}
+
+export function setPendingChat(pendingChat){
+  _pendingChat = pendingChat;
 }
 
 /** Actually create the session in the DB. Called on first message send. */
