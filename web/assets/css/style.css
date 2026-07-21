@@ -150,11 +150,12 @@ pre, code, .hljs {
 }
 
 @supports selector(::-webkit-scrollbar) {
-	/* Width + transition */
-	::-webkit-scrollbar {
-	width: 20px !important;
-	transition: background-color 0.25s ease, width 0.25s ease;
-	}
+
+  /* Width + transition */
+  ::-webkit-scrollbar {
+    width: 5px ;
+    transition: background-color 0.25s ease, width 0.25s ease;
+  }
 
 	/* Track (background) */
 	::-webkit-scrollbar-track {
@@ -178,7 +179,30 @@ pre, code, .hljs {
 	::-webkit-scrollbar-thumb:active {
 	background: var(--red);
 	}
+
+    @media (width>=480px)     {
+      ::-webkit-scrollbar {
+        width: 7px;
+      }
+    }
+  @media (width>=768px) {
+    ::-webkit-scrollbar {
+      width:   12px;
+      border-width:1px;
+    }
+  }
+
+  @media (width>=1024px) {
+    ::-webkit-scrollbar {
+      width: 18px;
+    }
+    ::-webkit-scrollbar-thumb {
+      border-radius: 12%;
+      border-width: 0px;
+    }
+  }
 }
+
 /* Utility */
 .red-text { color: var(--red); }
 

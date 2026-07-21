@@ -430,57 +430,60 @@ function initializeEventListeners() {
     _updateMsgCount();
   }
 
-  // Scrolling
-  el('chat-history').addEventListener(
-    'scroll',
-    uiModule.debounce(() => {
-      const box = el('chat-history');
-      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-      uiModule.setAutoScroll(atBottom);
-    }, 100),
-  );
-  // Close all footer popups immediately on any scroll
-  el('chat-history').addEventListener(
-    'scroll',
-    () => {
-      document
-        .querySelectorAll('.ctx-popup, .memory-used-detail, .msg-overflow-menu')
-        .forEach((p) => p.remove());
-      document.querySelectorAll('.memory-used-pill').forEach((p) => {
-        p._openDetail = null;
-      });
-    },
-    { passive: true },
-  );
-
-  el('chat-history').addEventListener('wheel', (e) => {
-    // Only disable auto-scroll when user scrolls UP (deltaY < 0)
-    if (e.deltaY < 0) uiModule.setAutoScroll(false);
-  });
-  let _touchThrottled = false;
-  el('chat-history').addEventListener(
-    'touchmove',
-    () => {
-      if (_touchThrottled) return;
-      _touchThrottled = true;
-      uiModule.setAutoScroll(false);
-      requestAnimationFrame(() => {
-        _touchThrottled = false;
-      });
-    },
-    { passive: true },
-  );
-
-  // Internal #session-id links from AI search results
-  el('chat-history').addEventListener('click', (e) => {
-    const link = e.target.closest('a.chat-link');
-    if (!link) return;
-    const href = link.getAttribute('href');
-    if (href && href.startsWith('#') && sessionModule) {
-      e.preventDefault();
-      sessionModule.selectSession(href.slice(1));
-    }
-  });
+  /* Svelte */
+  // Moved to web/routes/chat/+page.svelte
+  //
+  // // Scrolling
+  // el('chat-history').addEventListener(
+  //   'scroll',
+  //   uiModule.debounce(() => {
+  //     const box = el('chat-history');
+  //     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  //     uiModule.setAutoScroll(atBottom);
+  //   }, 100),
+  // );
+  // // Close all footer popups immediately on any scroll
+  // el('chat-history').addEventListener(
+  //   'scroll',
+  //   () => {
+  //     document
+  //       .querySelectorAll('.ctx-popup, .memory-used-detail, .msg-overflow-menu')
+  //       .forEach((p) => p.remove());
+  //     document.querySelectorAll('.memory-used-pill').forEach((p) => {
+  //       p._openDetail = null;
+  //     });
+  //   },
+  //   { passive: true },
+  // );
+  //
+  // el('chat-history').addEventListener('wheel', (e) => {
+  //   // Only disable auto-scroll when user scrolls UP (deltaY < 0)
+  //   if (e.deltaY < 0) uiModule.setAutoScroll(false);
+  // });
+  // let _touchThrottled = false;
+  // el('chat-history').addEventListener(
+  //   'touchmove',
+  //   () => {
+  //     if (_touchThrottled) return;
+  //     _touchThrottled = true;
+  //     uiModule.setAutoScroll(false);
+  //     requestAnimationFrame(() => {
+  //       _touchThrottled = false;
+  //     });
+  //   },
+  //   { passive: true },
+  // );
+  //
+  // // Internal #session-id links from AI search results
+  // el('chat-history').addEventListener('click', (e) => {
+  //   const link = e.target.closest('a.chat-link');
+  //   if (!link) return;
+  //   const href = link.getAttribute('href');
+  //   if (href && href.startsWith('#') && sessionModule) {
+  //     e.preventDefault();
+  //     sessionModule.selectSession(href.slice(1));
+  //   }
+  // });
 
   // Export dropdown button
   const exportDlBtn = el('export-dl-btn');
@@ -4685,7 +4688,7 @@ export function startOdysseusApp() {
   // research/gallery/tasks/archive/memory/notes/theme/email) are now
   // always-visible launchers, so only the doc + background-chat indicators
   // are shown/hidden dynamically here.
-  function _syncRailDynamic() {
+  function _syncRailDynamic() {// TODO: Move to svelte reactive solution
     // Show doc icon if panel is open OR session has documents
     const docPanelOpen =
       window.documentModule && window.documentModule.isPanelOpen();
@@ -4699,11 +4702,13 @@ export function startOdysseusApp() {
       if (b) b.style.display = visible ? '' : 'none';
     };
     _show('rail-documents', docOpen);
-    _show('rail-chats', !!hasChatNotif);
+    // _show('rail-chats', !!hasChatNotif); // TODO: reinstate through events -
+    // reinstate through events - step 1 of n // TODO: see rail-notify above -> component/layout.svelte
+
   }
   window._syncRailDynamic = _syncRailDynamic;
   // Sync periodically and on key events
-  setInterval(_syncRailDynamic, 1000);
+  setInterval(_syncRailDynamic, 1000); // TODO: reinstate through events - currently testing 'wheres my chat button' fix
   document.addEventListener('overflow-state-change', _syncRailDynamic);
 
   const sidebarSearchBtn = el('sidebar-search-btn');

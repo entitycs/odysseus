@@ -16,6 +16,7 @@ export function autoResize(textarea: HTMLTextAreaElement, options?: {
   let clone = clones.get(textarea);
   if (!clone) {
     clone = textarea.cloneNode(false) as HTMLTextAreaElement;
+
     clone.style.cssText = getComputedStyle(textarea).cssText;
     clone.style.position = 'absolute';
     clone.style.visibility = 'hidden';
@@ -25,8 +26,10 @@ export function autoResize(textarea: HTMLTextAreaElement, options?: {
     clone.style.pointerEvents = 'none';
     clone.style.zIndex = '-1';
     textarea.parentNode?.appendChild(clone);
+    textarea._resizeClone = clone;// to keep ui.js from creating duplicate w/ message id
     clones.set(textarea, clone);
   }
+  clone.id = textarea.id;// temporarily, let two elements w/ same id exist
 
   const lineHeight =
     options?.lineHeight ||
@@ -45,6 +48,8 @@ export function autoResize(textarea: HTMLTextAreaElement, options?: {
 
   textarea.style.height = `${newHeight}px`;
   textarea.style.overflow = newHeight >= maxHeight ? 'auto' : 'hidden';
+
+  clone.id = textarea.id + '-resize-clone';// in case #id is a css selector, remove it after calculations
 }
 
 /**
