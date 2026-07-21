@@ -508,6 +508,7 @@ class _RevalidatingStatic(StaticFiles):
 
 
 app.mount("/static", _RevalidatingStatic(directory=STATIC_DIR), name="static")
+app.mount("/css", _RevalidatingStatic(directory=os.path.join(SVELTEKIT_BUILD_DIR, "css") ), name="css")
 
 # ========= SVELTEKIT BUILT ASSETS (Track B) =========
 # adapter-static emits JS/CSS chunks into web-build/_app/. Mounting this
