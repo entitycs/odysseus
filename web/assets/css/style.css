@@ -198,7 +198,7 @@ pre, code, .hljs {
     }
     ::-webkit-scrollbar-thumb {
       border-radius: 12%;
-      border-width: 0px;
+      border-width: 1px; /* 0px produces artifacts */
     }
   }
 }
