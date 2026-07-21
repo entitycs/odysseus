@@ -46,7 +46,7 @@ function _saveList(key, list) {
 function _loadRecent() {
   return _loadList(RECENT_KEY);
 }
-function _pushRecent(mid) {
+export function pushRecent(mid) {
   if (!mid) return;
   const next = _loadRecent().filter((x) => x !== mid);
   next.unshift(mid);
@@ -690,7 +690,7 @@ function _initModelPickerDropdown() {
 
     // Remember this pick so it surfaces under "Recent" next time the picker
     // opens — the whole point of quick-switch.
-    if (m && m.mid) _pushRecent(m.mid);
+    if (m && m.mid) pushRecent(m.mid);
 
     // Broadcast immediately so listeners (e.g. the tour) can advance without
     // waiting for the async session-create/PATCH that follows.

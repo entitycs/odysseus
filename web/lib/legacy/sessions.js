@@ -2502,7 +2502,7 @@ export function createDirectChat(url, modelId, endpointId) {
   _suppressNextSessionLoading = true;
   currentSessionId = null;
   Storage.remove('lastSessionId');
-  pushState('', page);
+  pushState('', {});
   // history.replaceState(null, '', window.location.pathname);
   document
     .querySelectorAll('.list-item.active-session, .session-item.active')
@@ -2545,6 +2545,10 @@ export function createDirectChat(url, modelId, endpointId) {
     msgInput.value = '';
     msgInput.focus();
   }
+}
+
+export function setPendingChat(pendingChat){
+  _pendingChat = pendingChat;
 }
 
 /** Actually create the session in the DB. Called on first message send. */
@@ -2605,7 +2609,7 @@ export async function materializePendingSession() {
   }
   currentSessionId = payload.id;
   Storage.set('lastSessionId', payload.id);
-  replaceState('#' + payload.id, page);
+  replaceState('#' + payload.id, {});
   // history.replaceState(null, '', '#' + payload.id);
 
   // Reload the sidebar in the background. Awaiting this used to block the first
