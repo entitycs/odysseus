@@ -33,6 +33,7 @@
   let msgs = $state<NodeListOf<HTMLElement>>();
   let markers = $state<ScrollMarkerProps[]>([]);
 
+  let _isOnTimeout = false;
   // --- on Mount --------------------------------------------------------
   onMount(async () => {
     if (!trackEl) return;
@@ -45,44 +46,44 @@
     chat.scrollTo({ top: top, behavior: "smooth" });
   };
 
-  $effect(() => {
-    if (!trackEl || !chat || !!!msgs || msgs.length === 0) return;
+  // $effect(() => {
+  //   if (!trackEl || !chat || !!!msgs || msgs.length === 0) return;
 
-    const scrollRange = chat.scrollHeight - chat.clientHeight;
-    if (scrollRange <= 0) {
-      markers.splice(0, markers.length);
-      return;
-    }
+  //   const scrollRange = chat.scrollHeight - chat.clientHeight;
+  //   if (scrollRange <= 0) {
+  //     markers.splice(0, markers.length);
+  //     return;
+  //   }
 
-    const trackHeight = trackEl.clientHeight || chat.clientHeight;
-    const thumbHeight = (chat.clientHeight / chat.scrollHeight) * trackHeight;
-    const usableTrack = trackHeight;
+  //   const trackHeight = trackEl.clientHeight || chat.clientHeight;
+  //   const thumbHeight = (chat.clientHeight / chat.scrollHeight) * trackHeight;
+  //   const usableTrack = trackHeight;
 
-    markers = Array.from(msgs).map((msg, index) => {
-      if (!trackEl) throw new EvalError("track element not found");
-      const chatRect = chat.getBoundingClientRect();
-      const msgRect = msg.getBoundingClientRect();
+  //   markers = Array.from(msgs).map((msg, index) => {
+  //     if (!trackEl) throw new EvalError("track element not found");
+  //     const chatRect = chat.getBoundingClientRect();
+  //     const msgRect = msg.getBoundingClientRect();
 
-      const msgTopInScrollSpace = msgRect.top - chatRect.top + chat.scrollTop;
+  //     const msgTopInScrollSpace = msgRect.top - chatRect.top + chat.scrollTop;
 
-      let desiredScrollTop = msgTopInScrollSpace - chat.clientHeight / 2;
-      desiredScrollTop = Math.max(0, Math.min(desiredScrollTop, scrollRange));
+  //     let desiredScrollTop = msgTopInScrollSpace - chat.clientHeight / 2;
+  //     desiredScrollTop = Math.max(0, Math.min(desiredScrollTop, scrollRange));
 
-      const markerY =
-        (msgTopInScrollSpace / scrollRange) * usableTrack - thumbHeight / 2;
+  //     const markerY =
+  //       (msgTopInScrollSpace / scrollRange) * usableTrack - thumbHeight / 2;
 
-      const marker: ScrollMarkerProps = {
-        message: msg,
-        dataMarkerId: index,
-        className: "scroll-marker",
-        top: markerY,
-        scrollTop: desiredScrollTop,
-        onclick: (e) => onMarkerClick(e, desiredScrollTop),
-        isVisible: false,
-      };
-      return marker;
-    });
-  });
+  //     const marker: ScrollMarkerProps = {
+  //       message: msg,
+  //       dataMarkerId: index,
+  //       className: "scroll-marker",
+  //       top: markerY,
+  //       scrollTop: desiredScrollTop,
+  //       onclick: (e) => onMarkerClick(e, desiredScrollTop),
+  //       isVisible: false,
+  //     };
+  //     return marker;
+  //   });
+  // });
 
   // --- Core logic (mirrors the original plugin) ------------------------
 
@@ -209,7 +210,9 @@
       redrawTimeout = setTimeout(() => {
         if (includePosition) positionTrack();
         drawMarkers();
+        _isOnTimeout = false;
       }, debounceMs);
+      _isOnTimeout = true;
     };
 
     // --- Container resize ---
@@ -221,11 +224,23 @@
     }
 
     // --- Window resize ---
-    const onWindowResize = () => scheduleDraw(true);
+    const onWindowResize = () =>{
+      if (!_isOnTimeout){
+        drawMarkers();
+      }
+      scheduleDraw(true);
+    }
     window.addEventListener("resize", onWindowResize, { passive: true });
 
     // --- Content mutations ---
-    const mutationObserver = new MutationObserver(() => scheduleDraw(true));
+    const mutationObserver = new MutationObserver(
+      () => {
+        if (!_isOnTimeout){
+          drawMarkers();
+        }
+        scheduleDraw(true);
+      }
+    );
     mutationObserver.observe(chat, {
       childList: true,
       subtree: true,

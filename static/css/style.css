@@ -152,7 +152,7 @@ pre, code, .hljs {
 @supports selector(::-webkit-scrollbar) {
 	/* Width + transition */
 	::-webkit-scrollbar {
-	width: 20px !important;
+	width: 20px;
 	transition: background-color 0.25s ease, width 0.25s ease;
 	}
 
