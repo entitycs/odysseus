@@ -190,7 +190,7 @@ function loadRecent(): string[] {
 }
 
 function getAllModels(): any[] {
-  const items = _modelList; //loadModels();
+  const items = _modelList.length > 0 ? _modelList : loadModels();
   const result: any[] = [];
   const seen = new Set();
 

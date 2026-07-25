@@ -212,7 +212,6 @@ function initForegroundActivityHeartbeat() {
   });
   setInterval(() => send(false), 15000);
 }
-initForegroundActivityHeartbeat();
 
 function initRailHoverLabels() {
   const labels = {
@@ -1219,7 +1218,7 @@ function initializeEventListeners() {
     toolCookbookBtn.addEventListener('click', async () => {
       if (!cookbookModule) return;
       // Try minimized→restore or open→minimize via the manager first
-      const Modals = await import('./js/modalManager.js');
+      const Modals = await import('$lib/legacy/modalManager.js');
       if (!Modals.toggle('cookbook-modal')) {
         // Not registered yet → fresh open
         cookbookModule.open();
@@ -1247,7 +1246,7 @@ function initializeEventListeners() {
   if (toolGalleryBtn) {
     toolGalleryBtn.addEventListener('click', async () => {
       if (!galleryModule) return;
-      const Modals = await import('./js/modalManager.js');
+      const Modals = await import('$lib/legacy/modalManager.js');
       if (!Modals.toggle('gallery-modal')) {
         if (galleryModule.isGalleryOpen()) galleryModule.closeGallery();
         else galleryModule.openGallery();
@@ -1279,7 +1278,7 @@ function initializeEventListeners() {
   if (toolCalendarBtn) {
     toolCalendarBtn.addEventListener('click', async () => {
       if (!calendarModule) return;
-      const Modals = await import('./js/modalManager.js');
+      const Modals = await import('$lib/legacy/modalManager.js');
       // toggle returns true when a registered modal was minimized/restored;
       // returns false when nothing is registered → open fresh.
       if (!Modals.toggle('calendar-modal')) {
@@ -4599,7 +4598,7 @@ function initializeEventListeners() {
 // ============================================
 // INITIALIZATION ON PAGE LOAD
 // ============================================
-function startOdysseusApp() {
+export function startOdysseusApp() {
   tasksModule?.startNotificationPolling?.();
   if (window.__odysseusAppStarted) return;
   window.__odysseusAppStarted = true;

@@ -5,14 +5,12 @@
  */
 // ES6 module — IIFE removed
 
-import chatRenderer from '$lib/legacy/chatRenderer.js?v=20260722emailfastindex1';
-import { modelRouteLabel, replyModelPair, sameModelName, shortModel } from '$lib/legacy/model/models.js';
-import { getImageCost, getModelCost } from '$lib/legacy/model/pricing.js';
+import chatRenderer from '$lib/legacy/chatRenderer.js';
 import chatStream from '$lib/legacy/chatStream.js';
 import codeRunnerModule from '$lib/legacy/codeRunner.js';
-import { getUserMessagesFromChatHistory, wireArrowUpRecall } from '$lib/legacy/composerArrowUpRecall.js?v=20260714promptrecall';
-import documentModule from '$lib/legacy/document.js?v=20260722emailfastindex1';
-import * as emailInbox from '$lib/legacy/emailInbox.js?v=20260722emailfastindex1';
+import { getUserMessagesFromChatHistory, wireArrowUpRecall } from '$lib/legacy/composerArrowUpRecall.js';
+import documentModule from '$lib/legacy/document.js';
+import * as emailInbox from '$lib/legacy/emailInbox.js';
 import fileHandlerModule from '$lib/legacy/fileHandler.js';
 import markdownModule, { svgifyEmoji } from '$lib/legacy/markdown.js';
 import { isSubscriptionEndpoint } from '$lib/legacy/model/endpoint.js';
@@ -40,27 +38,6 @@ import Storage from './storage.js';
 import { createStreamRenderer } from './streamingRenderer.js';
 import { addAITTSButton } from './tts-ai.js';
 import uiModule from './ui.js';
-
-export function init() {
-  // Global observer so any <pre> added anywhere in the app (chat stream,
-  // chat re-renders, document library chat previews, slash commands,
-  // research previews, etc.) gets tagged without each call site needing
-  // to remember.
-  if (window._cmpPreObserverWired) return;
-  window._cmpPreObserverWired = true;
-  _scanCompactPres(document.body);
-  const obs = new MutationObserver((muts) => {
-    for (const m of muts) {
-      for (const n of m.addedNodes) {
-        if (n.nodeType !== 1) continue;
-        if (n.tagName === 'PRE') _markCompactPre(n);
-        if (n.querySelectorAll) _scanCompactPres(n);
-      }
-    }
-  });
-  obs.observe(document.body, { childList: true, subtree: true });
-  window.chatModule = chatModule;
-}
 
   const RESEARCH_TIMEOUT_MS = 360000;
   const DEFAULT_TIMEOUT_MS = 120000;
@@ -326,7 +303,6 @@ export function init() {
   try { window.refreshChatContextHeader = refreshChatContextHeader; } catch (_) {}
 
   export function init(){
-    window.chatModule = chatModule;
     // Global observer so any <pre> added anywhere in the app (chat stream,
     // chat re-renders, document library chat previews, slash commands,
     // research previews, etc.) gets tagged without each call site needing
@@ -369,7 +345,7 @@ export function init() {
       });
       window.__odysseus_thread_click_bound = true;
     }
-
+    window.chatModule = chatModule;
   }
 
   function _setForegroundChatBusy(active) {
@@ -1146,6 +1122,7 @@ export function init() {
         const messageInput = uiModule.el('message');
         if (messageInput) messageInput.disabled = false;
         currentAccumulated = '';
+        _drainQueuedAgentRequests();
         return;
       }
       // Render whatever was accumulated so far
@@ -4100,6 +4077,7 @@ export function init() {
           sessionModule.loadSessions();
         }
       }, 3000);
+      _drainQueuedAgentRequests();
     }
   }
 

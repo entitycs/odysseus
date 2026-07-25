@@ -1,10 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-import { afterNavigate } from '$app/navigation';
 // In same order as original <script> tags:
-
-import { page } from '$app/stores';
-import UserMsgScrollMarker from '$lib/components/UserMsgScrollMarker.svelte';
 import * as admin from '$lib/legacy/admin.js';
 import * as app from '$lib/legacy/app.js';
 import * as assistant from '$lib/legacy/assistant.js';
@@ -79,7 +75,7 @@ onMount(async () => {
   searchChat.init?.();
   compare.init?.();
   theme.init?.();
-  censor.initLegacy?.();
+  censor.init?.();
   settings.init?.();
   admin.init?.();
   assistant.init?.();

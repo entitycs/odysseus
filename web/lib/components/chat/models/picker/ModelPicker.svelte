@@ -313,3 +313,9 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .model-picker-menu{
+    position:sticky !important;
+  }
+</style>

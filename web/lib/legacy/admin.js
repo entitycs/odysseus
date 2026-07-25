@@ -1510,12 +1510,6 @@ function initEndpointForm() {
           uiModule.showToast(failed ? `Probed ${ok}/${ids.length} endpoints; ${failed} failed` : `Probed ${ids.length} endpoints`, failed ? 4200 : 1800);
         }
       } finally {
-        if (_wp) {
-          try {
-            _wp.destroy();
-          } catch (_) {}
-        }
-      } finally {
         if (_wp) { try { _wp.destroy(); } catch (_) {} }
         probeAllBtn.innerHTML = origHTML;
         probeAllBtn.disabled = false;
