@@ -7337,6 +7337,7 @@
     justify-content: center;
     margin: 2rem 0;
     overflow-y: auto;
+    flex: 1 1;
   }
 
   @keyframes wave {
