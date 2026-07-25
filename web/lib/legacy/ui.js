@@ -290,8 +290,6 @@ function _initHoverCardSpaceToggle() {
   );
 }
 
-_initHoverCardSpaceToggle();
-
 /**
  * Copy text to clipboard
  */
@@ -943,31 +941,7 @@ export function esc(s) {
   return (s || '').replace(/[&<>"']/g, (m) => _ESC_MAP[m]);
 }
 
-// ── Mobile: suppress synthetic click/mousedown on backdrop ──
-// When a touch starts inside .modal-content, set a flag so that
-// synthetic mouse events on the backdrop are ignored.
 let _touchInsideModal = false;
-if ('ontouchstart' in window) {
-  document.addEventListener(
-    'touchstart',
-    (e) => {
-      if (e.target.closest('.modal-content')) {
-        _touchInsideModal = true;
-      }
-    },
-    { passive: true },
-  );
-  document.addEventListener(
-    'touchend',
-    () => {
-      // Clear after a short delay — synthetic click fires ~300ms after touchend
-      setTimeout(() => {
-        _touchInsideModal = false;
-      }, 400);
-    },
-    { passive: true },
-  );
-}
 
 /**
  * Check if a backdrop dismiss should be suppressed on mobile.
@@ -995,11 +969,6 @@ function _initScrollDismiss() {
     // Retry once if element doesn't exist yet
     setTimeout(_initScrollDismiss, 500);
   }
-}
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', _initScrollDismiss);
-} else {
-  _initScrollDismiss();
 }
 
 /**
@@ -1053,6 +1022,39 @@ const uiModule = {
 export default uiModule;
 
 export function init() {
+
+  _initHoverCardSpaceToggle();
+
+  // ── Mobile: suppress synthetic click/mousedown on backdrop ──
+  // When a touch starts inside .modal-content, set a flag so that
+  // synthetic mouse events on the backdrop are ignored.
+  if ('ontouchstart' in window) {
+    document.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.target.closest('.modal-content')) {
+          _touchInsideModal = true;
+        }
+      },
+      { passive: true },
+    );
+    document.addEventListener(
+      'touchend',
+      () => {
+        // Clear after a short delay — synthetic click fires ~300ms after touchend
+        setTimeout(() => {
+          _touchInsideModal = false;
+        }, 400);
+      },
+      { passive: true },
+    );
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initScrollDismiss);
+  } else {
+    _initScrollDismiss();
+  }
+
   // Expose the styled confirm globally so any module can replace the native
   // browser confirm() with the themed dialog — even files that don't import
   // uiModule. Usage: `if (!await window.styledConfirm(msg, { danger:true })) return;`
