@@ -337,7 +337,7 @@
       fd.append("endpoint_url", m.url);
       if (m.endpointId) fd.append("endpoint_id", m.endpointId);
       try {
-        const res = await fetch(`${API_BASE}/api/session/${currentSessionId}`, {
+        const res = await fetch(`/api/session/${currentSessionId}`, {
           method: "PATCH",
           body: fd,
         });
