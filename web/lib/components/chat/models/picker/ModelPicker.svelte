@@ -14,6 +14,10 @@
   import sessionModule, * as _deps from "$lib/legacy/sessions";
   import uiModule from "$lib/legacy/ui";
 
+  const RECENT_KEY = 'odysseus-model-recent';
+  const FAVORITES_KEY = 'odysseus-model-favorites';
+  const RECENT_MAX = 5;
+
   let modelPickerElement: HTMLElement;
   let label: HTMLElement;
   let search: HTMLInputElement;
@@ -37,14 +41,24 @@
   }: Props = $props();
 
   let searchQuery = $state("");
-  let _modelList: any[] = [];
   let unsubscribeModelItems;
 
   // Store for models and favorites
-  let models = $state([]);
-  let favorites = $state([]);
-  let recent = $state([]);
+  let _modelList: any[] = [];
   let allModels: ModelItem[] = $state([]);
+  let otherModels = $derived(
+    allModels.filter(m => !favorites.includes(m.mid) && !recent.includes(m.mid))
+  );
+
+  let favorites = $state<string[]>([]);
+  let favModels = $derived(
+    allModels.filter(m => favorites.includes(m.mid))
+  );
+
+  let recent = $state<string[]>([]);
+  let recentModels = $derived(
+    allModels.filter(m => recent.includes(m.mid))
+  )
   let searchedModels: ModelItem[] = $derived(
     searchQuery == ""
       ? []
@@ -112,6 +126,34 @@
     // };
   });
   //---------------------------------------------------------------------------
+
+  function _saveList(key: string, list: any[]): void {
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch {
+      /* quota / private mode */
+    }
+  }
+
+  function toggleFavorite(modelId: string): boolean {
+    // const favs = _loadFavorites();
+    const i = favorites.indexOf(modelId);
+    if (i >= 0) favorites.splice(i, 1);
+    else favorites.push(modelId);
+    _saveList(FAVORITES_KEY, favorites);
+    // Keep the sidebar Models section (same key) in sync if it's mounted.
+    try {
+      if (
+        window.modelsModule &&
+        typeof window.modelsModule.refreshModels === 'function'
+      ) {
+        window.modelsModule.refreshModels();
+      }
+    } catch {
+      /* sidebar not present */
+    }
+    return i < 0; // true when now favorited
+  }
 
   export function updateModelLabel(modelId: string) {
     console.log("updating model label: " + modelId);
@@ -360,12 +402,23 @@
     uiModule.showToast(`Using ${m.display}`);
     finishSwitch();
   }
+
+  let mouseDownTarget: Element | null = null;
+  let mouseUpTarget: Element | null = null;
 </script>
 
 <svelte:body
-  onclick={(e) => {
-    if (e.target !== e.currentTarget) return; // click did not start on body
-    if (isModelPickerOpen) isModelPickerOpen = false;
+  onmousedown={(e) => {
+    mouseDownTarget = e.target as Element;
+    // if (e.target == e.currentTarget) return; // click did not start on body
+    // if (isModelPickerOpen) isModelPickerOpen = false;
+  }}
+  onmouseup={(e) => {
+    mouseUpTarget = e.target as Element;
+    if (!mouseUpTarget.closest(".model-picker-wrap")) {
+      if (isModelPickerOpen && mouseUpTarget === mouseDownTarget)
+        isModelPickerOpen = false;
+    }
   }}
 />
 
@@ -398,10 +451,7 @@
     </svg>
   </button>
   {#if isModelPickerOpen}
-    <div
-      class="model-picker-menu {isOpen ? 'show' : ''}"
-      class:show={isOpen}
-    >
+    <div class="model-picker-menu {isOpen ? 'show' : ''}" class:show={isOpen}>
       <div class="model-picker-search-row">
         <input
           id="model-picker-search"
@@ -418,23 +468,21 @@
         />
       </div>
 
-      <div  id="model-picker-list" class="model-picker-list {searchQuery == ''
-        ? ''
-        : 'min-h-[280px]'}">
+      <div
+        id="model-picker-list"
+        class="model-picker-list {searchQuery == '' ? '' : 'min-h-[280px]'}"
+      >
         <!-- Active Search -->
         {#if searchedModels.length}
           <ModelSection label="{searchedModels.length} Results" />
         {/if}
         {#each searchedModels as model (model)}
-          <hr />
-          <hr />
           <ModelRow
             {model}
             {favorites}
             onPick={_pick}
-            onToggleFavorite={helper.toggleFavorite}
+            onToggleFavorite={toggleFavorite}
           />
-          <hr />
         {:else}
           {#if searchQuery != ""}
             <ModelSection label="0 Search Results" />
@@ -442,22 +490,34 @@
           <!-- Empty Search -->
           {#if favorites.length}
             <ModelSection label="Favorites" />
-            {#each favorites as model (model)}
-              <ModelRow {model} {favorites} />
+            {#each favModels as model (model)}
+              <ModelRow
+                {model}
+                {favorites}
+                onPick={_pick}
+                onToggleFavorite={toggleFavorite}
+              />
             {/each}
+            <div class="h-3"></div>
           {/if}
           {#if recent.length}
             <ModelSection label="Recent" />
-            {#each recent as model (model)}
-              <ModelRow model={{ display: shortModel(model) }} {favorites} />
+            {#each recentModels as model (model)}
+              <ModelRow
+                {model}
+                {favorites}
+                onPick={_pick}
+                onToggleFavorite={toggleFavorite}
+              />
             {/each}
           {/if}
-          {#each allModels as model (model)}
+          <ModelSection label="Models" />
+          {#each otherModels as model (model)}
             <ModelRow
               {model}
               {favorites}
               onPick={_pick}
-              onToggleFavorite={helper.toggleFavorite}
+              onToggleFavorite={toggleFavorite}
             />
           {:else}
             <div class="model-switch-empty">No models connected</div>
