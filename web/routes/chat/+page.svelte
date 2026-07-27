@@ -871,6 +871,12 @@ onMount(async () => {
       flex: 0 0 auto;
    }
 
+.chat-container.welcome-active :global(.chat-input-bar)
+{
+   margin-bottom: 1vh;
+}
+
+
    .chat-history::-webkit-scrollbar-thumb {
       border-width: 1px;
       width: 3px;

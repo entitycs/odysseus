@@ -1,8 +1,7 @@
-import type { EventHandler } from 'svelte/elements';
 import {
-  isLoading,
+  isLoading, //?
   modelItems,
-  refreshModels,
+  refreshModels, //f
 } from '$lib/components/chat/models/modelItemStore.svelte';
 import { sortModelObjects } from '$lib/legacy/modelSort.js';
 
@@ -109,11 +108,46 @@ const PROVIDER_ALIAS: Record<string, string> = {
   '~moonshotai': 'moonshotai',
   '~openai': 'openai',
 };
+const RECENT_KEY = 'odysseus-model-recent';
+const FAVORITES_KEY = 'odysseus-model-favorites';
+const RECENT_MAX = 5;
+
 let _modelList: any[] = [];
 let unsubscribeModelItems = modelItems.subscribe((value) => {
   _modelList = value;
 });
 
+// Local endpoint health — only probed for LOCAL endpoints, since
+// cloud APIs are essentially always up. Cached briefly on the
+// server side too (8s TTL). Picker opens do not probe; the refresh button
+// is the explicit network/probe action.
+let _localProbe = {};            // {endpoint_id: {alive, latency_ms, error}}
+let _localProbeFetchedAt = 0;
+const _LOCAL_PROBE_TTL_MS = 5000;
+let _pickerLoading = false;
+let _pickerLoadSeq = 0;
+
+let favorites = $state([]);
+let recent = $state([]);
+
+async function _refreshLocalProbe() {
+  try {
+    if (window.__odysseusChatBusy || Date.now() < (window.__odysseusChatBusyUntil || 0)) return;
+  } catch (_) {}
+  const now = Date.now();
+  if (now - _localProbeFetchedAt < _LOCAL_PROBE_TTL_MS) return;
+  _localProbeFetchedAt = now;
+  try {
+    const r = await fetch('/api/model-endpoints/probe-local', { credentials: 'same-origin' });
+    if (r.ok) _localProbe = (await r.json()) || {};
+  } catch (_) { /* leave stale data; picker still works */ }
+}
+export function pushRecent(mid) {
+  if (!mid) return;
+  const next = _loadRecent().filter((x) => x !== mid);
+  next.unshift(mid);
+  _saveList(RECENT_KEY, next.slice(0, RECENT_MAX));
+}
 function modelExists(modelId, url) {
   const items = _modelList;
   if (!items.length) return true; // ???
@@ -165,7 +199,18 @@ function toggleFavorite(modelId: string): boolean {
   const i = favs.indexOf(modelId);
   if (i >= 0) favs.splice(i, 1);
   else favs.push(modelId);
-  _saveList('odysseus-model-favorites', favs);
+  _saveList(FAVORITES_KEY, favs);
+  // Keep the sidebar Models section (same key) in sync if it's mounted.
+  try {
+    if (
+      window.modelsModule &&
+      typeof window.modelsModule.refreshModels === 'function'
+    ) {
+      window.modelsModule.refreshModels();
+    }
+  } catch {
+    /* sidebar not present */
+  }
   return i < 0; // true when now favorited
 }
 
@@ -190,31 +235,48 @@ function loadRecent(): string[] {
 }
 
 function getAllModels(): any[] {
-  const items = _modelList.length > 0 ? _modelList : loadModels();
-  const result: any[] = [];
+  const items =
+    window.modelsModule && window.modelsModule.getCachedItems
+      ? window.modelsModule.getCachedItems()
+      : [];
+  const result = [];
   const seen = new Set();
-
   items.forEach((item) => {
+    // Previously: offline endpoints were skipped entirely, so a server
+    // that briefly went down disappeared from the picker — confusing
+    // when the user can still see it (offline-tagged) in Settings.
+    // Now: include offline-endpoint models too but flag them
+    // `stale: true` so the row renderer dims them + shows the offline
+    // pill. The user can still click and try anyway (matches the
+    // existing "local server appears offline" path on line 301).
     const epOffline = !!item.offline;
     const allModels = (item.models || []).concat(item.models_extra || []);
     const allDisplay = (item.models_display || []).concat(
       item.models_extra_display || [],
     );
-
-    const probeResult = item.endpoint_id
-      ? { alive: !item.ping_error, latency_ms: 0, error: item.ping_error }
-      : null;
+    // Mark local endpoints whose live probe failed.
+    const probeResult = item.endpoint_id ? _localProbe[item.endpoint_id] : null;
     const isLocalDead = !!(probeResult && probeResult.alive === false);
-
-    allModels.forEach((modelId, i) => {
-      if (seen.has(modelId)) return;
-      seen.add(modelId);
+    const isApiEndpoint = item.category && item.category !== 'local';
+    allModels.forEach((mid, i) => {
+      // Local/self-hosted servers often expose the same model through several
+      // stale endpoints, so keep deduping those by model id. Cloud/API
+      // endpoints are user-selected provider routes; the same model id can be
+      // intentionally enabled on OpenRouter and OpenAI, so key those by
+      // endpoint too or the chat picker silently drops one.
+      const seenKey = isApiEndpoint
+        ? `${item.endpoint_id || item.url || item.endpoint_name || 'api'}::${mid}`
+        : mid;
+      if (seen.has(seenKey)) return;
+      seen.add(seenKey);
       result.push({
-        mid: modelId,
-        display: (allDisplay[i] || modelId).split('/').pop(),
+        key: seenKey,
+        mid,
+        display: (allDisplay[i] || mid).split('/').pop(),
         url: item.url,
         endpointId: item.endpoint_id,
         epName: item.endpoint_name || '',
+        category: item.category || '',
         providerText: [
           item.endpoint_name || '',
           item.category || '',
@@ -233,7 +295,6 @@ function getAllModels(): any[] {
       });
     });
   });
-
   return sortModelObjects(result);
 }
 
@@ -404,5 +465,7 @@ const helper = {
   providerDisplayName,
   providerSlug,
   saveRecent,
+  sortModelObjects,
+  toggleFavorite
 };
 export default helper;

@@ -1,19 +1,23 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { writable } from "svelte/store";
   import {
     isLoading,
     type ModelItem,
     modelItems,
-    refreshModels,
   } from "$lib/components/chat/models/modelItemStore.svelte";
   import helper from "$lib/components/chat/models/picker/helpers.svelte";
   import ModelRow from "$lib/components/chat/models/picker/ModelRow.svelte";
+  import ModelSection from "$lib/components/chat/models/picker/ModelSection.svelte";
+  import { shortModel } from "$lib/legacy/model/models";
+  import { refreshModels } from "$lib/legacy/models.js";
   import { providerLogo } from "$lib/legacy/providers";
   import sessionModule, * as _deps from "$lib/legacy/sessions";
+  import uiModule from "$lib/legacy/ui";
 
   let modelPickerElement: HTMLElement;
   let label: HTMLElement;
+  let search: HTMLInputElement;
+
   interface Props {
     sessionId?: string | null;
     isOpen?: boolean;
@@ -41,6 +45,18 @@
   let favorites = $state([]);
   let recent = $state([]);
   let allModels: ModelItem[] = $state([]);
+  let searchedModels: ModelItem[] = $derived(
+    searchQuery == ""
+      ? []
+      : allModels.filter((m) => {
+          const res = [m.mid, m.display, m.epName] // m.providerText, provName]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(searchQuery);
+          return res;
+        }),
+  );
   let pointer = $state({ x: 0, y: 0 });
 
   let isModelPickerOpen = $state(true);
@@ -55,9 +71,11 @@
     }
   });
 
-  $inspect(currentModelId);
-  $inspect(selectedModelId);
-
+  // $inspect(currentModelId);
+  // $inspect(selectedModelId);
+  // $inspect(_modelList);
+  $inspect(searchQuery);
+  $inspect(searchedModels);
   function handleGlobalKeyDown(e: KeyboardEvent) {
     if (e.key === "Escape") {
       if (isModelPickerOpen) {
@@ -66,12 +84,13 @@
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     // modelsModule.init();
     // modelsModule.refreshModels();
-    refreshModels();
+    await refreshModels();
     unsubscribeModelItems = modelItems.subscribe(async (value) => {
       _modelList = value;
+      allModels = _modelList[0]?.models;
       allModels = helper.getAllModels();
       isModelPickerOpen = false;
       await sessionModule.loadSessions();
@@ -82,19 +101,20 @@
     models = helper.loadModels();
     favorites = helper.loadFavorites();
     recent = helper.loadRecent();
-    allModels = helper.getAllModels();
+    if (_modelList[0]?.models?.length > 0) allModels = helper.getAllModels();
 
     // Global keyboard handlers
     document.addEventListener("keydown", handleGlobalKeyDown);
 
-    return () => {
-      document.removeEventListener("keydown", handleGlobalKeyDown);
-    };
+    console.log(allModels);
+    // return () => {
+    //   document.removeEventListener("keydown", handleGlobalKeyDown);
+    // };
   });
   //---------------------------------------------------------------------------
 
   export function updateModelLabel(modelId: string) {
-    console.log("updating model label: " + modelId)
+    console.log("updating model label: " + modelId);
     const displayName = modelId
       ? (modelId.split("/").pop() ?? null)
       : "Select model";
@@ -202,7 +222,8 @@
     updateModelLabel(modelId);
   }
 
-  function toggleModelPicker() {
+  function toggleModelPicker(e: Event) {
+    e.stopPropagation();
     isModelPickerOpen = !isModelPickerOpen;
     if (isModelPickerOpen && window.innerWidth >= 768) {
       const searchInput = document.getElementById(
@@ -226,39 +247,127 @@
     next.unshift(modelId);
     helper.saveRecent(next.slice(0, 5));
   }
+  function _pickerModelKey(m) {
+    if (!m) return "";
+    return `${m.endpointId || m.url || m.epName || "model"}::${m.mid || ""}`;
+  }
+  let _defaultPendingSeq = 0;
+  async function _pick(m: ModelItem): Promise<void> {
+    _defaultPendingSeq++;
+    try {
+      window.__odysseusLastPickedRoute = {
+        model: m.mid || "",
+        endpoint_url: m.url || "",
+        endpoint_id: m.endpointId || "",
+        display: m.display || m.mid || "",
+        picked_at: Date.now(),
+      };
+    } catch (_) {}
+    let switchDone = null;
+    const switchPromise = new Promise((resolve) => {
+      switchDone = resolve;
+    });
+    try {
+      window.__odysseusModelSwitchPromise = switchPromise;
+    } catch (_) {}
+    const finishSwitch = () => {
+      try {
+        if (switchDone) switchDone();
+        if (window.__odysseusModelSwitchPromise === switchPromise)
+          delete window.__odysseusModelSwitchPromise;
+      } catch (_) {}
+    };
+    const currentSessionId = _deps.getCurrentSessionId();
+    const _pendingChat = _deps.getPendingChat();
 
-  function _pick(m: ModelItem): void {
-    currentModelId = m.mid;
-    currentModelLogo = currentModelId ? providerLogo(currentModelId) : null
-    _pushRecent(m.mid);
-    console.log("made it");
-    document.dispatchEvent(
-      new CustomEvent("odysseus:model-picked", { detail: m }),
-    );
+    // Remember this pick so it surfaces under "Recent" next time the picker
+    // opens — the whole point of quick-switch.
+    if (m && m.mid) _pushRecent(_pickerModelKey(m) || m.mid);
 
-    if (document.activeElement) {
-      let e = document.activeElement as HTMLInputElement;
-      e.blur();
-    }
+    // Broadcast immediately so listeners (e.g. the tour) can advance without
+    // waiting for the async session-create/PATCH that follows.
+    try {
+      document.dispatchEvent(
+        new CustomEvent("odysseus:model-picked", { detail: m }),
+      );
+    } catch {}
 
-    // Refocus main textarea
+    // Blur search input before closing to dismiss keyboard on mobile
+    if (document.activeElement) document.activeElement.blur();
+    isModelPickerOpen = false;
+    // Refocus main textarea — skip on mobile to avoid keyboard bounce
     if (window.innerWidth >= 768) {
-      const _ta = document.getElementById("message") as HTMLTextAreaElement;
+      const _ta = document.getElementById("message");
       if (_ta) setTimeout(() => _ta.focus(), 50);
     }
-    isModelPickerOpen = false;
-    isOpen = false;
-    searchQuery = "";
-
-    // Update selected model
-    if (selectedModelId !== m.mid) {
-      selectedModelId = m.mid;
-      console.log("made it 2");
-      onModelChange(m);
-      isOpen = false;
+    if (!currentSessionId && _pendingChat) {
+      // Already have a deferred session — just update the model
+      _deps.setPendingChat({
+        url: m.url,
+        modelId: m.mid,
+        endpointId: m.endpointId,
+        source: "manual",
+      });
+      // Header stays as session name — model switch only updates picker
+      updateModelPicker();
+      uiModule.showToast(`Using ${m.display}`);
+      finishSwitch();
+      return;
+    } else if (!currentSessionId) {
+      // No session yet — create one with this model
+      try {
+        await _deps.createDirectChat(m.url, m.mid, m.endpointId);
+      } catch (e) {
+        uiModule.showError("Failed to start chat: " + e);
+        finishSwitch();
+        return;
+      }
+    } else {
+      // Existing session with no model — PATCH it
+      const sessions = _deps.getSessions();
+      const s = sessions.find((x) => x.id === currentSessionId);
+      if (s) {
+        s.model = m.mid;
+        s.endpoint_url = m.url;
+        s.endpoint_id = m.endpointId || s.endpoint_id || "";
+      }
+      updateModelPicker();
+      const fd = new FormData();
+      fd.append("model", m.mid);
+      fd.append("endpoint_url", m.url);
+      if (m.endpointId) fd.append("endpoint_id", m.endpointId);
+      try {
+        const res = await fetch(`${API_BASE}/api/session/${currentSessionId}`, {
+          method: "PATCH",
+          body: fd,
+        });
+        if (!res.ok) {
+          uiModule.showError("Failed to set model");
+          finishSwitch();
+          return;
+        }
+        // Header stays as session name — model info shown in picker only
+      } catch (e) {
+        uiModule.showError("Failed to set model: " + e);
+        finishSwitch();
+        return;
+      }
     }
+    // Update picker visibility — model is now set
+    updateModelPicker();
+    if (window.refreshChatContextHeader)
+      window.refreshChatContextHeader("model-pick");
+    uiModule.showToast(`Using ${m.display}`);
+    finishSwitch();
   }
 </script>
+
+<svelte:body
+  onclick={(e) => {
+    if (e.target !== e.currentTarget) return; // click did not start on body
+    if (isModelPickerOpen) isModelPickerOpen = false;
+  }}
+/>
 
 <div class="model-picker-wrap" bind:this={modelPickerElement}>
   <button
@@ -271,7 +380,7 @@
     <span id="model-picker-label" bind:this={label}>
       <!-- test: assure currentModelLogo does not come from LLM output or user input -->
       {#if currentModelLogo}
-      <span class="model-picker-logo">{@html currentModelLogo}</span>
+        <span class="model-picker-logo">{@html currentModelLogo}</span>
       {/if}
       {currentModelId}
     </span>
@@ -289,26 +398,71 @@
     </svg>
   </button>
   {#if isModelPickerOpen}
-    <div class="model-picker-menu {isOpen ? 'show' : ''}" class:show={isOpen}>
+    <div
+      class="model-picker-menu {isOpen ? 'show' : ''}"
+      class:show={isOpen}
+    >
       <div class="model-picker-search-row">
         <input
           id="model-picker-search"
+          bind:this={search}
           type="text"
           {placeholder}
           bind:value={searchQuery}
           autocomplete="off"
           aria-label={placeholder}
+          onclick={(e) => e.stopPropagation()}
+          oninput={() => {
+            searchQuery = search.value;
+          }}
         />
       </div>
 
-      <div class="model-picker-list" id="model-picker-list">
-        {#if allModels.length === 0}
-          <div class="model-switch-empty">No models connected</div>
-        {:else}
-          {#each allModels as model (model.mid)}
-            <ModelRow {model} {favorites} onPick={_pick} />
-          {/each}
+      <div  id="model-picker-list" class="model-picker-list {searchQuery == ''
+        ? ''
+        : 'min-h-[280px]'}">
+        <!-- Active Search -->
+        {#if searchedModels.length}
+          <ModelSection label="{searchedModels.length} Results" />
         {/if}
+        {#each searchedModels as model (model)}
+          <hr />
+          <hr />
+          <ModelRow
+            {model}
+            {favorites}
+            onPick={_pick}
+            onToggleFavorite={helper.toggleFavorite}
+          />
+          <hr />
+        {:else}
+          {#if searchQuery != ""}
+            <ModelSection label="0 Search Results" />
+          {/if}
+          <!-- Empty Search -->
+          {#if favorites.length}
+            <ModelSection label="Favorites" />
+            {#each favorites as model (model)}
+              <ModelRow {model} {favorites} />
+            {/each}
+          {/if}
+          {#if recent.length}
+            <ModelSection label="Recent" />
+            {#each recent as model (model)}
+              <ModelRow model={{ display: shortModel(model) }} {favorites} />
+            {/each}
+          {/if}
+          {#each allModels as model (model)}
+            <ModelRow
+              {model}
+              {favorites}
+              onPick={_pick}
+              onToggleFavorite={helper.toggleFavorite}
+            />
+          {:else}
+            <div class="model-switch-empty">No models connected</div>
+          {/each}
+        {/each}
       </div>
     </div>
   {/if}

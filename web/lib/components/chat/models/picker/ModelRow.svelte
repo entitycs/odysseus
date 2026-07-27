@@ -1,4 +1,11 @@
+<script module lang="ts">
+    let favoriteGroup : ModelItem[];
+    let startOfGroup = $state(false);
+</script>
+
 <script lang="ts">
+    import { onMount } from "svelte";
+    import ModelSection from "./ModelSection.svelte";
     import type { ModelItem } from "../modelItemStore.svelte";
 
     interface Props {
@@ -17,6 +24,8 @@
         onToggleFavorite = () => false,
     }: Props = $props();
 
+    $inspect(model);
+
     const epDisplay = $derived(
         model.epName &&
             !model.display
@@ -25,6 +34,19 @@
             ? model.epName
             : "",
     );
+
+    onMount(() =>{
+        if (favorites.includes(model.mid)){
+            if (!favoriteGroup){
+                favoriteGroup = [model];
+                startOfGroup = true;
+            }
+            else{
+                startOfGroup = false;
+                favoriteGroup.push(model);
+            }
+        }
+    });
 
 </script>
 
@@ -50,6 +72,6 @@
         ●
     </button>
 </div>
-
+<hr style="border-top-style: inset;" />
 <style>
 </style>
