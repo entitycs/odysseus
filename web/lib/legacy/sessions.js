@@ -2189,7 +2189,7 @@ export async function selectSession(
       Storage.set('lastSessionId', id);
             // Update URL hash without triggering hashchange handler
       if (window.location.hash !== '#' + id) {
-        pushState('#' + id, {}); //todo - test vs hashchange handler
+        pushState('#' + id, {sessionId: id}); //todo - test vs hashchange handler
         // history.replaceState(null, '', '#' + id);
       }
     }
@@ -2596,7 +2596,7 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   currentSessionId = null;
   try { window.__odysseusLastSelectedSessionId = ''; } catch (_) {}
   Storage.remove('lastSessionId');
-  pushState('', {});
+  pushState('', {sessionId: null});
   // history.replaceState(null, '', window.location.pathname);
   document
     .querySelectorAll('.list-item.active-session, .session-item.active')
@@ -2783,12 +2783,15 @@ export function getCurrentEndpointUrl() {
 
 export function setCurrentSessionId(id) {
   _sessionNavToken++;
+  if (id && id != currentSessionId){
+    pushState('#' + id, {sessionId: id});
+  }
   currentSessionId = id;
   try { window.__odysseusLastSelectedSessionId = id || ''; } catch (_) {}
   if (!id) {
     _suppressNextSessionLoading = true;
     Storage.remove('lastSessionId');
-    pushState('', page);
+    pushState('', {sessionId: null});
     // history.replaceState(null, '', window.location.pathname);
     document
       .querySelectorAll('.list-item.active-session, .session-item.active')

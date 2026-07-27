@@ -21,6 +21,7 @@ import * as sessionModule from '$lib/legacy/sessions';
 import uiModule from '$lib/legacy/ui';
 import { updatePlusDot } from '$lib/overflow';
 import UserMsgScrollMarker from '$lib/components/UserMsgScrollMarker.svelte';
+    import { page } from '$app/state';
 
 let chatHistory: HTMLElement;
 let unsubscribeModelItems;
@@ -38,6 +39,7 @@ function el(id: string) {
 afterNavigate((navigation) => {
   const hashId = window.location.hash.replace('#', '');
   if (hashId) sessionModule.selectSession(hashId);
+  pageState.sessionId = hashId;
 });
 
 // Scrolling
@@ -70,6 +72,9 @@ let ontouchmove = () => {
 };
 
 let pageState = $state({ sessionId: '' });
+const chatSessionId = $derived(page.state.sessionId); // This will correctly update id for usage on this page
+$inspect(chatSessionId);
+
 // ── Helper: start a fresh chat (deselect current, clear history, show welcome) ──
 function _startFreshChat() {
   try {
@@ -109,6 +114,10 @@ function _startFreshChat() {
     presetsModule.deactivateCharacter();
 }
 onMount(async () => {
+
+   pageState.sessionId = sessionModule && sessionModule.getCurrentSessionId
+        ? sessionModule.getCurrentSessionId()
+        : null;
   // Message count in the header — recount on any DOM change in
   // #chat-history and write "· N msgs" next to the title. Counts top-
   // level .msg elements (one per user/assistant turn); excludes the
@@ -515,7 +524,7 @@ onMount(async () => {
    <input type="checkbox" id="rag-toggle" style="display:none;" />
    <input type="checkbox" id="incognito-toggle" style="display:none;" />
    <input type="file" id="file-input" class="hidden" multiple />
-   <MessageInput sessionId={pageState.sessionId} />
+   <MessageInput sessionId={chatSessionId ?? pageState.sessionId} />
    <form
       id="chat-form"
       autocomplete="off"

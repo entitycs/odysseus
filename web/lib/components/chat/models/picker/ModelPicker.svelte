@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { page } from "$app/state";
   import {
     isLoading,
     type ModelItem,
@@ -14,8 +15,8 @@
   import sessionModule, * as _deps from "$lib/legacy/sessions";
   import uiModule from "$lib/legacy/ui";
 
-  const RECENT_KEY = 'odysseus-model-recent';
-  const FAVORITES_KEY = 'odysseus-model-favorites';
+  const RECENT_KEY = "odysseus-model-recent";
+  const FAVORITES_KEY = "odysseus-model-favorites";
   const RECENT_MAX = 5;
 
   let modelPickerElement: HTMLElement;
@@ -40,25 +41,48 @@
     },
   }: Props = $props();
 
-  let searchQuery = $state("");
+  $inspect(sessionId);
+  const sessionModel = $derived.by(() => {
+    const sessions = _deps.getSessions();
+    const _pendingChat = _deps.getPendingChat();
+    const s = sessions.find((x) => x.id === sessionId);
+    let modelId = null;
+    if (s && s.model) {
+      modelId = s.model;
+      if (!helper.modelExists(modelId, s.endpoint_url || "")) {
+        modelId = null;
+      }
+    } else if (_pendingChat && _pendingChat.modelId) {
+      modelId = _pendingChat.modelId;
+      if (!helper.modelExists(modelId, _pendingChat.url || "")) {
+        // _deps.setPendingChat(null);
+        modelId = null;
+      }
+    }
+    return modelId;
+  });
+  $inspect(sessionModel);
+
+  let _prevSessionId = null;
   let unsubscribeModelItems;
+
+  let searchQuery = $state("");
 
   // Store for models and favorites
   let _modelList: any[] = [];
   let allModels: ModelItem[] = $state([]);
   let otherModels = $derived(
-    allModels.filter(m => !favorites.includes(m.mid) && !recent.includes(m.mid))
+    allModels.filter(
+      (m) => !favorites.includes(m.mid) && !recent.includes(m.mid),
+    ),
   );
 
   let favorites = $state<string[]>([]);
-  let favModels = $derived(
-    allModels.filter(m => favorites.includes(m.mid))
-  );
+  let favModels = $derived(allModels.filter((m) => favorites.includes(m.mid)));
 
   let recent = $state<string[]>([]);
-  let recentModels = $derived(
-    allModels.filter(m => recent.includes(m.mid))
-  )
+  let recentModels = $derived(allModels.filter((m) => recent.includes(m.mid)));
+
   let searchedModels: ModelItem[] = $derived(
     searchQuery == ""
       ? []
@@ -74,9 +98,21 @@
   let pointer = $state({ x: 0, y: 0 });
 
   let isModelPickerOpen = $state(true);
-  let shouldUpdatePicker = $state(false);
+  let shouldUpdatePicker = $derived(() => {
+    if (_prevSessionId != sessionId) {
+      _prevSessionId = sessionId;
+      return true;
+    }
+    return false;
+  });
   let currentModelId = $state("");
   let currentModelLogo: string | RegExp | null = $state("");
+
+  $effect(() => {
+    updateModelLabel(sessionModel);
+    const modelItem = allModels.find(m => m.mid == sessionModel);
+    if (modelItem) _pick(modelItem);
+  });
 
   $effect(() => {
     if (shouldUpdatePicker) {
@@ -110,9 +146,9 @@
       await sessionModule.loadSessions();
       sessionId = sessionModule.getCurrentSessionId();
       shouldUpdatePicker = true;
-      // updateModelPicker();
+      updateModelPicker();
     });
-    models = helper.loadModels();
+    // models = helper.loadModels();
     favorites = helper.loadFavorites();
     recent = helper.loadRecent();
     if (_modelList[0]?.models?.length > 0) allModels = helper.getAllModels();
@@ -120,7 +156,6 @@
     // Global keyboard handlers
     document.addEventListener("keydown", handleGlobalKeyDown);
 
-    console.log(allModels);
     // return () => {
     //   document.removeEventListener("keydown", handleGlobalKeyDown);
     // };
@@ -145,7 +180,7 @@
     try {
       if (
         window.modelsModule &&
-        typeof window.modelsModule.refreshModels === 'function'
+        typeof window.modelsModule.refreshModels === "function"
       ) {
         window.modelsModule.refreshModels();
       }
@@ -156,7 +191,6 @@
   }
 
   export function updateModelLabel(modelId: string) {
-    console.log("updating model label: " + modelId);
     const displayName = modelId
       ? (modelId.split("/").pop() ?? null)
       : "Select model";
@@ -172,7 +206,6 @@
     // } else {
     //   label.textContent = displayName;
     // }
-    console.log("model id: " + currentModelId);
   }
 
   /**
@@ -262,6 +295,7 @@
       // _ensureDefaultPendingChat();// TODO
     }
     updateModelLabel(modelId);
+    return modelId;
   }
 
   function toggleModelPicker(e: Event) {
