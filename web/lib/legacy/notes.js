@@ -517,16 +517,6 @@ function _attrEsc(s) {
     .replace(/>/g, '&gt;')
     .replace(/`/g, '&#96;');
 }
-// Image src guard — reject anything that isn't a relative path, http(s), or
-// raster data URL so an AI-saved note can't slip script-capable media into the
-// rendered <img>.
-function _safeImgSrc(s) {
-  const v = (s || '').trim();
-  if (!v) return '';
-  if (v.startsWith('/') || v.startsWith('./') || v.startsWith('../')) return v;
-  if (/^https?:\/\//i.test(v) || /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(v)) return v;
-  return '';
-}
 
 // Escape then turn http(s)://... URLs into clickable anchors. XSS-safe.
 // Allow balanced `(...)` inside the URL (Wikipedia, MD links) by accepting
@@ -1941,7 +1931,7 @@ function _renderNotes() {
         <div class="note-card-title${note.title ? '' : ' empty'}" data-action="edit">${_esc(note.title || '')}</div>
         ${dueBadge}
       </div>
-      ${_safeImgSrc(note.image_url) ? `<img class="note-card-image" src="${_esc(_safeImgSrc(note.image_url))}" alt="" draggable="false" />` : ''}
+      ${safeDisplayImageSrc(note.image_url) ? `<img class="note-card-image" src="${_esc(safeDisplayImageSrc(note.image_url))}" alt="" draggable="false" />` : ''}
       ${contentHtml}
       ${_hasItems(note) ? `<div class="note-cl-quickadd"><input type="text" class="note-cl-quickadd-input" placeholder="+ Add item" data-note-id="${note.id}" /></div>` : ''}
       ${reminderTagHtml}
@@ -2945,7 +2935,7 @@ function _buildForm(note = null) {
   form.dataset.noteColor = color || '';
   if (color && !_isBgImage(color)) form.classList.add('note-color-' + color);
   if (_isBgImage(color)) form.setAttribute('style', _customColorStyle(color));
-  let currentImageUrl = _safeImgSrc(note?.image_url || '');
+  let currentImageUrl = safeDisplayImageSrc(note?.image_url || '');
   form.innerHTML = `
     <div class="note-form-header">
       <input type="text" class="note-form-title" placeholder="Title" value="${_esc(note?.title || '')}" />
@@ -3027,7 +3017,7 @@ function _buildForm(note = null) {
   let _stashedGoalItems = (type === 'goal' && Array.isArray(note?.items)) ? note.items.slice() : null;
 
   // Drawing also stashes the saved image URL so it survives Note↔Draw flips.
-  let _stashedDrawUrl = (type === 'draw') ? (_safeImgSrc(note?.image_url) || null) : null;
+  let _stashedDrawUrl = (type === 'draw') ? (safeDisplayImageSrc(note?.image_url) || null) : null;
   const _refreshFormLayout = () => {
     const body = form.closest('.notes-pane-body');
     if (!body) return;
@@ -3079,7 +3069,7 @@ function _buildForm(note = null) {
         // toggled to Draw, paint that photo onto the canvas so they can draw
         // on top of it. _stashedDrawUrl wins if they were drawing earlier in
         // the same edit session.
-        _wireCanvas(bodyEl, _stashedDrawUrl || currentImageUrl || _safeImgSrc(note?.image_url) || null);
+        _wireCanvas(bodyEl, _stashedDrawUrl || currentImageUrl || safeDisplayImageSrc(note?.image_url) || null);
       } else {
         const text = (_stashedNoteText !== null && _stashedNoteText !== undefined && _stashedNoteText !== '')
           ? _stashedNoteText
@@ -3171,7 +3161,7 @@ function _buildForm(note = null) {
   if (currentType === 'todo') _wireChecklist(form.querySelector('.note-form-body'));
   if (currentType === 'goal') _wireGoalForm(form, form.querySelector('.note-form-body'));
   if (currentType === 'draw') {
-    _wireCanvas(form.querySelector('.note-form-body'), _safeImgSrc(note?.image_url) || null);
+    _wireCanvas(form.querySelector('.note-form-body'), safeDisplayImageSrc(note?.image_url) || null);
     // Same hides we apply on type-switch — keep them consistent on initial open.
     const _ip = form.querySelector('.note-form-image-wrap'); if (_ip) _ip.style.display = 'none';
     const _cp = form.querySelector('.note-color-picker'); if (_cp) _cp.style.display = 'none';
@@ -4045,7 +4035,7 @@ function _wireCanvas(container, initialImageUrl) {
   ctx.lineJoin = 'round';
 
   // Load prior drawing as starting point so consecutive edits compose.
-  const safeInitialImageUrl = _safeImgSrc(initialImageUrl);
+  const safeInitialImageUrl = safeDisplayImageSrc(initialImageUrl);
   if (safeInitialImageUrl) {
     const img = new Image();
     img.crossOrigin = 'anonymous';

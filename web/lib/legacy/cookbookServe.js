@@ -3361,7 +3361,7 @@ function _rerenderCachedModels() {
         // when SSH glitches or `ss` isn't installed. This catches the
         // common case instantly without waiting for a network round-trip.
         try {
-          const _runningMod = await import('./cookbookRunning.js');
+          const _runningMod = await import('$lib/legacy/cookbookRunning.js');
           const _hostStr = launchTarget.host || '';
           const _serverKeyStr = launchTarget.serverKey || (_hostStr || 'local');
           const _active = (_runningMod._loadTasks ? _runningMod._loadTasks() : []).filter(t =>
