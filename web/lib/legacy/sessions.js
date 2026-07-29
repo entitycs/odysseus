@@ -5,7 +5,7 @@ import { goto, pushState, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import chatRenderer from '$lib/legacy/chatRenderer.js';
 import markdownModule from '$lib/legacy/markdown.js';
-import { initModelPicker, updateModelPicker } from '$lib/legacy/modelPicker.js';
+// import { initModelPicker, updateModelPicker } from '$lib/legacy/modelPicker.js';
 import { providerLogo } from '$lib/legacy/providers.js';
 import spinnerModule from '$lib/legacy/spinner.js';
 import Storage from '$lib/legacy/storage.js';
@@ -2126,7 +2126,7 @@ export async function loadSessions() {
       if (window.chatModule && window.chatModule.showWelcomeScreen) {
         window.chatModule.showWelcomeScreen();
       }
-      updateModelPicker();
+      // updateModelPicker();
       // Only auto-create if there are truly zero sessions (not just unselected)
       if (activeSessions.length === 0 && !_autoCreateInProgress) {
         _autoCreateInProgress = true;
@@ -2272,7 +2272,7 @@ export async function selectSession(
       currentMetaEl.textContent = meta ? meta.name : 'Odysseus Chat';
     }
     // Update model picker visibility
-    updateModelPicker();
+    // updateModelPicker();
     if (window.refreshChatContextHeader) window.refreshChatContextHeader('select-session');
 
     // Refresh session cost badge for the newly selected session
@@ -2332,7 +2332,7 @@ export async function selectSession(
         const sMeta = sessions.find((s) => s.id === id);
         if (sMeta && sMeta.model !== modelName) {
           sMeta.model = modelName;
-          updateModelPicker();
+          // updateModelPicker();
         }
       }
     }
@@ -2567,7 +2567,7 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
     _pendingChat.source === 'manual' &&
     incomingSource !== 'manual'
   ) {
-    updateModelPicker();
+    // updateModelPicker();
     return;
   }
   _sessionNavToken++;
@@ -2624,7 +2624,7 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   }
 
   // Update model picker to show the pending model
-  updateModelPicker();
+  // updateModelPicker();
   if (window.refreshChatContextHeader) window.refreshChatContextHeader('new-chat');
 
   // Update current-meta header
@@ -3199,15 +3199,15 @@ export function clearStreamComplete(sessionId) {
 
 // Initialize dropdowns once DOM is ready
 function _initAllDropdowns() {
-  initModelPicker({
-    getCurrentSessionId: () => currentSessionId,
-    getSessions: () => sessions,
-    getPendingChat: () => _pendingChat,
-    setPendingChat: (v) => {
-      _pendingChat = v;
-    },
-    createDirectChat,
-  });
+  // initModelPicker({
+  //   getCurrentSessionId: () => currentSessionId,
+  //   getSessions: () => sessions,
+  //   getPendingChat: () => _pendingChat,
+  //   setPendingChat: (v) => {
+  //     _pendingChat = v;
+  //   },
+  //   createDirectChat,
+  // });
   _initDropdownDismiss();
   _initBulkSelect();
 }
@@ -4455,7 +4455,7 @@ const sessionModule = {
   getCurrentEndpointUrl,
   setCurrentSessionId,
   initDragSort,
-  updateModelPicker,
+  // updateModelPicker,
   markResearching,
   clearResearching,
   markStreaming,
@@ -4472,6 +4472,6 @@ const sessionModule = {
   deleteCurrentSessionFromTopMenu
 };
 
-export { updateModelPicker };
+// export { updateModelPicker };
 
 export default sessionModule;
