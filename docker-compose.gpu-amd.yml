@@ -103,7 +103,7 @@ services:
   chromadb:
     image: docker.io/chromadb/chroma:latest
     ports:
-      - "${CHROMADB_BIND:-127.0.0.1}:8100:8000"
+      - "${CHROMADB_BIND:-127.0.0.1}:${CHROMADB_PORT:-8100}:8000"
     volumes:
       - chromadb-data:/chroma/chroma
     environment:
@@ -121,20 +121,21 @@ services:
       - /bin/sh
       - -c
       - |
+        mkdir -p /tmp/searxng
         set -eu
         if [ ! -s /etc/searxng/settings.yml ] || grep -q 'odysseus-local-searxng-json-2026-05-30\|__SEARXNG_SECRET__' /etc/searxng/settings.yml; then
           secret="$${SEARXNG_SECRET:-}"
           if [ -z "$$secret" ]; then
             secret="$$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
           fi
-          sed "s|__SEARXNG_SECRET__|$$secret|g" /tmp/searxng-settings.yml.template > /etc/searxng/settings.yml
+          sed "s|__SEARXNG_SECRET__|$$secret|g" /tmp/searxng/searxng-settings.yml.template > /etc/searxng/settings.yml
         fi
         exec /usr/local/searxng/entrypoint.sh
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${SEARXNG_PORT:-8080}:8080"
     volumes:
       - searxng-data:/etc/searxng
-      - ./config/searxng/settings.yml:/tmp/searxng-settings.yml.template:ro,z
+      - ./config/searxng/settings.yml:/tmp/searxng/searxng-settings.yml.template:ro,z
     environment:
       - SEARXNG_BASE_URL=http://localhost:8080/
       - SEARXNG_SECRET=${SEARXNG_SECRET:-}
@@ -164,7 +165,7 @@ services:
     image: docker.io/binwiederhier/ntfy
     command: serve
     ports:
-      - "${NTFY_BIND:-127.0.0.1}:8091:80"
+      - "${NTFY_BIND:-127.0.0.1}:${NTFY_PORT:-8091}:80"
     volumes:
       - ntfy-cache:/var/cache/ntfy
     environment:
